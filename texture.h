@@ -7,6 +7,7 @@
 
 class Texture {
 public:
+	Texture();
 	Texture(const char* texPath);
 
 	unsigned int id;

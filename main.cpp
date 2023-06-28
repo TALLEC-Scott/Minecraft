@@ -177,21 +177,66 @@ int main(void) {
 
 	glfwSetCursorPosCallback(window, cursorPositionCallback);
 
+	glEnable(GL_DEPTH_TEST);
+
 	int nrAttributes;
 	glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &nrAttributes);
 	std::cout << "Maximum number of vertex attributes supported: " << nrAttributes << std::endl;
 
 	GLfloat vertices[] = {
-		// Position								// Color						// Texture
-		-0.5, -0.5, 0,	/*BOTTOM  LEFT*/		1, 0.5, 0.5,  /*RED   */		0, 0,  /*BOTTOM  LEFT*/
-		-0.5,  0.5, 0,	/*TOP	  LEFT*/		1, 0.5, 0.5,  /*GREEN */		0, 1,  /*TOP     LEFT*/
-		 0.5,  0.5, 0,	/*TOP    RIGHT*/		1, 0.5, 0.5,  /*BLUE  */		1, 1,  /*TOP    RIGHT*/
-		 0.5, -0.5, 0,	/*BOTTOM RIGHT*/		1, 0.5, 0.5,   /*YELLOW*/		1, 0   /*BOTTOM RIGHT*/
-	};
+		// Face avant
+		-0.5f, -0.5f, 0.5f,    1.0f, 0.5f, 0.5f,      0.0f, 0.0f,   // Bas gauche : 0
+		-0.5f, 0.5f, 0.5f,     1.0f, 0.5f, 0.5f,      0.0f, 1.0f,   // Haut gauche : 1
+		0.5f, 0.5f, 0.5f,      1.0f, 0.5f, 0.5f,      1.0f, 1.0f,   // Haut droit : 2
+		0.5f, -0.5f, 0.5f,     1.0f, 0.5f, 0.5f,      1.0f, 0.0f,   // Bas droit : 3
 
+		// Face arrière
+		-0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 0.0f,   // Bas gauche : 4
+		-0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      0.0f, 1.0f,   // Haut gauche : 5
+		0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 1.0f,   // Haut droit : 6
+		0.5f, -0.5f, -0.5f,   0.5f, 0.5f, 1.0f,      1.0f, 0.0f,   // Bas droit : 7
+
+		// Face gauche
+		-0.5f, -0.5f, -0.5f,   0.5f, 1.0f, 0.5f,      0.0f, 0.0f,   // Bas gauche : 0
+		-0.5f, 0.5f, -0.5f,    0.5f, 1.0f, 0.5f,      0.0f, 1.0f,   // Haut gauche : 4
+		-0.5f, 0.5f, 0.5f,     0.5f, 1.0f, 0.5f,      1.0f, 1.0f,   // Haut droit : 5
+		-0.5f, -0.5f, 0.5f,    0.5f, 1.0f, 0.5f,      1.0f, 0.0f,   // Bas droit : 1
+
+		// Face droite
+		0.5f, -0.5f, 0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 0.0f,   // Bas gauche : 3
+		0.5f, -0.5f, -0.5f,      0.5f, 0.5f, 1.0f,      0.0f, 0.0f,   // Haut gauche : 7
+		0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      0.0f, 1.0f,   // Haut droit : 6
+		0.5f, 0.5f, 0.5f,    0.5f, 0.5f, 1.0f,      1.0f, 1.0f,   // Bas droit : 2
+
+		// Face haut
+		-0.5f, 0.5f, 0.5f,     1.0f, 1.0f, 0.5f,      0.0f, 0.0f,   // Bas gauche : 1
+		-0.5f, 0.5f, -0.5f,    1.0f, 1.0f, 0.5f,      0.0f, 1.0f,   // Haut gauche : 5
+		0.5f, 0.5f, -0.5f,     1.0f, 1.0f, 0.5f,      1.0f, 1.0f,   // Haut droit : 6
+		0.5f, 0.5f, 0.5f,      1.0f, 1.0f, 0.5f,      1.0f, 0.0f,   // Bas droit : 2
+
+		// Face bas
+		-0.5f, -0.5f, -0.5f,   0.5f, 0.5f, 1.0f,      0.0f, 0.0f,   // Bas gauche : 4
+		-0.5f, -0.5f, 0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 1.0f,   // Haut gauche : 0
+		0.5f, -0.5f, 0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 1.0f,   // Haut droit : 3
+		0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      1.0f, 0.0f    // Bas droit : 7
+	};
+/*
 	GLuint indices[] = {
-		0, 1, 2,
-		2, 0, 3,
+		0, 1, 3, 3, 2, 1, // Face avant
+		1, 0, 4, 4, 1, 5, // Face gauche
+		5, 4, 7, 7, 5, 6, // Face arrière
+		6, 2, 5, 5, 1, 2, // Face haut
+		2, 6, 7, 7, 2, 3, // Face droite
+		3, 7, 4, 4, 3, 0
+	};
+*/
+	GLuint indices[] = {
+		20, 23, 22, 22, 21, 20,
+		16, 19, 18, 18, 17, 16,
+		12, 15, 14, 14, 13, 12,
+		8, 11, 10, 10, 9, 8,
+		4, 7, 6, 6, 5, 4,
+		0, 3, 2, 2, 1, 0
 	};
 
 	Shader shaderProgram("./Shaders/vert.shd", "./Shaders/frag.shd");
@@ -218,13 +263,16 @@ int main(void) {
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
-	Texture texture("./Textures/grass.png");
+	Texture texture("./Textures/grass_side.png");
 	texture.bind();
 
 	double lastTime = glfwGetTime();
 	int nbFrames = 0;
 
 	while (!glfwWindowShouldClose(window)) {
+		glClearColor(0.53f, 0.82f, 0.98f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
 		double currentTime = glfwGetTime();
 		nbFrames++;
 		if (currentTime - lastTime >= 1.0) { // If last prinf() was more than 1 sec ago
@@ -235,9 +283,6 @@ int main(void) {
 		}
 
 		processInput(window);
-
-		glClearColor(0.53f, 0.82f, 0.98f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
 
 		shaderProgram.use();
 		glm::mat4 view = glm::lookAt(cameraPosition, cameraPosition + cameraFront, cameraUp);
@@ -259,7 +304,7 @@ int main(void) {
 
 
 		glBindVertexArray(VAO);
-		glDrawElements(GL_TRIANGLES, 12, GL_UNSIGNED_INT, 0);
+		glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
