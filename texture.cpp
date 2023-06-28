@@ -1,5 +1,9 @@
 #include "texture.h"
 
+Texture::Texture() {
+
+}
+
 Texture::Texture(const char* texPath) {
 	stbi_set_flip_vertically_on_load(true);
 	unsigned int texture;
