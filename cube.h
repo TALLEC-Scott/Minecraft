@@ -11,12 +11,13 @@ public:
 	Cube(int x, int y, int z, const char* texturePath);
 
 	void initialize();
-	void bind();
-	void draw();
 	void render();
+	void render(Cube* neighbors[6]);
 	void destroy();
 
 	glm::vec3 getPosition();
+
+	void setPosition(glm::vec3 position);
 
 	~Cube();
 private:
@@ -25,4 +26,5 @@ private:
 	int z;
 	Texture texture;
 	unsigned int VAO, VBO, EBO;
+	bool initialized = false;
 };

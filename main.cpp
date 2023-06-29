@@ -13,19 +13,16 @@
 #include "shader.h"
 #include "texture.h"
 #include "cube.h"
+#include "chunk.h"
+#include "camera.h"
 
 #define WINDOW_WIDTH 1000
 #define WINDOW_HEIGHT 1000
 
-#define SPEED 0.001
-
 int windowWidth = WINDOW_WIDTH;
 int windowHeight = WINDOW_HEIGHT;
 
-glm::vec3 cameraPosition = glm::vec3(0.0f, 0.0f, 3.0f);
-glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
-glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
-float cameraSpeed = SPEED;
+Camera camera = Camera();
 
 bool xKeyPressed = false;
 bool wireframeMode = false;
@@ -73,7 +70,7 @@ void cursorPositionCallback(GLFWwindow* window, double xPos, double yPos) {
 	direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
 	direction.y = sin(glm::radians(pitch));
 	direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-	cameraFront = glm::normalize(direction);
+	camera.changeDirection(direction);
 }
 
 void processInput(GLFWwindow* window)
@@ -103,27 +100,27 @@ void processInput(GLFWwindow* window)
 	// Camera moves
 	// Forward
 	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-		cameraPosition += cameraSpeed * cameraFront;
+		camera.forward();
 	// Back
 	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-		cameraPosition -= cameraSpeed * cameraFront;
+		camera.back();
 	// Left
 	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-		cameraPosition -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+		camera.left();
 	// Right
 	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-		cameraPosition += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+		camera.right();
 	// Up
 	if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-		cameraPosition += cameraSpeed * cameraUp;
+		camera.up();
 	// Down
 	if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
-		cameraPosition -= cameraSpeed * cameraUp;
+		camera.down();
 	// Run
 	if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
-		cameraSpeed = 4 * SPEED;
+		camera.speedUp();
 	else
-		cameraSpeed = SPEED;
+		camera.resetSpeed();
 
 	// Enable/Disable fullscreen
 	if (glfwGetKey(window, GLFW_KEY_F12) == GLFW_PRESS) {
@@ -189,13 +186,15 @@ int main(void) {
 
 	Shader shaderProgram("./Shaders/vert.shd", "./Shaders/frag.shd");
 
-	const int nb_cubes = 4;
-	std::cout << "non" << std::endl;
-	std::vector<Cube> cubes;
-	std::cout << "oui" << std::endl;
-	for (int i = 0; i < nb_cubes; i++) {
-		cubes.push_back(Cube(0, 0, i, "./Textures/grass.png"));
-	}
+	Chunk chunk = Chunk();
+	Cube cube = Cube(0, 0, 0, "./Textures/grass.png");
+	//std::vector<Cube> cubes;
+	//cubes.push_back(cube);
+	//cubes.push_back(Cube(0, 0, 1, "./Textures/grass.png"));
+
+	glEnable(GL_CULL_FACE);
+	glCullFace(GL_BACK);
+	glFrontFace(GL_CW);
 
 	double lastTime = glfwGetTime();
 	int nbFrames = 0;
@@ -214,35 +213,32 @@ int main(void) {
 
 		processInput(window);
 
-		for (int i = 0; i < nb_cubes; i++) {
-			shaderProgram.use();
-			glm::mat4 view = glm::lookAt(cameraPosition, cameraPosition + cameraFront, cameraUp);
-			shaderProgram.setMat4("view", view);
+		shaderProgram.use();
+		camera.defineLookAt(shaderProgram);
 
-			glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 100.0f);
-			shaderProgram.setMat4("projection", projection);
+		glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 100.0f);
+		shaderProgram.setMat4("projection", projection);
 
-			glm::mat4 model = glm::mat4(1.0f);
-			shaderProgram.setMat4("model", model);
+		glm::mat4 model = glm::mat4(1.0f);
+		shaderProgram.setMat4("model", model);
 
-			glm::vec2 windowSize = glm::vec2(windowWidth, windowHeight);
-			shaderProgram.setVec2("windowSize", windowSize);
-
-			glm::vec3 translation = glm::vec3(0, i, 0);
+		glm::vec2 windowSize = glm::vec2(windowWidth, windowHeight);
+		shaderProgram.setVec2("windowSize", windowSize);
+		/*
+		for (int i = 0; i < 2; i++) {
+			glm::vec3 translation = glm::vec3(cubes[i].getPosition());
 			shaderProgram.setVec3("translation", translation);
-
-			// Ajout de l'appel pour activer le shader
-			shaderProgram.use();
-
 			cubes.at(i).render();
-		}
+		}*/
+		//cube.render();
+		chunk.render(shaderProgram);
+
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
 
-	for (int i = 0; i < nb_cubes; i++) {
-		cubes.at(i).destroy();
-	}
+	chunk.destroy();
+	cube.destroy();
 	shaderProgram.destroy();
 
 	glfwDestroyWindow(window);
