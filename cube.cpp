@@ -70,12 +70,29 @@ void Cube::initialize() {
 	};
 
 	GLuint indices[] = {
-		20, 23, 22, 22, 21, 20,
-		16, 19, 18, 18, 17, 16,
-		12, 15, 14, 14, 13, 12,
-		8, 11, 10, 10, 9, 8,
-		4, 7, 6, 6, 5, 4,
-		0, 3, 2, 2, 1, 0
+		// Face avant
+		0, 1, 2,
+		2, 3, 0,
+
+		// Face arrière
+		4, 7, 6,
+		6, 5, 4,
+
+		// Face gauche
+		8, 9, 10,
+		10, 11, 8,
+
+		// Face droite
+		12, 15, 14,
+		14, 13, 12,
+
+		// Face haut
+		16, 17, 18,
+		18, 19, 16,
+
+		// Face bas
+		23, 20, 22,
+		22, 20, 21
 	};
 
 	glGenVertexArrays(1, &this->VAO);
@@ -102,29 +119,44 @@ void Cube::initialize() {
 	texture.bind();
 }
 
-void Cube::bind() {
+void Cube::render() {
+	initialize();
 	glBindVertexArray(this->VAO);
-}
-
-void Cube::draw() {
 	glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
 }
 
-void Cube::render() {
+void Cube::render(Cube* neighbors[6]) {
 	initialize();
-	bind();
-	draw();
+	glBindVertexArray(this->VAO);
+
+	for (int i = 0; i < 6; i++) {
+		if (neighbors[i] == nullptr) {
+			// Calcule l'indice de départ pour la face i
+			int startIdx = i * 6;
+
+			// Affiche les triangles de la face i en utilisant les indices
+			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void*)(startIdx * sizeof(GLuint)));
+		}
+	}
+
+	glBindVertexArray(0);
 }
 
 void Cube::destroy() {
 	glDeleteVertexArrays(1, &VAO);
-	glDeleteBuffers(1, &VBO);
+	glDeleteBuffers(1, &VBO);//
 	glDeleteBuffers(1, &EBO);
 	texture.destroy();
 }
 
 glm::vec3 Cube::getPosition() {
 	return glm::vec3(x, y, z);
+}
+
+void Cube::setPosition(glm::vec3 position) {
+	this->x = position.x;
+	this->y = position.y;
+	this->z = position.z;
 }
 
 Cube::~Cube() {

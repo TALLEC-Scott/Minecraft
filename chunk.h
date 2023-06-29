@@ -2,7 +2,6 @@
 
 #include <glad/glad.h>
 #include <glm/glm.hpp>
-#include <vector>
 
 #include "cube.h"
 #include "shader.h"
@@ -19,5 +18,6 @@ public:
 	~Chunk();
 
 private:
-	std::vector<std::vector<std::vector<Cube>>> blocks;
+	Cube* getBlock(int i, int j, int k);
+	Cube* blocks;
 };

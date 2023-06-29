@@ -147,6 +147,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="camera.cpp" />
     <ClCompile Include="chunk.cpp" />
     <ClCompile Include="cube.cpp" />
     <ClCompile Include="glad.c" />
@@ -156,6 +157,7 @@
     <ClCompile Include="texture.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="camera.h" />
     <ClInclude Include="chunk.h" />
     <ClInclude Include="cube.h" />
     <ClInclude Include="shader.h" />

@@ -1,7 +1,7 @@
 #include "texture.h"
 
 Texture::Texture() {
-
+	this->id = 0;
 }
 
 Texture::Texture(const char* texPath) {
