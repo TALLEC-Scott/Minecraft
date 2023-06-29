@@ -8,8 +8,11 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <stb/stb_image.h>
 
+#include <vector>
+
 #include "shader.h"
 #include "texture.h"
+#include "cube.h"
 
 #define WINDOW_WIDTH 1000
 #define WINDOW_HEIGHT 1000
@@ -182,93 +185,20 @@ int main(void) {
 	int nrAttributes;
 	glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &nrAttributes);
 	std::cout << "Maximum number of vertex attributes supported: " << nrAttributes << std::endl;
-
-	GLfloat vertices[] = {
-		// Face avant
-		-0.5f, -0.5f, 0.5f,    1.0f, 0.5f, 0.5f,      0.0f, 0.0f,   // Bas gauche : 0
-		-0.5f, 0.5f, 0.5f,     1.0f, 0.5f, 0.5f,      0.0f, 1.0f,   // Haut gauche : 1
-		0.5f, 0.5f, 0.5f,      1.0f, 0.5f, 0.5f,      1.0f, 1.0f,   // Haut droit : 2
-		0.5f, -0.5f, 0.5f,     1.0f, 0.5f, 0.5f,      1.0f, 0.0f,   // Bas droit : 3
-
-		// Face arrière
-		-0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 0.0f,   // Bas gauche : 4
-		-0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      0.0f, 1.0f,   // Haut gauche : 5
-		0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 1.0f,   // Haut droit : 6
-		0.5f, -0.5f, -0.5f,   0.5f, 0.5f, 1.0f,      1.0f, 0.0f,   // Bas droit : 7
-
-		// Face gauche
-		-0.5f, -0.5f, -0.5f,   0.5f, 1.0f, 0.5f,      0.0f, 0.0f,   // Bas gauche : 0
-		-0.5f, 0.5f, -0.5f,    0.5f, 1.0f, 0.5f,      0.0f, 1.0f,   // Haut gauche : 4
-		-0.5f, 0.5f, 0.5f,     0.5f, 1.0f, 0.5f,      1.0f, 1.0f,   // Haut droit : 5
-		-0.5f, -0.5f, 0.5f,    0.5f, 1.0f, 0.5f,      1.0f, 0.0f,   // Bas droit : 1
-
-		// Face droite
-		0.5f, -0.5f, 0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 0.0f,   // Bas gauche : 3
-		0.5f, -0.5f, -0.5f,      0.5f, 0.5f, 1.0f,      0.0f, 0.0f,   // Haut gauche : 7
-		0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      0.0f, 1.0f,   // Haut droit : 6
-		0.5f, 0.5f, 0.5f,    0.5f, 0.5f, 1.0f,      1.0f, 1.0f,   // Bas droit : 2
-
-		// Face haut
-		-0.5f, 0.5f, 0.5f,     1.0f, 1.0f, 0.5f,      0.0f, 0.0f,   // Bas gauche : 1
-		-0.5f, 0.5f, -0.5f,    1.0f, 1.0f, 0.5f,      0.0f, 1.0f,   // Haut gauche : 5
-		0.5f, 0.5f, -0.5f,     1.0f, 1.0f, 0.5f,      1.0f, 1.0f,   // Haut droit : 6
-		0.5f, 0.5f, 0.5f,      1.0f, 1.0f, 0.5f,      1.0f, 0.0f,   // Bas droit : 2
-
-		// Face bas
-		-0.5f, -0.5f, -0.5f,   0.5f, 0.5f, 1.0f,      0.0f, 0.0f,   // Bas gauche : 4
-		-0.5f, -0.5f, 0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 1.0f,   // Haut gauche : 0
-		0.5f, -0.5f, 0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 1.0f,   // Haut droit : 3
-		0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      1.0f, 0.0f    // Bas droit : 7
-	};
-/*
-	GLuint indices[] = {
-		0, 1, 3, 3, 2, 1, // Face avant
-		1, 0, 4, 4, 1, 5, // Face gauche
-		5, 4, 7, 7, 5, 6, // Face arrière
-		6, 2, 5, 5, 1, 2, // Face haut
-		2, 6, 7, 7, 2, 3, // Face droite
-		3, 7, 4, 4, 3, 0
-	};
-*/
-	GLuint indices[] = {
-		20, 23, 22, 22, 21, 20,
-		16, 19, 18, 18, 17, 16,
-		12, 15, 14, 14, 13, 12,
-		8, 11, 10, 10, 9, 8,
-		4, 7, 6, 6, 5, 4,
-		0, 3, 2, 2, 1, 0
-	};
+	
 
 	Shader shaderProgram("./Shaders/vert.shd", "./Shaders/frag.shd");
 
-	unsigned int VAO, VBO, EBO;
-	glGenVertexArrays(1, &VAO);
-	glGenBuffers(1, &VBO);
-	glGenBuffers(1, &EBO);
-
-	glBindVertexArray(VAO);
-
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)0);
-	glEnableVertexAttribArray(0);;
-
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
-	glEnableVertexAttribArray(1);
-
-	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));
-	glEnableVertexAttribArray(2);
-
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-	Texture texture("./Textures/grass_side.png");
-	texture.bind();
+	const int nb_cubes = 4;
+	std::cout << "non" << std::endl;
+	std::vector<Cube> cubes;
+	std::cout << "oui" << std::endl;
+	for (int i = 0; i < nb_cubes; i++) {
+		cubes.push_back(Cube(0, 0, i, "./Textures/grass.png"));
+	}
 
 	double lastTime = glfwGetTime();
 	int nbFrames = 0;
-
 	while (!glfwWindowShouldClose(window)) {
 		glClearColor(0.53f, 0.82f, 0.98f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -284,38 +214,36 @@ int main(void) {
 
 		processInput(window);
 
-		shaderProgram.use();
-		glm::mat4 view = glm::lookAt(cameraPosition, cameraPosition + cameraFront, cameraUp);
-		shaderProgram.setMat4("view", view);
+		for (int i = 0; i < nb_cubes; i++) {
+			shaderProgram.use();
+			glm::mat4 view = glm::lookAt(cameraPosition, cameraPosition + cameraFront, cameraUp);
+			shaderProgram.setMat4("view", view);
 
-		glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 100.0f);
-		shaderProgram.setMat4("projection", projection);
+			glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 100.0f);
+			shaderProgram.setMat4("projection", projection);
 
-		glm::mat4 model = glm::mat4(1.0f);
-		shaderProgram.setMat4("model", model);
+			glm::mat4 model = glm::mat4(1.0f);
+			shaderProgram.setMat4("model", model);
 
-		glm::vec2 windowSize = glm::vec2(windowWidth, windowHeight);
-		shaderProgram.setVec2("windowSize", windowSize);
+			glm::vec2 windowSize = glm::vec2(windowWidth, windowHeight);
+			shaderProgram.setVec2("windowSize", windowSize);
 
-		glBindVertexArray(VAO);
+			glm::vec3 translation = glm::vec3(0, i, 0);
+			shaderProgram.setVec3("translation", translation);
 
-		// Ajout de l'appel pour activer le shader
-		shaderProgram.use();
+			// Ajout de l'appel pour activer le shader
+			shaderProgram.use();
 
-
-		glBindVertexArray(VAO);
-		glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
-
+			cubes.at(i).render();
+		}
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
 
-	glDeleteVertexArrays(1, &VAO);
-	glDeleteBuffers(1, &VBO);
-	glDeleteBuffers(1, &EBO);
-
+	for (int i = 0; i < nb_cubes; i++) {
+		cubes.at(i).destroy();
+	}
 	shaderProgram.destroy();
-	texture.destroy();
 
 	glfwDestroyWindow(window);
 	std::cout << "Window destroyed" << std::endl;
