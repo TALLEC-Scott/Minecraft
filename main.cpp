@@ -29,7 +29,7 @@ bool wireframeMode = false;
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
-	// make sure the viewport matches the new window dimensions; note that width and 
+	// make sure the viewport matches the new window dimensions; note that width axnd 
 	// height will be significantly larger than specified on retina displays.
 	glViewport(0, 0, width, height);
 	windowWidth = width;
