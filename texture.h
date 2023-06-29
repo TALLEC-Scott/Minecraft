@@ -14,6 +14,8 @@ public:
 
 	void bind();
 	void destroy();
+
+	~Texture();
 };
 
 #endif

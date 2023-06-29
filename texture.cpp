@@ -37,3 +37,5 @@ void Texture::bind() {
 void Texture::destroy() {
 	glDeleteTextures(1, &id);
 }
+
+Texture::~Texture() {}
