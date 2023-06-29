@@ -43,30 +43,6 @@ void Cube::initialize() {
 		-0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      0.0f, 1.0f,   // Haut gauche : 5
 		0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 1.0f,   // Haut droit : 6
 		0.5f, -0.5f, -0.5f,   0.5f, 0.5f, 1.0f,      1.0f, 0.0f,   // Bas droit : 7
-
-		// Face gauche
-		-0.5f, -0.5f, -0.5f,   0.5f, 1.0f, 0.5f,      0.0f, 0.0f,   // Bas gauche : 0
-		-0.5f, 0.5f, -0.5f,    0.5f, 1.0f, 0.5f,      0.0f, 1.0f,   // Haut gauche : 4
-		-0.5f, 0.5f, 0.5f,     0.5f, 1.0f, 0.5f,      1.0f, 1.0f,   // Haut droit : 5
-		-0.5f, -0.5f, 0.5f,    0.5f, 1.0f, 0.5f,      1.0f, 0.0f,   // Bas droit : 1
-
-		// Face droite
-		0.5f, -0.5f, 0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 0.0f,   // Bas gauche : 3
-		0.5f, -0.5f, -0.5f,      0.5f, 0.5f, 1.0f,      0.0f, 0.0f,   // Haut gauche : 7
-		0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      0.0f, 1.0f,   // Haut droit : 6
-		0.5f, 0.5f, 0.5f,    0.5f, 0.5f, 1.0f,      1.0f, 1.0f,   // Bas droit : 2
-
-		// Face haut
-		-0.5f, 0.5f, 0.5f,     1.0f, 1.0f, 0.5f,      0.0f, 0.0f,   // Bas gauche : 1
-		-0.5f, 0.5f, -0.5f,    1.0f, 1.0f, 0.5f,      0.0f, 1.0f,   // Haut gauche : 5
-		0.5f, 0.5f, -0.5f,     1.0f, 1.0f, 0.5f,      1.0f, 1.0f,   // Haut droit : 6
-		0.5f, 0.5f, 0.5f,      1.0f, 1.0f, 0.5f,      1.0f, 0.0f,   // Bas droit : 2
-
-		// Face bas
-		-0.5f, -0.5f, -0.5f,   0.5f, 0.5f, 1.0f,      0.0f, 0.0f,   // Bas gauche : 4
-		-0.5f, -0.5f, 0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 1.0f,   // Haut gauche : 0
-		0.5f, -0.5f, 0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 1.0f,   // Haut droit : 3
-		0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      1.0f, 0.0f    // Bas droit : 7
 	};
 
 	GLuint indices[] = {
@@ -79,20 +55,20 @@ void Cube::initialize() {
 		6, 5, 4,
 
 		// Face gauche
-		8, 9, 10,
-		10, 11, 8,
+		0, 4, 5,
+		5, 1, 0,
 
 		// Face droite
-		12, 15, 14,
-		14, 13, 12,
+		3, 2, 6,
+		6, 7, 3,
 
 		// Face haut
-		16, 17, 18,
-		18, 19, 16,
+		1, 5, 6,
+		6, 2, 1,
 
 		// Face bas
-		23, 20, 22,
-		22, 20, 21
+		7, 4, 3,
+		3, 4, 0
 	};
 
 	glGenVertexArrays(1, &this->VAO);
@@ -144,7 +120,7 @@ void Cube::render(Cube* neighbors[6]) {
 
 void Cube::destroy() {
 	glDeleteVertexArrays(1, &VAO);
-	glDeleteBuffers(1, &VBO);//
+	glDeleteBuffers(1, &VBO);
 	glDeleteBuffers(1, &EBO);
 	texture.destroy();
 }
