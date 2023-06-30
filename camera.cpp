@@ -1,7 +1,7 @@
 #include "camera.h"
 
 Camera::Camera() {
-	this->cameraPosition = glm::vec3(0.0f, 30.0f, 10.0f);
+	this->cameraPosition = glm::vec3(0.0f, 5.0f, 50.0f);
 	this->cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
 	this->cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
 	this->cameraSpeed = SPEED;
@@ -32,7 +32,7 @@ void Camera::right() {
 }
 
 void Camera::speedUp() {
-	cameraSpeed = 4 * SPEED;
+	cameraSpeed = 100 * SPEED;
 }
 
 void Camera::resetSpeed() {
