@@ -1,12 +1,17 @@
 #include "chunk.h"
 
 Chunk::Chunk() {
-	blocks = (Cube*) malloc(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(Cube));
-	if (blocks != NULL) {
+	blocks = new Cube[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
+	if (blocks != nullptr) {
 		Texture grass = Texture("./Textures/grass.png");
 		Texture stone = Texture("./Textures/stone.png");
-		for (int i = 0; i < CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE; i++) {
-			blocks[i] = Cube(0, 0, 0, grass);
+		for (int i = 0; i < CHUNK_SIZE; i++) {
+			for (int j = 0; j < CHUNK_SIZE; j++) {
+				for (int k = 0; k < CHUNK_SIZE; k++) {
+					blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k] = Cube(i, j, k);
+					blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k].initialize();
+				}
+			}
 		}
 	}
 }
@@ -23,21 +28,21 @@ void Chunk::render(Shader shaderProgram) {
 	for (int i = 0; i < CHUNK_SIZE; i++) {
 		for (int j = 0; j < CHUNK_SIZE; j++) {
 			for (int k = 0; k < CHUNK_SIZE; k++) {
-				Cube block = blocks[i * CHUNK_SIZE + j * CHUNK_SIZE + k * CHUNK_SIZE];
-				block.setPosition(glm::vec3(i, j, k));
-				shaderProgram.setVec3("translation", block.getPosition());
+				Cube* block = &blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k];
+
+				shaderProgram.setVec3("translation", block->getPosition());
 				shaderProgram.use();
+
 				// Vérifier les voisins et ne pas afficher les faces en contact
-				Cube* neighbors[6] = {
+				std::vector<Cube*> neighbors = {
 					getBlock(i, j, k + 1),  // Face avant
 					getBlock(i, j, k - 1),  // Face arrière
 					getBlock(i - 1, j, k),  // Face gauche
-					getBlock(i + 1, j, k),   // Face droite
+					getBlock(i + 1, j, k),  // Face droite
 					getBlock(i, j + 1, k),  // Face haut
-					getBlock(i, j - 1, k)  // Face bas
+					getBlock(i, j - 1, k)   // Face bas
 				};
-
-				block.render(neighbors);
+				block->render(neighbors);
 			}
 		}
 	}
@@ -47,14 +52,9 @@ void Chunk::destroy() {
 	for (int i = 0; i < CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE; i++) {
 		blocks[i].destroy();
 	}
-	free(blocks);
+	delete[] blocks;
 }
 
 Chunk::~Chunk() {
-	for (int i = 0; i < CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE; i++) {
-		blocks[i].destroy();
-	}
-	if (blocks != nullptr) {
-		free(blocks);
-	}
+	destroy();
 }

@@ -206,7 +206,10 @@ int main(void) {
 		nbFrames++;
 		if (currentTime - lastTime >= 1.0) { // If last prinf() was more than 1 sec ago
 			// printf and reset timer
-			std::cout << double(nbFrames) << " fps" << std::endl;
+			std::stringstream ss;
+			ss << "POGL" << " [" << nbFrames << " FPS]";
+
+			glfwSetWindowTitle(window, ss.str().c_str());
 			nbFrames = 0;
 			lastTime += 1.0;
 		}

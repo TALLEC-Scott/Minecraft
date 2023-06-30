@@ -4,7 +4,7 @@
 
 #include "shader.h"
 
-#define SPEED 0.1
+#define SPEED 0.001
 
 class Camera {
 public:
