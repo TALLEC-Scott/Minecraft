@@ -1,3 +1,8 @@
+/**
+ * @file chunk.h
+ * @brief Defines the Chunk class, representing a chunk of a 3D world.
+ */
+
 #pragma once
 
 #include <glad/glad.h>
@@ -6,7 +11,7 @@
 #include "cube.h"
 #include "shader.h"
 
-#define CHUNK_SIZE 16
+#define CHUNK_SIZE 15
 
 class Chunk {
 public:
@@ -20,6 +25,7 @@ public:
 	~Chunk();
 
 private:
+	Cube* blocks; /**< The array of blocks within the chunk. */
+
 	Cube* getBlock(int i, int j, int k);
-	Cube* blocks;
 };
