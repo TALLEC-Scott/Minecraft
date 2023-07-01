@@ -27,6 +27,9 @@ Camera camera = Camera();
 bool xKeyPressed = false;
 bool wireframeMode = false;
 
+bool previousGravity = false;
+bool gravity = false;
+
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
 	// make sure the viewport matches the new window dimensions; note that width axnd 
@@ -96,6 +99,21 @@ void processInput(GLFWwindow* window)
 		}
 	}
 	xKeyPressed = xKeyDown;
+
+	if (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS) {
+		// Vérifiez l'état précédent de la touche "G"
+		if (!previousGravity) {
+			// Inversez la valeur du booléen
+			camera.switchGravity();
+			gravity = !gravity;
+		}
+		// Mettez à jour l'état précédent de la touche "G"
+		previousGravity = true;
+	}
+	else if (glfwGetKey(window, GLFW_KEY_G) == GLFW_RELEASE) {
+		// Réinitialisez l'état précédent lorsque la touche "G" est relâchée
+		previousGravity = false;
+	}
 
 	// Camera moves
 	// Forward
@@ -185,8 +203,13 @@ int main(void) {
 	
 
 	Shader shaderProgram("./Shaders/vert.shd", "./Shaders/frag.shd");
-
-	Chunk chunk = Chunk();
+	Chunk chunk = Chunk();/*
+	Chunk chunk2 = Chunk();
+	chunk2.translate(1, 0, 0);
+	Chunk chunk3 = Chunk();
+	chunk3.translate(0, 0, 1);
+	Chunk chunk4 = Chunk();
+	chunk4.translate(1, 0, 1);*/
 	Cube cube = Cube(0, 0, 0, "./Textures/grass.png");
 	//std::vector<Cube> cubes;
 	//cubes.push_back(cube);
@@ -201,6 +224,8 @@ int main(void) {
 	while (!glfwWindowShouldClose(window)) {
 		glClearColor(0.53f, 0.82f, 0.98f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		camera.fall();
 
 		double currentTime = glfwGetTime();
 		nbFrames++;
@@ -235,12 +260,18 @@ int main(void) {
 		}*/
 		//cube.render();
 		chunk.render(shaderProgram);
+		//chunk2.render(shaderProgram);
+		//chunk3.render(shaderProgram);
+		//chunk4.render(shaderProgram);
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
 
-	chunk.destroy();
+	//chunk.destroy();
+	//chunk2.destroy();
+	//chunk3.destroy();
+	//chunk4.destroy();
 	cube.destroy();
 	shaderProgram.destroy();
 
