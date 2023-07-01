@@ -14,6 +14,8 @@ public:
 
 	void render(Shader shaderProgram);
 	void destroy();
+	
+	void translate(GLfloat x, GLfloat y, GLfloat z);
 
 	~Chunk();
 
