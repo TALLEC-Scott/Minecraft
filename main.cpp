@@ -27,6 +27,9 @@ Camera camera = Camera();
 bool xKeyPressed = false;
 bool wireframeMode = false;
 
+bool f12KeyPressed = false;
+bool fullscreenMode = false;
+
 bool previousGravity = false;
 bool gravity = false;
 
@@ -140,18 +143,22 @@ void processInput(GLFWwindow* window)
 	else
 		camera.resetSpeed();
 
-	// Enable/Disable fullscreen
-	if (glfwGetKey(window, GLFW_KEY_F12) == GLFW_PRESS) {
+	// Enable/Disable fullscreen mode
+	bool f12KeyDown = glfwGetKey(window, GLFW_KEY_F12) == GLFW_PRESS;
+	if (f12KeyDown && !f12KeyPressed) {
 		GLFWmonitor* monitor = glfwGetPrimaryMonitor();
 		const GLFWvidmode* videoMode = glfwGetVideoMode(monitor);
-
-		if (glfwGetWindowMonitor(window) == nullptr) {
+		fullscreenMode = !fullscreenMode;
+		if (fullscreenMode && glfwGetWindowMonitor(window) == nullptr) {
+			// Activer le mode fullscreen
 			glfwSetWindowMonitor(window, monitor, 0, 0, videoMode->width, videoMode->height, videoMode->refreshRate);
 		}
 		else {
+			// Désactiver le mode fullscreen
 			glfwSetWindowMonitor(window, nullptr, 100, 100, 800, 600, GLFW_DONT_CARE);
 		}
 	}
+	f12KeyPressed = f12KeyDown;
 }
 
 int main(void) {
@@ -203,6 +210,8 @@ int main(void) {
 	
 
 	Shader shaderProgram("./Shaders/vert.shd", "./Shaders/frag.shd");
+
+	shaderProgram.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
 	Chunk chunk = Chunk();/*
 	Chunk chunk2 = Chunk();
 	chunk2.translate(1, 0, 0);
@@ -210,7 +219,7 @@ int main(void) {
 	chunk3.translate(0, 0, 1);
 	Chunk chunk4 = Chunk();
 	chunk4.translate(1, 0, 1);*/
-	Cube cube = Cube(0, 0, 0, "./Textures/grass.png");
+	Cube cube = Cube(7, 15, 7, GLOWSTONE);
 	//std::vector<Cube> cubes;
 	//cubes.push_back(cube);
 	//cubes.push_back(Cube(0, 0, 1, "./Textures/grass.png"));
@@ -242,9 +251,11 @@ int main(void) {
 		processInput(window);
 
 		shaderProgram.use();
+		//shaderProgram.setVec3("lightPosition", cube.getPosition() - glm::vec3(0.5, 0.5, 0.5));
+		//shaderProgram.setVec3("lightColor", glm::vec3(1.0, 1.0, 1.0));
 		camera.defineLookAt(shaderProgram);
 
-		glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 100.0f);
+		glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 5000.0f);
 		shaderProgram.setMat4("projection", projection);
 
 		glm::mat4 model = glm::mat4(1.0f);
@@ -258,7 +269,7 @@ int main(void) {
 			shaderProgram.setVec3("translation", translation);
 			cubes.at(i).render();
 		}*/
-		//cube.render();
+		cube.render(shaderProgram);
 		chunk.render(shaderProgram);
 		//chunk2.render(shaderProgram);
 		//chunk3.render(shaderProgram);

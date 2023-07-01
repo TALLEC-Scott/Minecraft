@@ -1,41 +1,65 @@
+/**
+ * @file cube.h
+ * @brief Defines the Cube class, representing a cube object in a 3D world.
+ */
+
 #pragma once
 
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <vector>
 #include "texture.h"
+#include "shader.h"
 
+/**
+ * @enum block_type
+ * @brief Enumerates the types of blocks that a Cube object can represent.
+ */
+enum block_type {
+	AIR,
+	GRASS,
+	DIRT,
+	STONE,
+	COAL_ORE,
+	BEDROCK,
+	GLOWSTONE
+};
+
+/**
+ * @class Cube
+ * @brief Represents a cube object in a 3D world.
+ *
+ * The Cube class provides functionality for rendering and manipulating a cube object.
+ */
 class Cube {
 public:
 	Cube();
 	Cube(int x, int y, int z);
+	Cube(int x, int y, int z, block_type type);
 	Cube(glm::vec3& position);
-	Cube(int x, int y, int z, Texture& texture);
-	Cube(glm::vec3& position, Texture& texture);
-	Cube(int x, int y, int z, const char* texturePath);
-	Cube(glm::vec3& position, const char* texturePath);
+	Cube(glm::vec3& position, block_type type);
 
-	void initialize();
 	void render();
-	void render(Cube* neighbors[6]);
+	void render(Shader shaderProgram);
 	void render(const std::vector<Cube*>& neighbors);
 	void destroy();
-
-	//void translate(glm::vec3 translation);
-	//void translate(int x, int y, int z);
 	void translate(GLfloat x, GLfloat y, GLfloat z);
 
 	glm::vec3 getPosition() const;
+	block_type getType() const;
 
-	void setPosition(glm::vec3& position);
 	void setPosition(int x, int y, int z);
-	void setTexture(const char* texturePath);
-	void setTexture(Texture& texture);
+	void setPosition(glm::vec3& position);
+	void setType(block_type type);
 
 	~Cube();
-private:
-	glm::vec3 position;
-	Texture texture;
-	unsigned int VAO, VBO, EBO;
-	bool shouldRender = true;
+
+protected:
+	block_type type;            /**< The type of the cube. */
+	glm::vec3 position;         /**< The position of the cube. */
+	Texture texture;            /**< The texture associated with the cube. */
+	unsigned int VAO, VBO, EBO; /**< OpenGL buffer objects for rendering the cube. */
+
+	void initialize();
+	void defineTexture();
 };
