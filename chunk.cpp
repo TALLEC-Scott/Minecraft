@@ -1,4 +1,5 @@
 #include "chunk.h"
+#include "noise.h"
 
 Chunk::Chunk() {
 	blocks = new Cube[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
@@ -8,8 +9,13 @@ Chunk::Chunk() {
 		for (int i = 0; i < CHUNK_SIZE; i++) {
 			for (int j = 0; j < CHUNK_SIZE; j++) {
 				for (int k = 0; k < CHUNK_SIZE; k++) {
-					blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k] = Cube(i, j, k);
-					blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k].initialize();
+					Cube* block = &blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k];
+					block->setPosition(i, j, k);
+					int limit = (int)(0.9 * CHUNK_SIZE) < 1 ? CHUNK_SIZE - 1 : (int)(0.9 * CHUNK_SIZE);
+					if (j < limit)
+						block->setTexture(stone);
+					else
+						block->setTexture(grass);
 				}
 			}
 		}
@@ -45,6 +51,12 @@ void Chunk::render(Shader shaderProgram) {
 				block->render(neighbors);
 			}
 		}
+	}
+}
+
+void Chunk::translate(GLfloat x, GLfloat y, GLfloat z) {
+	for (int i = 0; i < CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE; i++) {
+		blocks[i].translate(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
 	}
 }
 

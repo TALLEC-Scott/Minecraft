@@ -1,44 +1,30 @@
 #include "cube.h"
 
-Cube::Cube() {
-	this->position = glm::vec3(0, 0, 0);
-	this->texture = Texture("./Textures/none.png");
+Cube::Cube() : position(0, 0, 0), texture("./Textures/none.png") {
 	initialize();
 }
 
-Cube::Cube(int x, int y, int z) {
-	this->position = glm::vec3(x, y, z);
-	this->texture = Texture("./Textures/none.png");
+Cube::Cube(int x, int y, int z) : position(x, y, z), texture("./Textures/none.png") {
 	initialize();
 }
 
-Cube::Cube(glm::vec3 position) {
-	this->position = position;
-	this->texture = Texture("./Textures/none.png");
+Cube::Cube(glm::vec3& position) : position(position), texture("./Textures/none.png") {
 	initialize();
 }
 
-Cube::Cube(int x, int y, int z, Texture texture) {
-	this->position = glm::vec3(x, y, z);
-	this->texture = texture;
+Cube::Cube(int x, int y, int z, Texture& texture) : position(x, y, z), texture(texture) {
 	initialize();
 }
 
-Cube::Cube(glm::vec3 position, Texture texture) {
-	this->position = position;
-	this->texture = texture;
+Cube::Cube(glm::vec3& position, Texture& texture) : position(position), texture(texture) {
 	initialize();
 }
 
-Cube::Cube(int x, int y, int z, const char* texturePath) {
-	this->position = glm::vec3(x, y, z);
-	this->texture = Texture(texturePath);
+Cube::Cube(int x, int y, int z, const char* texturePath) : position(x, y, z), texture(texturePath) {
 	initialize();
 }
 
-Cube::Cube(glm::vec3 position, const char* texturePath) {
-	this->position = position;
-	this->texture = Texture(texturePath);
+Cube::Cube(glm::vec3& position, const char* texturePath) : position(position), texture(texturePath) {
 	initialize();
 }
 
@@ -72,7 +58,7 @@ void Cube::initialize() {
 
 		// Face haut
 		-0.5f, 0.5f, 0.5f,     1.0f, 1.0f, 0.5f,      0.0f, 0.0f,   // Bas gauche : 1
-		-0.5f, 0.5f, -0.5f,    1.0f, 1.0f, 0.5f,      0.0f, 1.0f,   // Haut gauche : 5
+		-0.5f, 0.5f, -0.5f,    1.0f, 1.0f, 0.5f,      0.0f, 1.0f,   // Haut gauc he : 5
 		0.5f, 0.5f, -0.5f,     1.0f, 1.0f, 0.5f,      1.0f, 1.0f,   // Haut droit : 6
 		0.5f, 0.5f, 0.5f,      1.0f, 1.0f, 0.5f,      1.0f, 0.0f,   // Bas droit : 2
 
@@ -108,8 +94,6 @@ void Cube::initialize() {
 		23, 20, 22,
 		22, 20, 21
 	};
-
-	texture.bind();
 
 	glGenVertexArrays(1, &this->VAO);
 	glGenBuffers(1, &(this->VBO));
@@ -153,9 +137,11 @@ void Cube::render(Cube* neighbors[6]) {
 }
 
 void Cube::render(const std::vector<Cube*>& neighbors) {
+	texture.bind();
 	glBindVertexArray(this->VAO);
 	for (int i = 0; i < 6; i++) {
-		if (neighbors[i] == nullptr) {
+		Cube* block = neighbors[i];
+		if (block == nullptr) {
 			// Calcule l'indice de départ pour la face i
 			int startIdx = i * 6;
 
@@ -166,6 +152,12 @@ void Cube::render(const std::vector<Cube*>& neighbors) {
 	glBindVertexArray(0);
 }
 
+void Cube::translate(GLfloat x, GLfloat y, GLfloat z) {
+	this->position.x += x;
+	this->position.y += y;
+	this->position.z += z;
+}
+
 void Cube::destroy() {
 	glDeleteVertexArrays(1, &VAO);
 	glDeleteBuffers(1, &VBO);
@@ -173,11 +165,11 @@ void Cube::destroy() {
 	texture.destroy();
 }
 
-glm::vec3 Cube::getPosition() {
+glm::vec3 Cube::getPosition() const {
 	return this->position;
 }
 
-void Cube::setPosition(glm::vec3 position) {
+void Cube::setPosition(glm::vec3& position) {
 	this->position = position;
 }
 
@@ -187,9 +179,14 @@ void Cube::setPosition(int x, int y, int z) {
 	this->position.z = z;
 }
 
+void Cube::setTexture(const char* texturePath) {
+	this->texture = Texture(texturePath);
+}
+
+void Cube::setTexture(Texture& texture) {
+	this->texture = texture;
+}
+
 Cube::~Cube() {
-	glDeleteVertexArrays(1, &VAO);
-	glDeleteBuffers(1, &VBO);
-	glDeleteBuffers(1, &EBO);
-	texture.destroy();
+	destroy();
 }

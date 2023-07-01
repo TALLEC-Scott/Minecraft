@@ -1,5 +1,7 @@
 #include "camera.h"
 
+GLfloat g = GRAVITY;
+
 Camera::Camera() {
 	this->cameraPosition = glm::vec3(0.0f, 5.0f, 50.0f);
 	this->cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
@@ -32,11 +34,29 @@ void Camera::right() {
 }
 
 void Camera::speedUp() {
-	cameraSpeed = 100 * SPEED;
+	cameraSpeed = 500 * SPEED;
 }
 
 void Camera::resetSpeed() {
 	cameraSpeed = SPEED;
+}
+
+void Camera::switchGravity() {
+	this->gravity = !this->gravity;
+}
+
+void Camera::fall() {
+	if (gravity) {
+		cameraPosition.y -= g;
+		g += GRAVITY;
+	}
+	else {
+		g = GRAVITY;
+	}
+}
+
+bool Camera::getG() {
+	return gravity;
 }
 
 void Camera::changeDirection(glm::vec3 direction) {
