@@ -4,7 +4,7 @@
 #include "shader.h"
 #include "TerrainGenerator.h"
 
-#define RENDER_DISTANCE 2
+#define RENDER_DISTANCE 3
 class Chunk;
 
 class World {
