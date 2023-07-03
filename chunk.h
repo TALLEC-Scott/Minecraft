@@ -11,10 +11,11 @@
 #include "cube.h"
 #include "shader.h"
 #include "TerrainGenerator.h"
+#include "world.h"
 
 
 #define CHUNK_SIZE 15
-
+class World;
 class Chunk {
 public:
     Chunk();
@@ -22,7 +23,7 @@ public:
     Chunk(int chunkX, int chunkY, TerrainGenerator& terrainGenerator);
 
 
-	void render(Shader shaderProgram);
+	void render(Shader shaderProgram, World* world);
 	void destroy();
 	
 	void translate(GLfloat x, GLfloat y, GLfloat z);
@@ -30,14 +31,13 @@ public:
 
     int getLocalHeight(int x, int y);
     int getGlobalHeight(int x, int y);
-
+    Cube* getBlock(int i, int j, int k);
 	~Chunk();
 
 private:
 	Cube* blocks; /**< The array of blocks within the chunk. */
     int heights[CHUNK_SIZE][CHUNK_SIZE];
     int chunkX;
-    int chunkZ;
+    int chunkY;
 
-	Cube* getBlock(int i, int j, int k);
 };
