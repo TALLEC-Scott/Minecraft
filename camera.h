@@ -31,6 +31,9 @@ public:
 	void changeDirection(glm::vec3 direction);
 
 	void defineLookAt(Shader shaderProgram);
+
+    glm::vec3 getPosition();
+
 private:
 	bool gravity = false;
 	glm::vec3 cameraPosition;
