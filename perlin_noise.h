@@ -9,6 +9,7 @@
 
 class PerlinNoise {
 public:
+
     PerlinNoise(unsigned int seed);
 
     double noise(double x, double y); // 2D noise
@@ -21,4 +22,5 @@ private:
     double grad(int hash, double x, double y);
     double grad(int hash, double x, double y, double z);
 };
+
 #endif // PERLIN_NOISE_H

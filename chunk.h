@@ -23,7 +23,8 @@ public:
     Chunk(int chunkX, int chunkY, TerrainGenerator& terrainGenerator);
 
 
-	void render(Shader shaderProgram, World* world);
+
+    std::vector<Cube*> render(Shader shaderProgram, World* world);
 	void destroy();
 	
 	void translate(GLfloat x, GLfloat y, GLfloat z);

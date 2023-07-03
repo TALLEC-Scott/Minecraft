@@ -16,5 +16,4 @@ private:
     PerlinNoise perlinNoise;
     float scale;
     int minHeight, maxHeight;
-
 };
