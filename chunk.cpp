@@ -20,23 +20,23 @@ double generateRandomNumber(double probabilityOfOne) {
 	}
 }
 
-Chunk::Chunk() {
-	//PerlinNoise noise = PerlinNoise();
-	//RandomTextureGenerator noise = RandomTextureGenerator(CHUNK_SIZE, CHUNK_SIZE);
-	//std::vector<uint8_t> heightMap = noise.generateTexture();
+Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
 	blocks = new Cube[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
 	for (int i = 0; i < CHUNK_SIZE; i++) {
 		for (int j = 0; j < CHUNK_SIZE; j++) {
 			for (int k = 0; k < CHUNK_SIZE; k++) {
-				//int height = (int)(noise.noise(i, k) * (float)CHUNK_SIZE);
-				//std::cout << noise.noise(i, k) << std::endl;
-				//uint8_t height = ((float)heightMap.at(i * CHUNK_SIZE + k) / 256.0f) * CHUNK_SIZE;
-				Cube* block = &blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k];
+                int globalX = chunkX * CHUNK_SIZE + i;
+                int globalY = chunkY * CHUNK_SIZE + k;
+                int height = terrain.getHeight(globalX, globalY);
+                heights[i][k] = height;
+                std::cout << height << std::endl;
+
+                Cube* block = &blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k];
 				block->setPosition(i, j, k);
 				int limit_grass = (int)(0.95 * CHUNK_SIZE) < 1 ? CHUNK_SIZE - 1 : (int)(0.95 * CHUNK_SIZE);
 				int limit_stone = (int)(0.7 * CHUNK_SIZE) < 1 ? CHUNK_SIZE - 2 : (int)(0.7 * CHUNK_SIZE);
 				double p = generateRandomNumber(0.01f);
-				if (j > 100) {
+				if (j > height) {
 					block->setType(AIR);
 				}
 				else {
@@ -105,6 +105,15 @@ void Chunk::destroy() {
 void Chunk::destroyBlock(int x, int y, int z) {
 	blocks[x * CHUNK_SIZE * CHUNK_SIZE + y * CHUNK_SIZE + z].setType(AIR);
 }
+
+int Chunk::getLocalHeight(int x, int y) {
+    return heights[x][y];
+}
+
+int Chunk::getGlobalHeight(int x, int y) {
+    return heights[x % CHUNK_SIZE][y % CHUNK_SIZE];
+}
+
 
 Chunk::~Chunk() {
 	destroy();
