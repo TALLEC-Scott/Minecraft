@@ -9,16 +9,16 @@
 
 class PerlinNoise {
 public:
-    PerlinNoise(unsigned int seed = 123456789);
+    PerlinNoise(unsigned int seed);
 
-    double noise(double x, double y);
+    double noise(double x, double y); // 2D noise
+    double noise(double x, double y, double z); // 3D noise
 
 private:
+    std::vector<int> p;
     double fade(double t);
     double lerp(double t, double a, double b);
     double grad(int hash, double x, double y);
-
-    std::vector<int> p;
+    double grad(int hash, double x, double y, double z);
 };
-
 #endif // PERLIN_NOISE_H
