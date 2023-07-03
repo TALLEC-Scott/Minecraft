@@ -38,6 +38,7 @@ make
 - X to change to wireframe
 - G to enable/disable freefall
 - Left Click to break block
+- J to set/unset to day
 
 
 ## Screenshots
