@@ -27,6 +27,7 @@ void main() {
 
     gl_Position = projection * view * model * vec4(translatedPos, 1.0);
 
+
     // Calculate the position in world space for use in the fragment shader
     FragPos = vec3(model * vec4(translatedPos, 1.0));
 

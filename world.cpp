@@ -11,9 +11,16 @@ World::World() {
 }
 
 void World::render(Shader& shaderProgram) {
+    std::vector<std::vector<Cube*>> water;
 	for (int i = 0; i < RENDER_DISTANCE * RENDER_DISTANCE; i++) {
-		chunks[i]->render(shaderProgram, this);
+		water.push_back(chunks[i]->render(shaderProgram, this));
 	}
+    for (int i = 0; i < water.size(); i++) {
+        std::vector<Cube*> waterBlocks = water.at(i);
+        for (int j = 0; j < waterBlocks.size(); j++) {
+            waterBlocks.at(j)->render(shaderProgram);
+        }
+    }
 }
 
 void World::destroyBlock(glm::vec3 position) {
