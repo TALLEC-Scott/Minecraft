@@ -51,6 +51,9 @@
     <ClCompile Include="perlin_noise.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TerrainGenerator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="texture.h">
@@ -72,6 +75,9 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="perlin_noise.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="TerrainGenerator.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -26,3 +26,4 @@ double TerrainGenerator::getNoise(int x, int y, int z) {
     double noise = perlinNoise.noise(x * scale, y * scale, z * scale) + 1.0 /2.0;
     return noise;
 }
+

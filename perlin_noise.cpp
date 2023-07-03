@@ -2,7 +2,14 @@
 
 PerlinNoise::PerlinNoise(unsigned int seed) {
     p.resize(512);
+<<<<<<< HEAD
     std::iota(p.begin(), p.begin() + 256, 0);
+=======
+
+    for (int i = 0; i < 256; ++i) {
+        p[i] = i;
+    }
+>>>>>>> main
 
     std::default_random_engine engine(seed);
     std::shuffle(p.begin(), p.begin() + 256, engine);
@@ -11,6 +18,7 @@ PerlinNoise::PerlinNoise(unsigned int seed) {
         p[256 + i] = p[i];
     }
 }
+
 
 double PerlinNoise::noise(double x, double y) {
     int X = (int)floor(x) & 255,
