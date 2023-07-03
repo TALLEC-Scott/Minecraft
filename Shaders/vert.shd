@@ -3,11 +3,12 @@
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aCol;
 layout (location = 2) in vec2 aTexCoord;
+layout (location = 3) in vec3 aNormal;
 
 out vec3 ourColor;
 out vec2 TexCoord;
-
-out float highlight;
+out vec3 Normal;
+out vec3 FragPos;
 
 uniform vec2 windowSize;
 
@@ -24,11 +25,12 @@ void main() {
 
     vec3 translatedPos = aPos + translation;
 
-    ivec3 trans = ivec3(int(translatedPos.x), int(translatedPos.y), int(translatedPos.z));
-    highlight = 1.0;
-    if (targeted == trans) {
-        highlight = 1.25;
-    }
+    gl_Position = projection * view * model * vec4(translatedPos, 1.0);
 
-    gl_Position = projection * view * model * vec4(translatedPos, 1.0f);
+    // Calculate the position in world space for use in the fragment shader
+    FragPos = vec3(model * vec4(translatedPos, 1.0));
+
+    // Calculate the transformed normal for use in the fragment shader
+    Normal = mat3(transpose(inverse(model))) * aNormal + translation;;
+
 }

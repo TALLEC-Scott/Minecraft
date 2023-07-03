@@ -257,10 +257,16 @@ int main(void) {
 		processInput(window);
 
 		shaderProgram.use();
-		//shaderProgram.setVec3("lightPosition", cube.getPosition() - glm::vec3(0.5, 0.5, 0.5));
+        glm::vec3 lightPos(30, 100.0f, 30);
+        glm::vec3 lightColor(1.0f, 1.0f, 1.0f); // white light
+        shaderProgram.setVec3("lightPos", lightPos);
+        shaderProgram.setVec3("lightColor", lightColor);
+        //shaderProgram.setVec3("lightPosition", cube.getPosition() - glm::vec3(0.5, 0.5, 0.5));
 		//shaderProgram.setVec3("lightColor", glm::vec3(1.0, 1.0, 1.0));
 		camera.defineLookAt(shaderProgram);
+        glm::vec3 cameraPos = camera.getPosition();
 
+        shaderProgram.setVec3("viewPos", cameraPos);
 		glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 5000.0f);
 		shaderProgram.setMat4("projection", projection);
 
