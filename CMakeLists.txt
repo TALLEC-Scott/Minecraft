@@ -10,7 +10,7 @@ find_package(glfw3 3.3 REQUIRED)
 
 add_executable(minecraft
          main.cpp glad.c camera.cpp chunk.cpp cube.cpp shader.cpp
-        stb_image.cpp texture.cpp world.cpp TerrainGenerator.cpp perlin_noise.cpp)
+        stb_image.cpp texture.cpp world.cpp TerrainGenerator.cpp perlin_noise.cpp ChunkManager.cpp ChunkManager.h)
 target_include_directories(minecraft PRIVATE include Libraries/include)
 
 target_link_libraries(minecraft

@@ -16,6 +16,7 @@
 #include "chunk.h"
 #include "camera.h"
 #include "world.h"
+#include "ChunkManager.h"
 
 #define WINDOW_WIDTH 1000
 #define WINDOW_HEIGHT 1000
@@ -252,6 +253,11 @@ int main(void) {
 	int nbFrames = 0;
     glm::vec3 lightColor(1.0f, 1.0f, 1.0f); // white light
 
+
+
+    ChunkManager chunkManager(1, 16, *w->terrainGenerator); // renderDistance=5, chunkSize=16
+
+
     while (!glfwWindowShouldClose(window)) {
         float speed = 0.1;
 		float timeValue = 0.0f;
@@ -303,7 +309,9 @@ int main(void) {
 		int targetBlockZ = static_cast<int>(std::round(targetPosition.z));
 		targeted = glm::ivec3(targetBlockX, targetBlockY, targetBlockZ);
 
-		world.render(shaderProgram);
+        chunkManager.update(cameraPos);
+        chunkManager.render(shaderProgram, &world);
+
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();

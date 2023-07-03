@@ -18,7 +18,9 @@
 class World;
 class Chunk {
 public:
-    Chunk();
+    Chunk() {
+
+    }
 
     Chunk(int chunkX, int chunkY, TerrainGenerator& terrainGenerator);
 
