@@ -22,6 +22,8 @@ enum block_type {
 	STONE,
 	COAL_ORE,
 	BEDROCK,
+	WATER,
+	SAND,
 	GLOWSTONE
 };
 
