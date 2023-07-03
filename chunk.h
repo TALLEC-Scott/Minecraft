@@ -6,7 +6,7 @@
 #include "cube.h"
 #include "shader.h"
 
-#define CHUNK_SIZE 16
+#define CHUNK_SIZE 4
 
 class Chunk {
 public:
