@@ -5,6 +5,7 @@
 #include "TerrainGenerator.h"
 
 #define RENDER_DISTANCE 2
+class Chunk;
 
 class World {
 public:
@@ -12,6 +13,8 @@ public:
 
 	void render(Shader& shaderProgram);
 	void destroyBlock(glm::vec3 position);
+    Chunk* getChunk(int x, int y);
+    Cube* getBlock(int x, int y, int z);
 
 	~World();
 private:
