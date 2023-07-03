@@ -6,6 +6,8 @@ This is a first approach at creating a minecraft like world in C++ with the use 
 
 - GLFW 3.3.2
 - OpenGL 4.6
+- glm
+- stbImage
 
 
 On Debian-based systems like Ubuntu, you can install glfw using :
