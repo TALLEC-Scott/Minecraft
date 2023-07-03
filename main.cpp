@@ -48,43 +48,57 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 }
 
 void cursorPositionCallback(GLFWwindow* window, double xPos, double yPos) {
-	static double lastX = WINDOW_WIDTH / 2;
-	static double lastY = WINDOW_HEIGHT / 2;
-	static bool firstMouse = true;
-	static float yaw = -90.0f;
-	static float pitch = 0.0f;
+    static double lastX = WINDOW_WIDTH / 2;
+    static double lastY = WINDOW_HEIGHT / 2;
+    static bool firstMouse = true;
+    static float yaw = -90.0f;
+    static float pitch = 0.0f;
 
-	if (firstMouse) {
-		lastX = xPos;
-		lastY = yPos;
-		firstMouse = false;
-	}
+    if (firstMouse) {
+        lastX = xPos;
+        lastY = yPos;
+        firstMouse = false;
+    }
 
-	float sensitivity = 0.1f;
-	float xOffset = xPos - lastX;
-	float yOffset = lastY - yPos;
-	lastX = xPos;
-	lastY = yPos;
+    float sensitivity = 0.1f;
+    float xOffset = xPos - lastX;
+    float yOffset = lastY - yPos;
+    lastX = xPos;
+    lastY = yPos;
 
-	xOffset *= sensitivity;
-	yOffset *= sensitivity;
+    xOffset *= sensitivity;
+    yOffset *= sensitivity;
 
-	yaw += xOffset;
-	pitch += yOffset;
+    yaw += xOffset;
+    pitch += yOffset;
 
-	if (pitch > 89.0f)
-		pitch = 89.0f;
-	if (pitch < -89.0f)
-		pitch = -89.0f;
+    if (pitch > 89.0f)
+        pitch = 89.0f;
+    if (pitch < -89.0f)
+        pitch = -89.0f;
 
-	glm::vec3 direction;
-	direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-	direction.y = sin(glm::radians(pitch));
-	direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-	camera.changeDirection(direction);
+    glm::vec3 direction;
+    direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    direction.y = sin(glm::radians(pitch));
+    direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    camera.changeDirection(direction);
 }
 
-void processInput(GLFWwindow* window)
+void setSkyColor(float angle) {
+    glm::vec3 noonColor(0.2f, 0.6f, 1.0f);
+    glm::vec3 duskColor(0.15f, 0.15f, 0.25f);
+
+    // Factor in range [0, 1]
+    float t = (cos(angle) + 1.0f) * 0.5f;
+
+    // Interpolate between the colors based on the cosine of the angle
+    glm::vec3 skyColor = duskColor * (1.0f - t) + noonColor * t;
+
+    glClearColor(skyColor.r, skyColor.g, skyColor.b, 1.0f);
+}
+
+
+    void processInput(GLFWwindow* window)
 {
 	// Close window
 	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
@@ -143,7 +157,7 @@ void processInput(GLFWwindow* window)
 	if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
 		camera.down();
 	// Run
-	if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
+	if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS || (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS))
 		camera.speedUp();
 	else
 		camera.resetSpeed();
@@ -236,9 +250,17 @@ int main(void) {
 
 	double lastTime = glfwGetTime();
 	int nbFrames = 0;
-	while (!glfwWindowShouldClose(window)) {
-		//glClearColor(0.53f, 0.82f, 0.98f, 1.0f);
-		glClearColor(0.2f, 0.2f, 0.4f, 1.0f);
+    glm::vec3 lightColor(1.0f, 1.0f, 1.0f); // white light
+
+    while (!glfwWindowShouldClose(window)) {
+
+// Get the current time
+        float speed = 0.1;
+
+        float timeValue = glfwGetTime()* speed;
+        float radius = 1000.0f;
+
+        setSkyColor(timeValue);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		camera.fall();
@@ -259,9 +281,10 @@ int main(void) {
 
 		shaderProgram.use();
 
-		glm::vec3 lightPos(30, 100.0f, 30);
-		glm::vec3 lightColor(1.0f, 1.0f, 1.0f); // white light
-		shaderProgram.setVec3("lightPos", lightPos);
+        // Get the current time or frame count
+
+        // Calculate the new light position
+        glm::vec3 lightPos((CHUNK_SIZE * RENDER_DISTANCE) / 2, sin(timeValue) * radius, cos(timeValue) * radius);        shaderProgram.setVec3("lightPos", lightPos);
 		shaderProgram.setVec3("lightColor", lightColor);
 		//shaderProgram.setVec3("lightPosition", cube.getPosition() - glm::vec3(0.5, 0.5, 0.5));
 		//shaderProgram.setVec3("lightColor", glm::vec3(1.0, 1.0, 1.0));

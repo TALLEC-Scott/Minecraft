@@ -69,7 +69,7 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
 					else if (j == limit_water && beach)
 						block->setType(SAND);
 					else if (j < limit_stone)
-                        if (detailNoise < 0.7 && detailNoise > 0.4) {
+                        if (detailNoise < 0.5 && detailNoise > 0.45) {
                             block->setType(COAL_ORE);
                         } else {
                             block->setType(STONE);
