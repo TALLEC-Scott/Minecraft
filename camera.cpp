@@ -73,3 +73,7 @@ glm::vec3 Camera::getTargetPosition() {
 	glm::vec3 targetPosition = cameraPosition + aimedBlock;
 	return targetPosition;
 }
+
+glm::vec3 Camera::getPosition() {
+	return cameraPosition;
+}

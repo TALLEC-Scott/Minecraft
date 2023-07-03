@@ -227,46 +227,44 @@ void Cube::setType(block_type type) {
 void Cube::initialize() {
 	defineTexture();
 
-	GLfloat vertices[] = {
-	/*  Position               Color                  Texture  */
-		// Front face
-		-0.5f, -0.5f, 0.5f,    1.0f, 0.5f, 0.5f,      0.0f, 0.0f,   // Bottom left
-		-0.5f, 0.5f, 0.5f,     1.0f, 0.5f, 0.5f,      0.0f, 1.0f,   // Top left
-		0.5f, 0.5f, 0.5f,      1.0f, 0.5f, 0.5f,      1.0f, 1.0f,   // Top right
-		0.5f, -0.5f, 0.5f,     1.0f, 0.5f, 0.5f,      1.0f, 0.0f,   // Bottom right
+    GLfloat vertices[] = {
+            /*      Position               Color                  Texture          Normal         */
+            // Front face
+            -0.5f, -0.5f, 0.5f,    1.0f, 0.5f, 0.5f,      0.0f, 0.0f,      0.0f, 0.0f, 1.0f,   // Bottom left
+            -0.5f, 0.5f, 0.5f,     1.0f, 0.5f, 0.5f,      0.0f, 1.0f,      0.0f, 0.0f, 1.0f,   // Top left
+            0.5f, 0.5f, 0.5f,      1.0f, 0.5f, 0.5f,      1.0f, 1.0f,      0.0f, 0.0f, 1.0f,   // Top right
+            0.5f, -0.5f, 0.5f,     1.0f, 0.5f, 0.5f,      1.0f, 0.0f,      0.0f, 0.0f, 1.0f,   // Bottom right
 
+            // Back face
+            -0.5f, -0.5f, -0.5f,   0.5f, 0.5f, 1.0f,      1.0f, 0.0f,      0.0f, 0.0f, -1.0f,   // Bottom left
+            -0.5f, 0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      1.0f, 1.0f,      0.0f, 0.0f, -1.0f,   // Top left
+            0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      0.0f, 1.0f,      0.0f, 0.0f, -1.0f,   // Top right
+            0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 0.0f,      0.0f, 0.0f, -1.0f,   // Bottom right
 
-		// Back face			
-		-0.5f, -0.5f, -0.5f,   0.5f, 0.5f, 1.0f,      1.0f, 0.0f,   // Bottom left
-		-0.5f, 0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      1.0f, 1.0f,   // Top left
-		0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      0.0f, 1.0f,   // Top right
-		0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 0.0f,   // Bottom right
+            // Left face
+            -0.5f, -0.5f, -0.5f,   0.5f, 1.0f, 0.5f,      0.0f, 0.0f,      -1.0f, 0.0f, 0.0f,   // Bottom left
+            -0.5f, 0.5f, -0.5f,    0.5f, 1.0f, 0.5f,      0.0f, 1.0f,      -1.0f, 0.0f, 0.0f,   // Top left
+            -0.5f, 0.5f, 0.5f,     0.5f, 1.0f, 0.5f,      1.0f, 1.0f,      -1.0f, 0.0f, 0.0f,   // Top right
+            -0.5f, -0.5f, 0.5f,    0.5f, 1.0f, 0.5f,      1.0f, 0.0f,      -1.0f, 0.0f, 0.0f,   // Bottom right
 
+            // Right face
+            0.5f, -0.5f, 0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 0.0f,      1.0f, 0.0f, 0.0f,   // Bottom left
+            0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 0.0f,      1.0f, 0.0f, 0.0f,   // Top left
+            0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      0.0f, 1.0f,      1.0f, 0.0f, 0.0f,   // Top right
+            0.5f, 0.5f, 0.5f,      0.5f, 0.5f, 1.0f,      1.0f, 1.0f,      1.0f, 0.0f, 0.0f,   // Bottom right
 
-		// Left face
-		-0.5f, -0.5f, -0.5f,   0.5f, 1.0f, 0.5f,      0.0f, 0.0f,   // Bottom left
-		-0.5f, 0.5f, -0.5f,    0.5f, 1.0f, 0.5f,      0.0f, 1.0f,   // Top left
-		-0.5f, 0.5f, 0.5f,     0.5f, 1.0f, 0.5f,      1.0f, 1.0f,   // Top right
-		-0.5f, -0.5f, 0.5f,    0.5f, 1.0f, 0.5f,      1.0f, 0.0f,   // Bottom right
+            // Top face
+            -0.5f, 0.5f, 0.5f,     1.0f, 1.0f, 0.5f,      0.0f, 0.0f,      0.0f, 1.0f, 0.0f,   // Bottom left
+            -0.5f, 0.5f, -0.5f,    1.0f, 1.0f, 0.5f,      0.0f, 1.0f,      0.0f, 1.0f, 0.0f,   // Top left
+            0.5f, 0.5f, -0.5f,     1.0f, 1.0f, 0.5f,      1.0f, 1.0f,      0.0f, 1.0f, 0.0f,   // Top right
+            0.5f, 0.5f, 0.5f,      1.0f, 1.0f, 0.5f,      1.0f, 0.0f,      0.0f, 1.0f, 0.0f,   // Bottom right
 
-		// Right face
-		0.5f, -0.5f, 0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 0.0f,   // Bottom left
-		0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 0.0f,   // Top left
-		0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      0.0f, 1.0f,   // Top right
-		0.5f, 0.5f, 0.5f,      0.5f, 0.5f, 1.0f,      1.0f, 1.0f,   // Bottom right
-
-		// Top face
-		-0.5f, 0.5f, 0.5f,     1.0f, 1.0f, 0.5f,      0.0f, 0.0f,   // Bottom left
-		-0.5f, 0.5f, -0.5f,    1.0f, 1.0f, 0.5f,      0.0f, 1.0f,   // Top left
-		0.5f, 0.5f, -0.5f,     1.0f, 1.0f, 0.5f,      1.0f, 1.0f,   // Top right
-		0.5f, 0.5f, 0.5f,      1.0f, 1.0f, 0.5f,      1.0f, 0.0f,   // Bottom right
-
-		// Bottom face
-		-0.5f, -0.5f, -0.5f,   0.5f, 0.5f, 1.0f,      0.0f, 0.0f,   // Bottom left
-		-0.5f, -0.5f, 0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 1.0f,   // Top left
-		0.5f, -0.5f, 0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 1.0f,   // Top right
-		0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      1.0f, 0.0f    // Bottom right
-	};
+            // Bottom face
+            -0.5f, -0.5f, -0.5f,   0.5f, 0.5f, 1.0f,      0.0f, 0.0f,      0.0f, -1.0f, 0.0f,   // Bottom left
+            -0.5f, -0.5f, 0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 1.0f,      0.0f, -1.0f, 0.0f,   // Top left
+            0.5f, -0.5f, 0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 1.0f,      0.0f, -1.0f, 0.0f,   // Top right
+            0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      1.0f, 0.0f,      0.0f, -1.0f, 0.0f    // Bottom right
+    };
 
 	GLuint indices[] = {
 		// Front face
@@ -306,16 +304,20 @@ void Cube::initialize() {
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
 	// Layout 0 : Position
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(GLfloat), (void*)0);
 	glEnableVertexAttribArray(0);;
 
 	// Layout 1 : Color
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
 	glEnableVertexAttribArray(1);
 
 	// Layout 2 : Texture
-	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));
 	glEnableVertexAttribArray(2);
+
+    // Layout 3 : Normal
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(GLfloat), (void*)(11 * sizeof(GLfloat)));
+    glEnableVertexAttribArray(3);
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->EBO);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
