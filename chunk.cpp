@@ -22,13 +22,14 @@ double generateRandomNumber(double probabilityOfOne) {
 
 Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
 	blocks = new Cube[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
+    this->chunkX = chunkX;
+    this->chunkY = chunkY;
 	for (int i = 0; i < CHUNK_SIZE; i++) {
 		for (int j = 0; j < CHUNK_SIZE; j++) {
 			for (int k = 0; k < CHUNK_SIZE; k++) {
                 int globalX = chunkX * CHUNK_SIZE + i;
                 int globalY = chunkY * CHUNK_SIZE + k;
-                this->chunkX = chunkX;
-                this->chunkY = chunkY;
+
                 int height = terrain.getHeight(globalX, globalY);
                 heights[i][k] = height;
 
