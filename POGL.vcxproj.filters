@@ -13,6 +13,12 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Source Files\Shaders">
+      <UniqueIdentifier>{6db356eb-92da-4633-8cba-0749ae541a20}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Textures">
+      <UniqueIdentifier>{944d39da-0c74-4247-897c-2956276f3e78}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="glad.c">
@@ -39,6 +45,12 @@
     <ClCompile Include="camera.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="world.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="perlin_noise.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="texture.h">
@@ -56,15 +68,45 @@
     <ClInclude Include="camera.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="world.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="perlin_noise.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="Shaders\frag.shd" />
-    <None Include="Shaders\geom.shd" />
-    <None Include="Shaders\vert.shd" />
+    <None Include="Shaders\vert.shd">
+      <Filter>Source Files\Shaders</Filter>
+    </None>
+    <None Include="Shaders\frag.shd">
+      <Filter>Source Files\Shaders</Filter>
+    </None>
+    <None Include="Shaders\geom.shd">
+      <Filter>Source Files\Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Image Include="Textures\grass.png">
       <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="Textures\bedrock.png">
+      <Filter>Source Files\Textures</Filter>
+    </Image>
+    <Image Include="Textures\coal_ore.png">
+      <Filter>Source Files\Textures</Filter>
+    </Image>
+    <Image Include="Textures\glowstone.png">
+      <Filter>Source Files\Textures</Filter>
+    </Image>
+    <Image Include="Textures\grass_side.png">
+      <Filter>Source Files\Textures</Filter>
+    </Image>
+    <Image Include="Textures\none.png">
+      <Filter>Source Files\Textures</Filter>
+    </Image>
+    <Image Include="Textures\stone.png">
+      <Filter>Source Files\Textures</Filter>
     </Image>
   </ItemGroup>
 </Project>

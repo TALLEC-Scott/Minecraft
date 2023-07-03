@@ -1,15 +1,56 @@
+/**
+ * @file chunk.h
+ * @brief Defines the Chunk class, representing a chunk of a 3D world.
+ */
+
+#include <random>
 #include "chunk.h"
+//#include "perlin_noise.h"
+
+double generateRandomNumber(double probabilityOfOne) {
+	std::random_device rd;
+	std::mt19937 gen(rd());
+	std::uniform_real_distribution<double> dis(0.0, 1.0);
+
+	if (dis(gen) < probabilityOfOne) {
+		return 1.0;
+	}
+	else {
+		return dis(gen);
+	}
+}
 
 Chunk::Chunk() {
+	//PerlinNoise noise = PerlinNoise();
+	//RandomTextureGenerator noise = RandomTextureGenerator(CHUNK_SIZE, CHUNK_SIZE);
+	//std::vector<uint8_t> heightMap = noise.generateTexture();
 	blocks = new Cube[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
-	if (blocks != nullptr) {
-		Texture grass = Texture("./Textures/grass.png");
-		Texture stone = Texture("./Textures/stone.png");
-		for (int i = 0; i < CHUNK_SIZE; i++) {
-			for (int j = 0; j < CHUNK_SIZE; j++) {
-				for (int k = 0; k < CHUNK_SIZE; k++) {
-					blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k] = Cube(i, j, k);
-					blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k].initialize();
+	for (int i = 0; i < CHUNK_SIZE; i++) {
+		for (int j = 0; j < CHUNK_SIZE; j++) {
+			for (int k = 0; k < CHUNK_SIZE; k++) {
+				//int height = (int)(noise.noise(i, k) * (float)CHUNK_SIZE);
+				//std::cout << noise.noise(i, k) << std::endl;
+				//uint8_t height = ((float)heightMap.at(i * CHUNK_SIZE + k) / 256.0f) * CHUNK_SIZE;
+				Cube* block = &blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k];
+				block->setPosition(i, j, k);
+				int limit_grass = (int)(0.95 * CHUNK_SIZE) < 1 ? CHUNK_SIZE - 1 : (int)(0.95 * CHUNK_SIZE);
+				int limit_stone = (int)(0.7 * CHUNK_SIZE) < 1 ? CHUNK_SIZE - 2 : (int)(0.7 * CHUNK_SIZE);
+				double p = generateRandomNumber(0.01f);
+				if (j > 100) {
+					block->setType(AIR);
+				}
+				else {
+					if (j == 0)
+						block->setType(BEDROCK);
+					else if (j < limit_stone)
+						if (p == 1.0)
+							block->setType(COAL_ORE);
+						else
+							block->setType(STONE);
+					else if (j < limit_grass)
+						block->setType(DIRT);
+					else
+						block->setType(GRASS);
 				}
 			}
 		}
@@ -20,7 +61,7 @@ Cube* Chunk::getBlock(int i, int j, int k) {
 	if ((i < 0 || i >= CHUNK_SIZE) || (j < 0 || j >= CHUNK_SIZE) || (k < 0 || k >= CHUNK_SIZE)) {
 		return nullptr;
 	}
-	return &blocks[i * CHUNK_SIZE + j * CHUNK_SIZE + k * CHUNK_SIZE];
+	return &blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k];
 }
 
 void Chunk::render(Shader shaderProgram) {
@@ -48,11 +89,21 @@ void Chunk::render(Shader shaderProgram) {
 	}
 }
 
+void Chunk::translate(GLfloat x, GLfloat y, GLfloat z) {
+	for (int i = 0; i < CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE; i++) {
+		blocks[i].translate(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
+	}
+}
+
 void Chunk::destroy() {
 	for (int i = 0; i < CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE; i++) {
 		blocks[i].destroy();
 	}
 	delete[] blocks;
+}
+
+void Chunk::destroyBlock(int x, int y, int z) {
+	blocks[x * CHUNK_SIZE * CHUNK_SIZE + y * CHUNK_SIZE + z].setType(AIR);
 }
 
 Chunk::~Chunk() {
