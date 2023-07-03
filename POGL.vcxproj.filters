@@ -88,9 +88,6 @@
     <None Include="Shaders\frag.shd">
       <Filter>Source Files\Shaders</Filter>
     </None>
-    <None Include="Shaders\geom.shd">
-      <Filter>Source Files\Shaders</Filter>
-    </None>
   </ItemGroup>
   <ItemGroup>
     <Image Include="Textures\grass.png">
