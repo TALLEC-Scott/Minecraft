@@ -1,11 +1,16 @@
-#pragma once
-
-#include <iostream>
+#ifndef PERLIN_NOISE_H
+#define PERLIN_NOISE_H
 #include <cmath>
+#include <vector>
+#include <algorithm>
+#include <random>
+#include <iostream>
+#include <vector>
 
 class PerlinNoise {
 public:
-    PerlinNoise();
+    PerlinNoise(unsigned int seed = 123456789);
+
     double noise(double x, double y);
 
 private:
@@ -13,5 +18,7 @@ private:
     double lerp(double t, double a, double b);
     double grad(int hash, double x, double y);
 
-    int p[512];
+    std::vector<int> p;
 };
+
+#endif // PERLIN_NOISE_H

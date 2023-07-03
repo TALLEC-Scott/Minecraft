@@ -29,6 +29,7 @@ public:
 	bool getG();
 
 	void changeDirection(glm::vec3 direction);
+	glm::vec3 getPosition() const;
 
 	void defineLookAt(Shader shaderProgram);
 private:
