@@ -50,4 +50,4 @@ make
 
 ## Author
 - [Scott TALLEC](https://github.com/TALLEC-Scott)
-- [Justin JAECKER](https://youtu.be/f2iQ1GkWfrc)
+- [Justin JAECKER](https://github.com/Justinj68)
