@@ -15,6 +15,7 @@
 #include "cube.h"
 #include "chunk.h"
 #include "camera.h"
+#include "world.h"
 
 #define WINDOW_WIDTH 1000
 #define WINDOW_HEIGHT 1000
@@ -23,9 +24,19 @@ int windowWidth = WINDOW_WIDTH;
 int windowHeight = WINDOW_HEIGHT;
 
 Camera camera = Camera();
+glm::ivec3 targeted = glm::ivec3(0);
+
+World* w = nullptr;
 
 bool xKeyPressed = false;
 bool wireframeMode = false;
+
+bool f12KeyPressed = false;
+bool fullscreenMode = false;
+
+bool previousGravity = false;
+bool gravity = false;
+
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
@@ -97,6 +108,21 @@ void processInput(GLFWwindow* window)
 	}
 	xKeyPressed = xKeyDown;
 
+	if (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS) {
+		// V�rifiez l'�tat pr�c�dent de la touche "G"
+		if (!previousGravity) {
+			// Inversez la valeur du bool�en
+			camera.switchGravity();
+			gravity = !gravity;
+		}
+		// Mettez � jour l'�tat pr�c�dent de la touche "G"
+		previousGravity = true;
+	}
+	else if (glfwGetKey(window, GLFW_KEY_G) == GLFW_RELEASE) {
+		// R�initialisez l'�tat pr�c�dent lorsque la touche "G" est rel�ch�e
+		previousGravity = false;
+	}
+
 	// Camera moves
 	// Forward
 	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
@@ -122,17 +148,25 @@ void processInput(GLFWwindow* window)
 	else
 		camera.resetSpeed();
 
-	// Enable/Disable fullscreen
-	if (glfwGetKey(window, GLFW_KEY_F12) == GLFW_PRESS) {
+	// Enable/Disable fullscreen mode
+	bool f12KeyDown = glfwGetKey(window, GLFW_KEY_F12) == GLFW_PRESS;
+	if (f12KeyDown && !f12KeyPressed) {
 		GLFWmonitor* monitor = glfwGetPrimaryMonitor();
 		const GLFWvidmode* videoMode = glfwGetVideoMode(monitor);
-
-		if (glfwGetWindowMonitor(window) == nullptr) {
+		fullscreenMode = !fullscreenMode;
+		if (fullscreenMode && glfwGetWindowMonitor(window) == nullptr) {
+			// Activer le mode fullscreen
 			glfwSetWindowMonitor(window, monitor, 0, 0, videoMode->width, videoMode->height, videoMode->refreshRate);
 		}
 		else {
+			// D�sactiver le mode fullscreen
 			glfwSetWindowMonitor(window, nullptr, 100, 100, 800, 600, GLFW_DONT_CARE);
 		}
+	}
+	f12KeyPressed = f12KeyDown;
+
+	if (w != nullptr && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+		w->destroyBlock(targeted);
 	}
 }
 
@@ -186,8 +220,12 @@ int main(void) {
 
 	Shader shaderProgram("./Shaders/vert.shd", "./Shaders/frag.shd");
 
-	Chunk chunk = Chunk();
-	//Cube cube = Cube(0, 0, 0, "./Textures/grass.png");
+
+	World world = World();
+	w = &world;
+	//shaderProgram.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
+	//Chunk chunk = Chunk();
+	//Cube cube = Cube(7, 15, 7, GLOWSTONE);
 	//std::vector<Cube> cubes;
 	//cubes.push_back(cube);
 	//cubes.push_back(Cube(0, 0, 1, "./Textures/grass.png"));
@@ -201,6 +239,8 @@ int main(void) {
 	while (!glfwWindowShouldClose(window)) {
 		glClearColor(0.53f, 0.82f, 0.98f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		camera.fall();
 
 		double currentTime = glfwGetTime();
 		nbFrames++;
@@ -217,9 +257,11 @@ int main(void) {
 		processInput(window);
 
 		shaderProgram.use();
+		//shaderProgram.setVec3("lightPosition", cube.getPosition() - glm::vec3(0.5, 0.5, 0.5));
+		//shaderProgram.setVec3("lightColor", glm::vec3(1.0, 1.0, 1.0));
 		camera.defineLookAt(shaderProgram);
 
-		glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 100.0f);
+		glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 5000.0f);
 		shaderProgram.setMat4("projection", projection);
 
 		glm::mat4 model = glm::mat4(1.0f);
@@ -227,20 +269,37 @@ int main(void) {
 
 		glm::vec2 windowSize = glm::vec2(windowWidth, windowHeight);
 		shaderProgram.setVec2("windowSize", windowSize);
+
+		glm::vec3 targetPosition = camera.getTargetPosition();
+
+		int targetBlockX = static_cast<int>(std::round(targetPosition.x));
+		int targetBlockY = static_cast<int>(std::round(targetPosition.y));
+		int targetBlockZ = static_cast<int>(std::round(targetPosition.z));
+		std::cout << "X: " << targetBlockX << " Y: " << targetBlockY << " Z: " << targetBlockZ << std::endl;
+		targeted = glm::ivec3(targetBlockX, targetBlockY, targetBlockZ);
+		shaderProgram.setVec3("targeted", targeted);
+
 		/*
 		for (int i = 0; i < 2; i++) {
 			glm::vec3 translation = glm::vec3(cubes[i].getPosition());
 			shaderProgram.setVec3("translation", translation);
 			cubes.at(i).render();
 		}*/
-		//cube.render();
-		chunk.render(shaderProgram);
+		//cube.render(shaderProgram);
+		//chunk.render(shaderProgram);
+		//chunk2.render(shaderProgram);
+		//chunk3.render(shaderProgram);
+		//chunk4.render(shaderProgram);
+		world.render(shaderProgram);
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
 
-	chunk.destroy();
+	//chunk.destroy();
+	//chunk2.destroy();
+	//chunk3.destroy();
+	//chunk4.destroy();
 	//cube.destroy();
 	shaderProgram.destroy();
 
