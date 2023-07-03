@@ -3,7 +3,7 @@
 Cube::Cube() {
 	this->position = glm::vec3(0, 0, 0);
 	this->texture = Texture("./Textures/none.png");
-	initialize();
+	//initialize();
 }
 
 Cube::Cube(int x, int y, int z) {
@@ -50,7 +50,7 @@ void Cube::initialize() {
 		0.5f, 0.5f, 0.5f,      1.0f, 0.5f, 0.5f,      1.0f, 1.0f,   // Haut droit : 2
 		0.5f, -0.5f, 0.5f,     1.0f, 0.5f, 0.5f,      1.0f, 0.0f,   // Bas droit : 3
 
-		// Face arrière
+		// Face arriï¿½re
 		// Position				// Color				
 		-0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,     1.0f, 0.0f,   // Bas gauche : 4
 		-0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,     1.0f, 1.0f,   // Haut gauche : 5
@@ -88,7 +88,7 @@ void Cube::initialize() {
 		0, 1, 2,
 		2, 3, 0,
 
-		// Face arrière
+		// Face arriï¿½re
 		4, 7, 6,
 		6, 5, 4,
 
@@ -142,7 +142,7 @@ void Cube::render(Cube* neighbors[6]) {
 	glBindVertexArray(this->VAO);
 	for (int i = 0; i < 6; i++) {
 		if (neighbors[i] == nullptr) {
-			// Calcule l'indice de départ pour la face i
+			// Calcule l'indice de dï¿½part pour la face i
 			int startIdx = i * 6;
 
 			// Affiche les triangles de la face i en utilisant les indices
@@ -156,7 +156,7 @@ void Cube::render(const std::vector<Cube*>& neighbors) {
 	glBindVertexArray(this->VAO);
 	for (int i = 0; i < 6; i++) {
 		if (neighbors[i] == nullptr) {
-			// Calcule l'indice de départ pour la face i
+			// Calcule l'indice de dï¿½part pour la face i
 			int startIdx = i * 6;
 
 			// Affiche les triangles de la face i en utilisant les indices
