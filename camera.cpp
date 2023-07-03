@@ -34,7 +34,7 @@ void Camera::right() {
 }
 
 void Camera::speedUp() {
-	cameraSpeed = 500 * SPEED;
+	cameraSpeed = 3 * SPEED;
 }
 
 void Camera::resetSpeed() {

@@ -37,6 +37,9 @@ bool fullscreenMode = false;
 bool previousGravity = false;
 bool gravity = false;
 
+bool doDaylightCycle = true;
+bool previousDaylight = false;
+
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
@@ -98,8 +101,7 @@ void setSkyColor(float angle) {
 }
 
 
-    void processInput(GLFWwindow* window)
-{
+void processInput(GLFWwindow* window) {
 	// Close window
 	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
 		glfwSetWindowShouldClose(window, true);
@@ -108,36 +110,42 @@ void setSkyColor(float angle) {
 	// Enable/Disable wireframe mode
 	bool xKeyDown = glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS;
 	if (xKeyDown && !xKeyPressed) {
-		// La touche "X" vient d'�tre enfonc�e
-		// Inverser l'�tat du mode wireframe
 		wireframeMode = !wireframeMode;
 		if (wireframeMode) {
-			// Activer le mode wireframe
+			// Enable wireframe mode
 			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 		}
 		else {
-			// D�sactiver le mode wireframe
+			// Disable wireframe mode
 			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 		}
 	}
 	xKeyPressed = xKeyDown;
 
+	// Enable/Disable gravity
 	if (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS) {
-		// V�rifiez l'�tat pr�c�dent de la touche "G"
 		if (!previousGravity) {
-			// Inversez la valeur du bool�en
 			camera.switchGravity();
 			gravity = !gravity;
 		}
-		// Mettez � jour l'�tat pr�c�dent de la touche "G"
 		previousGravity = true;
 	}
 	else if (glfwGetKey(window, GLFW_KEY_G) == GLFW_RELEASE) {
-		// R�initialisez l'�tat pr�c�dent lorsque la touche "G" est rel�ch�e
 		previousGravity = false;
 	}
 
-	// Camera moves
+	// Enable/Disable daylight cycle
+	if (glfwGetKey(window, GLFW_KEY_J) == GLFW_PRESS) {
+		if (!previousDaylight) {
+			doDaylightCycle = !doDaylightCycle;
+		}
+		previousDaylight = true;
+	}
+	else if (glfwGetKey(window, GLFW_KEY_J) == GLFW_RELEASE) {
+		previousDaylight = false;
+	}
+
+	/** Camera moves **/
 	// Forward
 	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
 		camera.forward();
@@ -169,11 +177,11 @@ void setSkyColor(float angle) {
 		const GLFWvidmode* videoMode = glfwGetVideoMode(monitor);
 		fullscreenMode = !fullscreenMode;
 		if (fullscreenMode && glfwGetWindowMonitor(window) == nullptr) {
-			// Activer le mode fullscreen
+			// Enable fullscreen mode
 			glfwSetWindowMonitor(window, monitor, 0, 0, videoMode->width, videoMode->height, videoMode->refreshRate);
 		}
 		else {
-			// D�sactiver le mode fullscreen
+			// Disable fullscreen mode
 			glfwSetWindowMonitor(window, nullptr, 100, 100, 800, 600, GLFW_DONT_CARE);
 		}
 	}
@@ -191,8 +199,8 @@ int main(void) {
 	}
 	std::cout << "GLFW successfully initialized" << std::endl;
 
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 #ifdef __APPLE__
@@ -220,7 +228,7 @@ int main(void) {
 
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-	glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_DISABLED);
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	glfwSetCursorPos(window, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
 
 	glfwSetCursorPosCallback(window, cursorPositionCallback);
@@ -233,16 +241,8 @@ int main(void) {
 	
 
 	Shader shaderProgram("./Shaders/vert.shd", "./Shaders/frag.shd");
-
-
 	World world = World();
 	w = &world;
-	//shaderProgram.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
-	//Chunk chunk = Chunk();
-	//Cube cube = Cube(7, 15, 7, GLOWSTONE);
-	//std::vector<Cube> cubes;
-	//cubes.push_back(cube);
-	//cubes.push_back(Cube(0, 0, 1, "./Textures/grass.png"));
 
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_BACK);
@@ -253,11 +253,11 @@ int main(void) {
     glm::vec3 lightColor(1.0f, 1.0f, 1.0f); // white light
 
     while (!glfwWindowShouldClose(window)) {
-
-// Get the current time
         float speed = 0.1;
-
-        float timeValue = glfwGetTime()* speed;
+		float timeValue = 0.0f;
+		if (doDaylightCycle) {
+			timeValue = glfwGetTime() * speed;
+		}
         float radius = 1000.0f;
 
         setSkyColor(timeValue);
@@ -265,10 +265,10 @@ int main(void) {
 
 		camera.fall();
 
+		// Display FPS
 		double currentTime = glfwGetTime();
 		nbFrames++;
-		if (currentTime - lastTime >= 1.0) { // If last prinf() was more than 1 sec ago
-			// printf and reset timer
+		if (currentTime - lastTime >= 1.0) {
 			std::stringstream ss;
 			ss << "POGL" << " [" << nbFrames << " FPS]";
 
@@ -278,16 +278,12 @@ int main(void) {
 		}
 
 		processInput(window);
-
 		shaderProgram.use();
-
-        // Get the current time or frame count
 
         // Calculate the new light position
         glm::vec3 lightPos((CHUNK_SIZE * RENDER_DISTANCE) / 2, sin(timeValue) * radius, cos(timeValue) * radius);        shaderProgram.setVec3("lightPos", lightPos);
 		shaderProgram.setVec3("lightColor", lightColor);
-		//shaderProgram.setVec3("lightPosition", cube.getPosition() - glm::vec3(0.5, 0.5, 0.5));
-		//shaderProgram.setVec3("lightColor", glm::vec3(1.0, 1.0, 1.0));
+
 		camera.defineLookAt(shaderProgram);
 		glm::vec3 cameraPos = camera.getPosition();
 
@@ -302,25 +298,11 @@ int main(void) {
 		shaderProgram.setVec2("windowSize", windowSize);
 
 		glm::vec3 targetPosition = camera.getTargetPosition();
-
 		int targetBlockX = static_cast<int>(std::round(targetPosition.x));
 		int targetBlockY = static_cast<int>(std::round(targetPosition.y));
 		int targetBlockZ = static_cast<int>(std::round(targetPosition.z));
-		std::cout << "X: " << targetBlockX << " Y: " << targetBlockY << " Z: " << targetBlockZ << std::endl;
 		targeted = glm::ivec3(targetBlockX, targetBlockY, targetBlockZ);
-		shaderProgram.setVec3("targeted", targeted);
 
-		/*
-		for (int i = 0; i < 2; i++) {
-			glm::vec3 translation = glm::vec3(cubes[i].getPosition());
-			shaderProgram.setVec3("translation", translation);
-			cubes.at(i).render();
-		}*/
-		//cube.render(shaderProgram);
-		//chunk.render(shaderProgram);
-		//chunk2.render(shaderProgram);
-		//chunk3.render(shaderProgram);
-		//chunk4.render(shaderProgram);
 		world.render(shaderProgram);
 
 		glfwSwapBuffers(window);

@@ -16,6 +16,8 @@ public:
     Chunk* getChunk(int x, int y);
     Cube* getBlock(int x, int y, int z);
 
+	void destroy();
+
 	~World();
 private:
 	Chunk* chunks[RENDER_DISTANCE * RENDER_DISTANCE];

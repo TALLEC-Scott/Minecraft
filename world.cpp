@@ -35,6 +35,7 @@ void World::destroyBlock(glm::vec3 position) {
 }
 
 World::~World() {
+    destroy();
 }
 
 Chunk* World::getChunk(int x, int y) {
@@ -61,3 +62,8 @@ Cube* World::getBlock(int x, int y, int z) {
     return chunks[chunkX * RENDER_DISTANCE + chunkZ]->getBlock(x_chunk, y_chunk, z_chunk);
 }
 
+void World::destroy() {
+    for (int i = 0; i < RENDER_DISTANCE * RENDER_DISTANCE; i++) {
+        chunks[i]->destroy();
+    }
+}
