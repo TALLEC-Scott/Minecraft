@@ -21,6 +21,7 @@ public:
 	void destroy();
 	
 	void translate(GLfloat x, GLfloat y, GLfloat z);
+	void destroyBlock(int x, int y, int z);
 
 	~Chunk();
 

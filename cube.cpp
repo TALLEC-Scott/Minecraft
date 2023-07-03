@@ -120,7 +120,10 @@ void Cube::render(const std::vector<Cube*>& neighbors) {
 	glBindVertexArray(this->VAO);
 	for (int i = 0; i < 6; i++) {
 		Cube* block = neighbors[i];
-		if (block == nullptr || block->getType() == AIR) {
+		if (block == nullptr && i == 4) {
+			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void*)(4 * 6 * sizeof(GLuint)));
+		}
+		else if (block != NULL && block->getType() == AIR) {
 			// Calculate the starting index for face i
 			int startIdx = i * 6;
 
@@ -298,12 +301,15 @@ void Cube::initialize() {
 	glBindBuffer(GL_ARRAY_BUFFER, this->VBO);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
+	// Layout 0 : Position
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)0);
 	glEnableVertexAttribArray(0);;
 
+	// Layout 1 : Color
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
 	glEnableVertexAttribArray(1);
 
+	// Layout 2 : Texture
 	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));
 	glEnableVertexAttribArray(2);
 

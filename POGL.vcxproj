@@ -152,16 +152,20 @@
     <ClCompile Include="cube.cpp" />
     <ClCompile Include="glad.c" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="perlin_noise.cpp" />
     <ClCompile Include="shader.cpp" />
     <ClCompile Include="stb_image.cpp" />
     <ClCompile Include="texture.cpp" />
+    <ClCompile Include="world.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="camera.h" />
     <ClInclude Include="chunk.h" />
     <ClInclude Include="cube.h" />
+    <ClInclude Include="perlin_noise.h" />
     <ClInclude Include="shader.h" />
     <ClInclude Include="texture.h" />
+    <ClInclude Include="world.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Shaders\frag.shd" />
@@ -169,7 +173,13 @@
     <None Include="Shaders\vert.shd" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="Textures\bedrock.png" />
+    <Image Include="Textures\coal_ore.png" />
+    <Image Include="Textures\glowstone.png" />
     <Image Include="Textures\grass.png" />
+    <Image Include="Textures\grass_side.png" />
+    <Image Include="Textures\none.png" />
+    <Image Include="Textures\stone.png" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -5,6 +5,7 @@
 
 #include <random>
 #include "chunk.h"
+//#include "perlin_noise.h"
 
 double generateRandomNumber(double probabilityOfOne) {
 	std::random_device rd;
@@ -20,29 +21,37 @@ double generateRandomNumber(double probabilityOfOne) {
 }
 
 Chunk::Chunk() {
+	//PerlinNoise noise = PerlinNoise();
 	//RandomTextureGenerator noise = RandomTextureGenerator(CHUNK_SIZE, CHUNK_SIZE);
 	//std::vector<uint8_t> heightMap = noise.generateTexture();
 	blocks = new Cube[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
 	for (int i = 0; i < CHUNK_SIZE; i++) {
 		for (int j = 0; j < CHUNK_SIZE; j++) {
 			for (int k = 0; k < CHUNK_SIZE; k++) {
+				//int height = (int)(noise.noise(i, k) * (float)CHUNK_SIZE);
+				//std::cout << noise.noise(i, k) << std::endl;
 				//uint8_t height = ((float)heightMap.at(i * CHUNK_SIZE + k) / 256.0f) * CHUNK_SIZE;
 				Cube* block = &blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k];
 				block->setPosition(i, j, k);
 				int limit_grass = (int)(0.95 * CHUNK_SIZE) < 1 ? CHUNK_SIZE - 1 : (int)(0.95 * CHUNK_SIZE);
 				int limit_stone = (int)(0.7 * CHUNK_SIZE) < 1 ? CHUNK_SIZE - 2 : (int)(0.7 * CHUNK_SIZE);
 				double p = generateRandomNumber(0.01f);
-				if (j == 0)
-					block->setType(BEDROCK);
-				else if (j < limit_stone)
-					if (p == 1.0)
-						block->setType(COAL_ORE);
+				if (j > 100) {
+					block->setType(AIR);
+				}
+				else {
+					if (j == 0)
+						block->setType(BEDROCK);
+					else if (j < limit_stone)
+						if (p == 1.0)
+							block->setType(COAL_ORE);
+						else
+							block->setType(STONE);
+					else if (j < limit_grass)
+						block->setType(DIRT);
 					else
-						block->setType(STONE);
-				else if (j < limit_grass)
-					block->setType(DIRT);
-				else
-					block->setType(GRASS);
+						block->setType(GRASS);
+				}
 			}
 		}
 	}
@@ -52,7 +61,7 @@ Cube* Chunk::getBlock(int i, int j, int k) {
 	if ((i < 0 || i >= CHUNK_SIZE) || (j < 0 || j >= CHUNK_SIZE) || (k < 0 || k >= CHUNK_SIZE)) {
 		return nullptr;
 	}
-	return &blocks[i * CHUNK_SIZE + j * CHUNK_SIZE + k * CHUNK_SIZE];
+	return &blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k];
 }
 
 void Chunk::render(Shader shaderProgram) {
@@ -91,6 +100,10 @@ void Chunk::destroy() {
 		blocks[i].destroy();
 	}
 	delete[] blocks;
+}
+
+void Chunk::destroyBlock(int x, int y, int z) {
+	blocks[x * CHUNK_SIZE * CHUNK_SIZE + y * CHUNK_SIZE + z].setType(AIR);
 }
 
 Chunk::~Chunk() {
