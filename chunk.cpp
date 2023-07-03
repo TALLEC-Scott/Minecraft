@@ -37,7 +37,7 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
 				block->setPosition(i, j, k);
 				int limit_grass = (int)(0.95 * height) < 1 ? height - 1 : (int)(0.95 * height);
 				int limit_stone = (int)(0.7 * height) < 1 ? height - 2 : (int)(0.7 * height);
-				double p = generateRandomNumber(0.01f);
+                double detailNoise = terrain.getNoise(globalX, globalY, j);
 				if (j > height) {
 					block->setType(AIR);
 				}
@@ -45,10 +45,11 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
 					if (j == 0)
 						block->setType(BEDROCK);
 					else if (j < limit_stone)
-						if (p == 1.0)
-							block->setType(COAL_ORE);
-						else
-							block->setType(STONE);
+                        if (detailNoise < 0.6 && detailNoise > 0.4) {
+                            block->setType(COAL_ORE);
+                        } else {
+                            block->setType(STONE);
+                        }
 					else if (j < limit_grass)
 						block->setType(DIRT);
 					else
