@@ -3,7 +3,7 @@
 GLfloat g = GRAVITY;
 
 Camera::Camera() {
-	this->cameraPosition = glm::vec3(0.0f, 5.0f, 50.0f);
+	this->cameraPosition = glm::vec3(15.0f, 17.0f, 15.0f);
 	this->cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
 	this->cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
 	this->cameraSpeed = SPEED;
@@ -66,4 +66,10 @@ void Camera::changeDirection(glm::vec3 direction) {
 void Camera::defineLookAt(Shader shaderProgram) {
 	glm::mat4 view = glm::lookAt(cameraPosition, cameraPosition + cameraFront, cameraUp);
 	shaderProgram.setMat4("view", view);
+}
+
+glm::vec3 Camera::getTargetPosition() {
+	glm::vec3 aimedBlock = cameraFront * REACH;
+	glm::vec3 targetPosition = cameraPosition + aimedBlock;
+	return targetPosition;
 }

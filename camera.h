@@ -6,6 +6,7 @@
 
 #define SPEED 0.001
 #define GRAVITY 0.1
+#define REACH 1.0f
 
 class Camera {
 public:
@@ -20,6 +21,8 @@ public:
 
 	void speedUp();
 	void resetSpeed();
+
+	glm::vec3 getTargetPosition();
 
 	void switchGravity();
 	void fall();

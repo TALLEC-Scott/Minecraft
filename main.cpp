@@ -15,6 +15,7 @@
 #include "cube.h"
 #include "chunk.h"
 #include "camera.h"
+#include "world.h"
 
 #define WINDOW_WIDTH 1000
 #define WINDOW_HEIGHT 1000
@@ -23,6 +24,9 @@ int windowWidth = WINDOW_WIDTH;
 int windowHeight = WINDOW_HEIGHT;
 
 Camera camera = Camera();
+glm::ivec3 targeted = glm::ivec3(0);
+
+World* w = nullptr;
 
 bool xKeyPressed = false;
 bool wireframeMode = false;
@@ -32,6 +36,7 @@ bool fullscreenMode = false;
 
 bool previousGravity = false;
 bool gravity = false;
+
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
@@ -159,6 +164,10 @@ void processInput(GLFWwindow* window)
 		}
 	}
 	f12KeyPressed = f12KeyDown;
+
+	if (w != nullptr && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+		w->destroyBlock(targeted);
+	}
 }
 
 int main(void) {
@@ -210,16 +219,11 @@ int main(void) {
 	
 
 	Shader shaderProgram("./Shaders/vert.shd", "./Shaders/frag.shd");
-
-	shaderProgram.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
-	Chunk chunk = Chunk();/*
-	Chunk chunk2 = Chunk();
-	chunk2.translate(1, 0, 0);
-	Chunk chunk3 = Chunk();
-	chunk3.translate(0, 0, 1);
-	Chunk chunk4 = Chunk();
-	chunk4.translate(1, 0, 1);*/
-	Cube cube = Cube(7, 15, 7, GLOWSTONE);
+	World world = World();
+	w = &world;
+	//shaderProgram.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
+	//Chunk chunk = Chunk();
+	//Cube cube = Cube(7, 15, 7, GLOWSTONE);
 	//std::vector<Cube> cubes;
 	//cubes.push_back(cube);
 	//cubes.push_back(Cube(0, 0, 1, "./Textures/grass.png"));
@@ -263,17 +267,28 @@ int main(void) {
 
 		glm::vec2 windowSize = glm::vec2(windowWidth, windowHeight);
 		shaderProgram.setVec2("windowSize", windowSize);
+
+		glm::vec3 targetPosition = camera.getTargetPosition();
+
+		int targetBlockX = static_cast<int>(std::round(targetPosition.x));
+		int targetBlockY = static_cast<int>(std::round(targetPosition.y));
+		int targetBlockZ = static_cast<int>(std::round(targetPosition.z));
+		std::cout << "X: " << targetBlockX << " Y: " << targetBlockY << " Z: " << targetBlockZ << std::endl;
+		targeted = glm::ivec3(targetBlockX, targetBlockY, targetBlockZ);
+		shaderProgram.setVec3("targeted", targeted);
+
 		/*
 		for (int i = 0; i < 2; i++) {
 			glm::vec3 translation = glm::vec3(cubes[i].getPosition());
 			shaderProgram.setVec3("translation", translation);
 			cubes.at(i).render();
 		}*/
-		cube.render(shaderProgram);
-		chunk.render(shaderProgram);
+		//cube.render(shaderProgram);
+		//chunk.render(shaderProgram);
 		//chunk2.render(shaderProgram);
 		//chunk3.render(shaderProgram);
 		//chunk4.render(shaderProgram);
+		world.render(shaderProgram);
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
@@ -283,7 +298,7 @@ int main(void) {
 	//chunk2.destroy();
 	//chunk3.destroy();
 	//chunk4.destroy();
-	cube.destroy();
+	//cube.destroy();
 	shaderProgram.destroy();
 
 	glfwDestroyWindow(window);
