@@ -20,28 +20,51 @@ double generateRandomNumber(double probabilityOfOne) {
 	}
 }
 
-Chunk::Chunk() {
-	//PerlinNoise noise = PerlinNoise();
-	//RandomTextureGenerator noise = RandomTextureGenerator(CHUNK_SIZE, CHUNK_SIZE);
-	//std::vector<uint8_t> heightMap = noise.generateTexture();
+Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
 	blocks = new Cube[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
 	for (int i = 0; i < CHUNK_SIZE; i++) {
 		for (int j = 0; j < CHUNK_SIZE; j++) {
 			for (int k = 0; k < CHUNK_SIZE; k++) {
-				//int height = (int)(noise.noise(i, k) * (float)CHUNK_SIZE);
-				//std::cout << noise.noise(i, k) << std::endl;
-				//uint8_t height = ((float)heightMap.at(i * CHUNK_SIZE + k) / 256.0f) * CHUNK_SIZE;
-				Cube* block = &blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k];
+                int globalX = chunkX * CHUNK_SIZE + i;
+                int globalY = chunkY * CHUNK_SIZE + k;
+                this->chunkX = chunkX;
+                this->chunkY = chunkY;
+                int height = terrain.getHeight(globalX, globalY);
+                heights[i][k] = height;
+
+                Cube* block = &blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k];
 				block->setPosition(i, j, k);
-				int limit_grass = (int)(0.95 * CHUNK_SIZE) < 1 ? CHUNK_SIZE - 1 : (int)(0.95 * CHUNK_SIZE);
-				int limit_stone = (int)(0.7 * CHUNK_SIZE) < 1 ? CHUNK_SIZE - 2 : (int)(0.7 * CHUNK_SIZE);
+				int limit_grass = (int)(0.95 * height) < 1 ? height - 1 : (int)(0.95 * height);
+				int limit_stone = (int)(0.7 * height) < 1 ? height - 2 : (int)(0.7 * height);
+				int limit_water = (int)(0.5 * CHUNK_SIZE);
 				double p = generateRandomNumber(0.01f);
-				if (j > 100) {
-					block->setType(AIR);
+				if (j > height) {
+					if (j == limit_water) {
+						block->setType(WATER);
+					}
+					else {
+						block->setType(AIR);
+					}
 				}
 				else {
+					std::vector<Cube*> neighbors = {
+							getBlock(i, j, k + 1),  // Face avant
+							getBlock(i, j, k - 1),  // Face arri√®re
+							getBlock(i - 1, j, k),  // Face gauche
+							getBlock(i + 1, j, k),  // Face droite
+					};
+					bool beach = false;
+					for (int a = 0; a < neighbors.size(); a++) {
+						Cube* neighbor = neighbors.at(a);
+						if (neighbor != nullptr && neighbor->getType() == WATER) {
+							beach = true;
+							break;
+						}
+					}
 					if (j == 0)
 						block->setType(BEDROCK);
+					else if (j == limit_water && beach)
+						block->setType(SAND);
 					else if (j < limit_stone)
 						if (p == 1.0)
 							block->setType(COAL_ORE);
@@ -64,29 +87,39 @@ Cube* Chunk::getBlock(int i, int j, int k) {
 	return &blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k];
 }
 
-void Chunk::render(Shader shaderProgram) {
+std::vector<Cube*> Chunk::render(Shader shaderProgram, World* world) {
+	std::vector<Cube*> waterBlocks;
 	glEnable(GL_CULL_FACE);
+	glEnable(GL_DEPTH_TEST);
 	for (int i = 0; i < CHUNK_SIZE; i++) {
 		for (int j = 0; j < CHUNK_SIZE; j++) {
 			for (int k = 0; k < CHUNK_SIZE; k++) {
 				Cube* block = &blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k];
+				if (block->getType() == WATER) {
+					waterBlocks.push_back(block);
+				}
+				else {
 
-				shaderProgram.setVec3("translation", block->getPosition());
-				shaderProgram.use();
-
-				// VÈrifier les voisins et ne pas afficher les faces en contact
-				std::vector<Cube*> neighbors = {
-					getBlock(i, j, k + 1),  // Face avant
-					getBlock(i, j, k - 1),  // Face arriËre
-					getBlock(i - 1, j, k),  // Face gauche
-					getBlock(i + 1, j, k),  // Face droite
-					getBlock(i, j + 1, k),  // Face haut
-					getBlock(i, j - 1, k)   // Face bas
-				};
-				block->render(neighbors);
+					shaderProgram.setVec3("translation", block->getPosition());
+					shaderProgram.use();
+					glm::vec3 position = block->getPosition();
+					int x = position.x;
+					int y = position.y;
+					int z = position.z;
+					std::vector<Cube*> neighbors = {
+							world->getBlock(x, y, z + 1),  // Face avant
+							world->getBlock(x, y, z - 1),  // Face arri√®re
+							world->getBlock(x - 1, y, z),  // Face gauche
+							world->getBlock(x + 1, y, z),  // Face droite
+							world->getBlock(x, y + 1, z),  // Face haut
+							world->getBlock(x, y - 1, z)   // Face bas
+					};
+					block->render(neighbors);
+				}
 			}
 		}
 	}
+	return waterBlocks;
 }
 
 void Chunk::translate(GLfloat x, GLfloat y, GLfloat z) {
@@ -105,6 +138,15 @@ void Chunk::destroy() {
 void Chunk::destroyBlock(int x, int y, int z) {
 	blocks[x * CHUNK_SIZE * CHUNK_SIZE + y * CHUNK_SIZE + z].setType(AIR);
 }
+
+int Chunk::getLocalHeight(int x, int y) {
+    return heights[x][y];
+}
+
+int Chunk::getGlobalHeight(int x, int y) {
+    return heights[x % CHUNK_SIZE][y % CHUNK_SIZE];
+}
+
 
 Chunk::~Chunk() {
 	destroy();

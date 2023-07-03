@@ -91,7 +91,12 @@ void Cube::render(Shader shaderProgram) {
 		shaderProgram.setVec3("translation", getPosition());
 		shaderProgram.use();
 		glBindVertexArray(this->VAO);
-		glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+		if (type == WATER) {
+			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void*)(4 * 6 * sizeof(GLuint)));
+		}
+		else {
+			glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+		}
 	}
 }
 
@@ -113,25 +118,38 @@ void Cube::render(Shader shaderProgram) {
  *                  [Front, Back, Left, Right, Top, Bottom]
  */
 void Cube::render(const std::vector<Cube*>& neighbors) {
+	glEnable(GL_DEPTH_TEST);
 	if (type == AIR) {
 		return;
 	}
-	texture.bind();
-	glBindVertexArray(this->VAO);
-	for (int i = 0; i < 6; i++) {
-		Cube* block = neighbors[i];
-		if (block == nullptr && i == 4) {
+	else {
+		texture.bind();
+		glBindVertexArray(this->VAO);
+		if (type == WATER) {
+			glDisable(GL_CULL_FACE);
 			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void*)(4 * 6 * sizeof(GLuint)));
+			glEnable(GL_CULL_FACE);
 		}
-		else if (block != NULL && block->getType() == AIR) {
-			// Calculate the starting index for face i
-			int startIdx = i * 6;
+		else {
+			for (int i = 0; i < 6; i++) {
+				Cube* block = neighbors[i];
+				if ((block == nullptr && i == 4)) {
+					glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void*)(4 * 6 * sizeof(GLuint)));
+				}
+				else if (block == nullptr || (block != NULL && (block->getType() == AIR || block->getType() == WATER))) {
+					// Calculate the starting index for face i
+					int startIdx = i * 6;
 
-			// Render the triangles of face i using the indices
-			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void*)(startIdx * sizeof(GLuint)));
+					glEnable(GL_BLEND);
+					glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+					// Render the triangles of face i using the indices
+					glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void*)(startIdx * sizeof(GLuint)));
+				}
+			}
 		}
+		glBindVertexArray(0);
 	}
-	glBindVertexArray(0);
 }
 
 /**
@@ -227,43 +245,42 @@ void Cube::initialize() {
 	defineTexture();
 
 	GLfloat vertices[] = {
-	/*  Position               Color                  Texture  */
+	/*  Position               Color                  Texture          Normal         */
 		// Front face
-		-0.5f, -0.5f, 0.5f,    1.0f, 0.5f, 0.5f,      0.0f, 0.0f,   // Bottom left
-		-0.5f, 0.5f, 0.5f,     1.0f, 0.5f, 0.5f,      0.0f, 1.0f,   // Top left
-		0.5f, 0.5f, 0.5f,      1.0f, 0.5f, 0.5f,      1.0f, 1.0f,   // Top right
-		0.5f, -0.5f, 0.5f,     1.0f, 0.5f, 0.5f,      1.0f, 0.0f,   // Bottom right
+		-0.5f, -0.5f, 0.5f,    1.0f, 0.5f, 0.5f,      0.0f, 0.0f,      0.0f, 0.0f, 1.0f,   // Bottom left
+		-0.5f, 0.5f, 0.5f,     1.0f, 0.5f, 0.5f,      0.0f, 1.0f,      0.0f, 0.0f, 1.0f,   // Top left
+		0.5f, 0.5f, 0.5f,      1.0f, 0.5f, 0.5f,      1.0f, 1.0f,      0.0f, 0.0f, 1.0f,   // Top right
+		0.5f, -0.5f, 0.5f,     1.0f, 0.5f, 0.5f,      1.0f, 0.0f,      0.0f, 0.0f, 1.0f,   // Bottom right
 
 		// Back face			
-		-0.5f, -0.5f, -0.5f,   0.5f, 0.5f, 1.0f,      1.0f, 0.0f,   // Bottom left
-		-0.5f, 0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      1.0f, 1.0f,   // Top left
-		0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      0.0f, 1.0f,   // Top right
-		0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 0.0f,   // Bottom right
-
+		-0.5f, -0.5f, -0.5f,   0.5f, 0.5f, 1.0f,      1.0f, 0.0f,      0.0f, 0.0f, -1.0f,   // Bottom left
+		-0.5f, 0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      1.0f, 1.0f,      0.0f, 0.0f, -1.0f,   // Top left
+		0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      0.0f, 1.0f,      0.0f, 0.0f, -1.0f,   // Top right
+		0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 0.0f,      0.0f, 0.0f, -1.0f,   // Bottom right
 
 		// Left face
-		-0.5f, -0.5f, -0.5f,   0.5f, 1.0f, 0.5f,      0.0f, 0.0f,   // Bottom left
-		-0.5f, 0.5f, -0.5f,    0.5f, 1.0f, 0.5f,      0.0f, 1.0f,   // Top left
-		-0.5f, 0.5f, 0.5f,     0.5f, 1.0f, 0.5f,      1.0f, 1.0f,   // Top right
-		-0.5f, -0.5f, 0.5f,    0.5f, 1.0f, 0.5f,      1.0f, 0.0f,   // Bottom right
+		-0.5f, -0.5f, -0.5f,   0.5f, 1.0f, 0.5f,      0.0f, 0.0f,      -1.0f, 0.0f, 0.0f,   // Bottom left
+		-0.5f, 0.5f, -0.5f,    0.5f, 1.0f, 0.5f,      0.0f, 1.0f,      -1.0f, 0.0f, 0.0f,   // Top left
+		-0.5f, 0.5f, 0.5f,     0.5f, 1.0f, 0.5f,      1.0f, 1.0f,      -1.0f, 0.0f, 0.0f,   // Top right
+		-0.5f, -0.5f, 0.5f,    0.5f, 1.0f, 0.5f,      1.0f, 0.0f,      -1.0f, 0.0f, 0.0f,   // Bottom right
 
 		// Right face
-		0.5f, -0.5f, 0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 0.0f,   // Bottom left
-		0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 0.0f,   // Top left
-		0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      0.0f, 1.0f,   // Top right
-		0.5f, 0.5f, 0.5f,      0.5f, 0.5f, 1.0f,      1.0f, 1.0f,   // Bottom right
+		0.5f, -0.5f, 0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 0.0f,      1.0f, 0.0f, 0.0f,   // Bottom left
+		0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 0.0f,      1.0f, 0.0f, 0.0f,   // Top left
+		0.5f, 0.5f, -0.5f,     0.5f, 0.5f, 1.0f,      0.0f, 1.0f,      1.0f, 0.0f, 0.0f,   // Top right
+		0.5f, 0.5f, 0.5f,      0.5f, 0.5f, 1.0f,      1.0f, 1.0f,      1.0f, 0.0f, 0.0f,   // Bottom right
 
 		// Top face
-		-0.5f, 0.5f, 0.5f,     1.0f, 1.0f, 0.5f,      0.0f, 0.0f,   // Bottom left
-		-0.5f, 0.5f, -0.5f,    1.0f, 1.0f, 0.5f,      0.0f, 1.0f,   // Top left
-		0.5f, 0.5f, -0.5f,     1.0f, 1.0f, 0.5f,      1.0f, 1.0f,   // Top right
-		0.5f, 0.5f, 0.5f,      1.0f, 1.0f, 0.5f,      1.0f, 0.0f,   // Bottom right
+		-0.5f, 0.5f, 0.5f,     1.0f, 1.0f, 0.5f,      0.0f, 0.0f,      0.0f, 1.0f, 0.0f,   // Bottom left
+		-0.5f, 0.5f, -0.5f,    1.0f, 1.0f, 0.5f,      0.0f, 1.0f,      0.0f, 1.0f, 0.0f,   // Top left
+		0.5f, 0.5f, -0.5f,     1.0f, 1.0f, 0.5f,      1.0f, 1.0f,      0.0f, 1.0f, 0.0f,   // Top right
+		0.5f, 0.5f, 0.5f,      1.0f, 1.0f, 0.5f,      1.0f, 0.0f,      0.0f, 1.0f, 0.0f,   // Bottom right
 
 		// Bottom face
-		-0.5f, -0.5f, -0.5f,   0.5f, 0.5f, 1.0f,      0.0f, 0.0f,   // Bottom left
-		-0.5f, -0.5f, 0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 1.0f,   // Top left
-		0.5f, -0.5f, 0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 1.0f,   // Top right
-		0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      1.0f, 0.0f    // Bottom right
+		-0.5f, -0.5f, -0.5f,   0.5f, 0.5f, 1.0f,      0.0f, 0.0f,      0.0f, -1.0f, 0.0f,   // Bottom left
+		-0.5f, -0.5f, 0.5f,    0.5f, 0.5f, 1.0f,      0.0f, 1.0f,      0.0f, -1.0f, 0.0f,   // Top left
+		0.5f, -0.5f, 0.5f,     0.5f, 0.5f, 1.0f,      1.0f, 1.0f,      0.0f, -1.0f, 0.0f,   // Top right
+		0.5f, -0.5f, -0.5f,    0.5f, 0.5f, 1.0f,      1.0f, 0.0f,      0.0f, -1.0f, 0.0f    // Bottom right
 	};
 
 	GLuint indices[] = {
@@ -302,15 +319,19 @@ void Cube::initialize() {
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
 	// Layout 0 : Position
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(GLfloat), (void*)0);
 	glEnableVertexAttribArray(0);;
 
 	// Layout 1 : Color
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
 	glEnableVertexAttribArray(1);
 
 	// Layout 2 : Texture
-	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));
+	glEnableVertexAttribArray(2);
+
+	// Layout 3 : Normal
+	glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(GLfloat), (void*)(8 * sizeof(GLfloat)));
 	glEnableVertexAttribArray(2);
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->EBO);
@@ -348,6 +369,12 @@ void Cube::defineTexture() {
 		break;
 	case BEDROCK:
 		this->texture = Texture("./Textures/bedrock.png");
+		break;
+	case WATER:
+		this->texture = Texture("./Textures/water.png");
+		break;
+	case SAND:
+		this->texture = Texture("./Textures/sand.png");
 		break;
 	default:
 		this->texture = Texture("./Textures/none.png");
