@@ -83,15 +83,15 @@ void processInput(GLFWwindow* window)
 	// Enable/Disable wireframe mode
 	bool xKeyDown = glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS;
 	if (xKeyDown && !xKeyPressed) {
-		// La touche "X" vient d'être enfoncée
-		// Inverser l'état du mode wireframe
+		// La touche "X" vient d'ï¿½tre enfoncï¿½e
+		// Inverser l'ï¿½tat du mode wireframe
 		wireframeMode = !wireframeMode;
 		if (wireframeMode) {
 			// Activer le mode wireframe
 			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 		}
 		else {
-			// Désactiver le mode wireframe
+			// Dï¿½sactiver le mode wireframe
 			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 		}
 	}
@@ -172,7 +172,7 @@ int main(void) {
 
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_DISABLED);
 	glfwSetCursorPos(window, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
 
 	glfwSetCursorPosCallback(window, cursorPositionCallback);
@@ -187,7 +187,7 @@ int main(void) {
 	Shader shaderProgram("./Shaders/vert.shd", "./Shaders/frag.shd");
 
 	Chunk chunk = Chunk();
-	Cube cube = Cube(0, 0, 0, "./Textures/grass.png");
+	//Cube cube = Cube(0, 0, 0, "./Textures/grass.png");
 	//std::vector<Cube> cubes;
 	//cubes.push_back(cube);
 	//cubes.push_back(Cube(0, 0, 1, "./Textures/grass.png"));
@@ -241,7 +241,7 @@ int main(void) {
 	}
 
 	chunk.destroy();
-	cube.destroy();
+	//cube.destroy();
 	shaderProgram.destroy();
 
 	glfwDestroyWindow(window);

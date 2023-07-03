@@ -33,10 +33,10 @@ void Chunk::render(Shader shaderProgram) {
 				shaderProgram.setVec3("translation", block->getPosition());
 				shaderProgram.use();
 
-				// Vérifier les voisins et ne pas afficher les faces en contact
+				// Vï¿½rifier les voisins et ne pas afficher les faces en contact
 				std::vector<Cube*> neighbors = {
 					getBlock(i, j, k + 1),  // Face avant
-					getBlock(i, j, k - 1),  // Face arrière
+					getBlock(i, j, k - 1),  // Face arriï¿½re
 					getBlock(i - 1, j, k),  // Face gauche
 					getBlock(i + 1, j, k),  // Face droite
 					getBlock(i, j + 1, k),  // Face haut
