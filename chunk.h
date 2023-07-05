@@ -7,26 +7,29 @@
 
 #include <glad/glad.h>
 #include <glm/glm.hpp>
-
+#include <unordered_map>
 #include "cube.h"
 #include "shader.h"
 #include "TerrainGenerator.h"
-#include "world.h"
+#include "chunk.h"
 
 
-#define CHUNK_SIZE 15
-class World;
+
 class Chunk {
 public:
-    Chunk() {
 
-    }
+    Chunk()
+    {
+        blocks = new Cube[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
+        chunkX = -1;
+        chunkY = -1;
+    };
 
     Chunk(int chunkX, int chunkY, TerrainGenerator& terrainGenerator);
 
 
 
-    std::vector<Cube*> render(Shader shaderProgram, World* world);
+    std::vector<Cube*> render(Shader shaderProgram);
 	void destroy();
 	
 	void translate(GLfloat x, GLfloat y, GLfloat z);
@@ -39,7 +42,7 @@ public:
 
 private:
 	Cube* blocks; /**< The array of blocks within the chunk. */
-    int heights[CHUNK_SIZE][CHUNK_SIZE];
+    int heights[CHUNK_SIZE][CHUNK_SIZE]{};
     int chunkX;
     int chunkY;
 

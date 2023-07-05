@@ -7,19 +7,6 @@
 #include "chunk.h"
 //#include "perlin_noise.h"
 
-double generateRandomNumber(double probabilityOfOne) {
-	std::random_device rd;
-	std::mt19937 gen(rd());
-	std::uniform_real_distribution<double> dis(0.0, 1.0);
-
-	if (dis(gen) < probabilityOfOne) {
-		return 1.0;
-	}
-	else {
-		return dis(gen);
-	}
-}
-
 Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
 	blocks = new Cube[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
     this->chunkX = chunkX;
@@ -31,7 +18,7 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
                 int globalY = chunkY * CHUNK_SIZE + k;
 
                 int height = terrain.getHeight(globalX, globalY);
-                heights[i][k] = height;
+                this->heights[i][k] = height;
 
 
                 Cube* block = &blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k];
@@ -93,7 +80,7 @@ Cube* Chunk::getBlock(int i, int j, int k) {
 }
 
 
-std::vector<Cube*> Chunk::render(Shader shaderProgram, World* world) {
+std::vector<Cube*> Chunk::render(Shader shaderProgram) {
 	std::vector<Cube*> waterBlocks;
 
 	glEnable(GL_CULL_FACE);
@@ -108,18 +95,15 @@ std::vector<Cube*> Chunk::render(Shader shaderProgram, World* world) {
 				else {
 					shaderProgram.setVec3("translation", block->getPosition());
 					shaderProgram.use();
-					glm::vec3 position = block->getPosition();
-					int x = position.x;
-					int y = position.y;
-					int z = position.z;
-					std::vector<Cube*> neighbors = {
-							world->getBlock(x, y, z + 1),  // Face avant
-							world->getBlock(x, y, z - 1),  // Face arrière
-							world->getBlock(x - 1, y, z),  // Face gauche
-							world->getBlock(x + 1, y, z),  // Face droite
-							world->getBlock(x, y + 1, z),  // Face haut
-							world->getBlock(x, y - 1, z)   // Face bas
-					};
+
+                    std::vector<Cube*> neighbors = {
+                            this->getBlock(i, j, k + 1),  // Face avant
+                            this->getBlock(i, j, k - 1),  // Face arrière
+                            this->getBlock(i - 1, j, k),  // Face gauche
+                            this->getBlock(i + 1, j, k),  // Face droite
+                            this->getBlock(i, j + 1, k),  // Face haut
+                            this->getBlock(i, j - 1, k)   // Face bas
+                    };
 					block->render(neighbors);
 				}
 			}

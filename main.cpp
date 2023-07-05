@@ -201,7 +201,7 @@ int main(void) {
 	std::cout << "GLFW successfully initialized" << std::endl;
 
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 #ifdef __APPLE__
@@ -229,7 +229,7 @@ int main(void) {
 
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_DISABLED);
 	glfwSetCursorPos(window, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
 
 	glfwSetCursorPosCallback(window, cursorPositionCallback);
@@ -255,9 +255,10 @@ int main(void) {
 
 
 
-    ChunkManager chunkManager(1, 16, *w->terrainGenerator); // renderDistance=5, chunkSize=16
+   // ChunkManager chunkManager(1, 16, *w->terrainGenerator); // renderDistance=5, chunkSize=16
 
 
+    bool sceneChanged = true; // Initially set to true to render the scene
     while (!glfwWindowShouldClose(window)) {
         float speed = 0.1;
 		float timeValue = 0.0f;
@@ -309,9 +310,8 @@ int main(void) {
 		int targetBlockZ = static_cast<int>(std::round(targetPosition.z));
 		targeted = glm::ivec3(targetBlockX, targetBlockY, targetBlockZ);
 
-        chunkManager.update(cameraPos);
-        chunkManager.render(shaderProgram, &world);
-
+        w->update(camera.getPosition());
+        w->render(shaderProgram);
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
