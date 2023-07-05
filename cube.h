@@ -5,6 +5,9 @@
 
 #pragma once
 
+#define RENDER_DISTANCE 3
+#define CHUNK_SIZE 15
+
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <vector>

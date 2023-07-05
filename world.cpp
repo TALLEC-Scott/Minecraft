@@ -2,28 +2,10 @@
 
 World::World() {
     this->terrainGenerator = new TerrainGenerator(0, 0.1, 0, CHUNK_SIZE + 1);
-    for (int i = 0; i < RENDER_DISTANCE; i++) {
-        for (int j = 0; j < RENDER_DISTANCE; j++) {
-            this->chunks[i * RENDER_DISTANCE + j] = new Chunk(i, j, *terrainGenerator);
-            this->chunks[i * RENDER_DISTANCE + j]->translate(i, 0, j);
-        }
-    }
+    this->chunkManager = new ChunkManager(RENDER_DISTANCE, CHUNK_SIZE, *terrainGenerator);
 }
 
-void World::render(Shader& shaderProgram) {
-    std::vector<std::vector<Cube*>> water;
-	for (int i = 0; i < RENDER_DISTANCE * RENDER_DISTANCE; i++) {
-		water.push_back(chunks[i]->render(shaderProgram, this));
-	}
-    for (int i = 0; i < water.size(); i++) {
-        std::vector<Cube*> waterBlocks = water.at(i);
-        for (int j = 0; j < waterBlocks.size(); j++) {
-            waterBlocks.at(j)->render(shaderProgram);
-        }
-    }
-}
-
-void World::destroyBlock(glm::vec3 position) {
+void World::destroyBlock(glm::vec3 position) const {
 	int chunkX = (int)position.x / CHUNK_SIZE;
 	int chunkZ = (int)position.z / CHUNK_SIZE;
 
@@ -31,18 +13,20 @@ void World::destroyBlock(glm::vec3 position) {
 	int y_chunk = (int)position.y % CHUNK_SIZE;
 	int z_chunk = (int)position.z % CHUNK_SIZE;
 
-	chunks[chunkX * RENDER_DISTANCE + chunkZ]->destroyBlock(x_chunk, y_chunk, z_chunk);
+    auto chunk = this->chunkManager->getChunk(chunkX, chunkZ);
+    chunk->destroyBlock(x_chunk, y_chunk, z_chunk);
 }
 
 World::~World() {
-    destroy();
+    delete this->terrainGenerator;
+    delete this->chunkManager;
 }
 
 Chunk* World::getChunk(int x, int y) {
-    return chunks[x * RENDER_DISTANCE + y];
+    return this->chunkManager->getChunk(x, y);
 }
 
-Cube* World::getBlock(int x, int y, int z) {
+Cube* World::getBlock(int x, int y, int z) const {
     if (y < 0 || y >= CHUNK_SIZE)
         return nullptr;
     if (x < 0 || x >= CHUNK_SIZE * RENDER_DISTANCE || z < 0 || z >= CHUNK_SIZE * RENDER_DISTANCE)
@@ -50,20 +34,32 @@ Cube* World::getBlock(int x, int y, int z) {
 
     int chunkX = x / CHUNK_SIZE;
     int chunkZ = z / CHUNK_SIZE;
+
     if (chunkX < 0 || chunkX >= RENDER_DISTANCE || chunkZ < 0 || chunkZ >= RENDER_DISTANCE)
         return nullptr;
     int x_chunk = x % CHUNK_SIZE;
     int y_chunk = y % CHUNK_SIZE;
     int z_chunk = z % CHUNK_SIZE;
-    auto res = chunks[chunkX * RENDER_DISTANCE + chunkZ];
+    auto res = this->chunkManager->getChunk(chunkX, chunkZ);
     if (res == nullptr)
         return nullptr;
 
-    return chunks[chunkX * RENDER_DISTANCE + chunkZ]->getBlock(x_chunk, y_chunk, z_chunk);
+    return res->getBlock(x_chunk, y_chunk, z_chunk);
 }
 
-void World::destroy() {
-    for (int i = 0; i < RENDER_DISTANCE * RENDER_DISTANCE; i++) {
-        chunks[i]->destroy();
+void World::render(Shader shaderProgram) const {
+    for (auto& pair : this->chunkManager->chunks) {
+        Chunk& chunk = pair.second;
+        std::vector<std::vector<Cube*>> water;
+        water.push_back(chunk.render(shaderProgram));
+        for (auto waterBlocks : water) {
+            for (auto & waterBlock : waterBlocks) {
+                waterBlock->render(shaderProgram);
+            }
+        }
     }
+}
+
+void World::update(glm::vec3 cameraPosition) const {
+    this->chunkManager->update(cameraPosition);
 }

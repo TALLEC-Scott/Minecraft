@@ -127,9 +127,9 @@ void Cube::render(const std::vector<Cube*>& neighbors) {
 		texture.bind();
 		glBindVertexArray(this->VAO);
 		if (type == WATER) {
-			glDisable(GL_CULL_FACE);
+			//glDisable(GL_CULL_FACE);
 			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void*)(4 * 6 * sizeof(GLuint)));
-			glEnable(GL_CULL_FACE);
+			//glEnable(GL_CULL_FACE);
 		}
 		else {
 			for (int i = 0; i < 6; i++) {
