@@ -45,8 +45,6 @@ make
 
 ![a](Minecraft_Screenshot_1.png)
 
-![b](Minecraft_Screenshot_2.png)
-
 ## References
 
 ## License
