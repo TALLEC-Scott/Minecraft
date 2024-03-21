@@ -33,13 +33,13 @@ make
 ## Controls (QWERTY)
 
 - WASD to move
-- R or SHIFT to move faster
-- ESCAPE to climb
+- Hold (R or SHIFT) to increase speed
+- ESCAPE to ascend
 - Q to descend
-- X to change to wireframe
-- G to enable/disable freefall
+- X to toggle wireframe
+- G to toggle freefall
 - Left Click to break block
-- J to set/unset to day
+- J to set/unset to day (Noon)
 
 
 ## Screenshots
