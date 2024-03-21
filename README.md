@@ -16,6 +16,7 @@ On Debian-based systems like Ubuntu, you can install glfw using :
 
 
 On Windows, you can use vcpkg or download the libraries from their respective websites and specify the paths in CMakeLists.txt.
+
 On macOS, you can use Homebrew :
 
 ```brew install glfw```
