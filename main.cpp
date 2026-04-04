@@ -297,7 +297,6 @@ int main(void) {
 		camera.defineLookAt(shaderProgram);
 		glm::vec3 cameraPos = camera.getPosition();
 
-		shaderProgram.setVec3("viewPos", cameraPos);
 		glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 5000.0f);
 		shaderProgram.setMat4("projection", projection);
 
