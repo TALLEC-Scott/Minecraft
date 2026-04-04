@@ -73,8 +73,9 @@ Cube* World::getBlock(int x, int y, int z) const {
     return res->getBlock(x % CHUNK_SIZE, y % CHUNK_SIZE, z % CHUNK_SIZE);
 }
 
-void World::render(Shader shaderProgram, glm::mat4 viewProjection) const {
+int World::render(Shader shaderProgram, glm::mat4 viewProjection) const {
     auto planes = extractFrustumPlanes(viewProjection);
+    int rendered = 0;
 
     // Pass 1: opaque geometry
     for (auto& [pos, chunk] : this->chunkManager->chunks) {
@@ -82,6 +83,7 @@ void World::render(Shader shaderProgram, glm::mat4 viewProjection) const {
         glm::vec3 maxP(minP.x + CHUNK_SIZE, CHUNK_SIZE, minP.z + CHUNK_SIZE);
         if (!aabbInFrustum(planes, minP, maxP)) continue;
         chunk.render(shaderProgram);
+        rendered++;
     }
 
     // Pass 2: water (after all opaque to preserve transparency)
@@ -94,6 +96,8 @@ void World::render(Shader shaderProgram, glm::mat4 viewProjection) const {
         chunk.renderWater(shaderProgram);
     }
     glDisable(GL_BLEND);
+
+    return rendered;
 }
 
 void World::update(glm::vec3 cameraPosition) const {
