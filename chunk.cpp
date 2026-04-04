@@ -103,8 +103,19 @@ Cube* Chunk::getBlock(int i, int j, int k) {
 
 void Chunk::buildMesh() {
     // Vertex layout: pos(3) + texcoord(2) + normal(3) + texLayer(1) = 9 floats
+    // Worst case: all blocks exposed on all 6 faces
+    constexpr int MAX_BLOCKS = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
+    constexpr int MAX_FACES  = MAX_BLOCKS * 6;
+    constexpr int FLOATS_PER_FACE = 4 * 9; // 4 verts × 9 floats
+    constexpr int INDICES_PER_FACE = 6;
+
     std::vector<float> opaqueVerts, waterVerts;
     std::vector<unsigned int> opaqueIdx, waterIdx;
+    opaqueVerts.reserve(MAX_FACES * FLOATS_PER_FACE);
+    opaqueIdx.reserve(MAX_FACES * INDICES_PER_FACE);
+    // Water is at most one face (top) per block at the water level
+    waterVerts.reserve(CHUNK_SIZE * CHUNK_SIZE * FLOATS_PER_FACE);
+    waterIdx.reserve(CHUNK_SIZE * CHUNK_SIZE * INDICES_PER_FACE);
     unsigned int opaqueBase = 0, waterBase = 0;
 
     for (int i = 0; i < CHUNK_SIZE; i++) {
