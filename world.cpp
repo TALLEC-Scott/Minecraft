@@ -1,5 +1,6 @@
 #include "world.h"
 #include <array>
+#include <algorithm>
 
 // Extract 6 frustum planes from a combined projection*view matrix (Gribb-Hartmann).
 // Each plane is vec4(normal.xyz, distance). A point p is inside if dot(plane.xyz, p) + plane.w >= 0.
@@ -78,29 +79,29 @@ int World::render(Shader shaderProgram, glm::mat4 viewProjection) const {
     int rendered = 0;
 
     // Pass 1: opaque geometry
-    for (auto& [pos, chunk] : this->chunkManager->chunks) {
+    for (auto& [pos, chunk] : chunkManager->chunks) {
         glm::vec3 minP(pos.x * CHUNK_SIZE, 0, pos.y * CHUNK_SIZE);
         glm::vec3 maxP(minP.x + CHUNK_SIZE, CHUNK_SIZE, minP.z + CHUNK_SIZE);
         if (!aabbInFrustum(planes, minP, maxP)) continue;
-        Chunk* nx_neg = this->chunkManager->getChunk(pos.x - 1, pos.y);
-        Chunk* nx_pos = this->chunkManager->getChunk(pos.x + 1, pos.y);
-        Chunk* nz_neg = this->chunkManager->getChunk(pos.x, pos.y - 1);
-        Chunk* nz_pos = this->chunkManager->getChunk(pos.x, pos.y + 1);
+        Chunk* nx_neg = chunkManager->getChunk(pos.x - 1, pos.y);
+        Chunk* nx_pos = chunkManager->getChunk(pos.x + 1, pos.y);
+        Chunk* nz_neg = chunkManager->getChunk(pos.x, pos.y - 1);
+        Chunk* nz_pos = chunkManager->getChunk(pos.x, pos.y + 1);
         chunk.render(shaderProgram, nx_neg, nx_pos, nz_neg, nz_pos);
         rendered++;
     }
 
-    // Pass 2: water (after all opaque to preserve transparency)
+    // Pass 2: water back-to-front for correct transparency
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    for (auto& [pos, chunk] : this->chunkManager->chunks) {
+    for (auto& [pos, chunk] : chunkManager->chunks) {
         glm::vec3 minP(pos.x * CHUNK_SIZE, 0, pos.y * CHUNK_SIZE);
         glm::vec3 maxP(minP.x + CHUNK_SIZE, CHUNK_SIZE, minP.z + CHUNK_SIZE);
         if (!aabbInFrustum(planes, minP, maxP)) continue;
-        Chunk* nx_neg = this->chunkManager->getChunk(pos.x - 1, pos.y);
-        Chunk* nx_pos = this->chunkManager->getChunk(pos.x + 1, pos.y);
-        Chunk* nz_neg = this->chunkManager->getChunk(pos.x, pos.y - 1);
-        Chunk* nz_pos = this->chunkManager->getChunk(pos.x, pos.y + 1);
+        Chunk* nx_neg = chunkManager->getChunk(pos.x - 1, pos.y);
+        Chunk* nx_pos = chunkManager->getChunk(pos.x + 1, pos.y);
+        Chunk* nz_neg = chunkManager->getChunk(pos.x, pos.y - 1);
+        Chunk* nz_pos = chunkManager->getChunk(pos.x, pos.y + 1);
         chunk.renderWater(shaderProgram, nx_neg, nx_pos, nz_neg, nz_pos);
     }
     glDisable(GL_BLEND);
