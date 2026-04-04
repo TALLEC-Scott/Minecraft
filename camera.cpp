@@ -63,9 +63,12 @@ void Camera::changeDirection(glm::vec3 direction) {
 	cameraFront = glm::normalize(direction);
 }
 
+glm::mat4 Camera::getViewMatrix() const {
+    return glm::lookAt(cameraPosition, cameraPosition + cameraFront, cameraUp);
+}
+
 void Camera::defineLookAt(Shader shaderProgram) {
-	glm::mat4 view = glm::lookAt(cameraPosition, cameraPosition + cameraFront, cameraUp);
-	shaderProgram.setMat4("view", view);
+	shaderProgram.setMat4("view", getViewMatrix());
 }
 
 glm::vec3 Camera::getPosition() const {
