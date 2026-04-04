@@ -17,6 +17,7 @@
 #include "camera.h"
 #include "world.h"
 #include "ChunkManager.h"
+#include "texture_array.h"
 
 #define WINDOW_WIDTH 1000
 #define WINDOW_HEIGHT 1000
@@ -200,8 +201,8 @@ int main(void) {
 	}
 	std::cout << "GLFW successfully initialized" << std::endl;
 
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 #ifdef __APPLE__
@@ -241,6 +242,8 @@ int main(void) {
 	std::cout << "Maximum number of vertex attributes supported: " << nrAttributes << std::endl;
 	
 
+	TextureArray::initialize();
+	{
 	Shader shaderProgram("./Shaders/vert.shd", "./Shaders/frag.shd");
 	World world = World();
 	w = &world;
@@ -310,6 +313,7 @@ int main(void) {
 		int targetBlockZ = static_cast<int>(std::round(targetPosition.z));
 		targeted = glm::ivec3(targetBlockX, targetBlockY, targetBlockZ);
 
+        TextureArray::bind();
         w->update(camera.getPosition());
         w->render(shaderProgram);
 
@@ -318,6 +322,8 @@ int main(void) {
 	}
 
 	shaderProgram.destroy();
+	} // world and shaderProgram destroyed here, while GL context is still valid
+	TextureArray::destroy();
 
 	glfwDestroyWindow(window);
 	std::cout << "Window destroyed" << std::endl;

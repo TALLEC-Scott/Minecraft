@@ -6,15 +6,15 @@ World::World() {
 }
 
 void World::destroyBlock(glm::vec3 position) const {
-	int chunkX = (int)position.x / CHUNK_SIZE;
-	int chunkZ = (int)position.z / CHUNK_SIZE;
+    int chunkX = (int)position.x / CHUNK_SIZE;
+    int chunkZ = (int)position.z / CHUNK_SIZE;
 
-	int x_chunk = (int)position.x % CHUNK_SIZE;
-	int y_chunk = (int)position.y % CHUNK_SIZE;
-	int z_chunk = (int)position.z % CHUNK_SIZE;
+    int x_chunk = (int)position.x % CHUNK_SIZE;
+    int y_chunk = (int)position.y % CHUNK_SIZE;
+    int z_chunk = (int)position.z % CHUNK_SIZE;
 
     auto chunk = this->chunkManager->getChunk(chunkX, chunkZ);
-    chunk->destroyBlock(x_chunk, y_chunk, z_chunk);
+    if (chunk) chunk->destroyBlock(x_chunk, y_chunk, z_chunk);
 }
 
 World::~World() {
@@ -37,27 +37,25 @@ Cube* World::getBlock(int x, int y, int z) const {
 
     if (chunkX < 0 || chunkX >= RENDER_DISTANCE || chunkZ < 0 || chunkZ >= RENDER_DISTANCE)
         return nullptr;
-    int x_chunk = x % CHUNK_SIZE;
-    int y_chunk = y % CHUNK_SIZE;
-    int z_chunk = z % CHUNK_SIZE;
+
     auto res = this->chunkManager->getChunk(chunkX, chunkZ);
     if (res == nullptr)
         return nullptr;
 
-    return res->getBlock(x_chunk, y_chunk, z_chunk);
+    return res->getBlock(x % CHUNK_SIZE, y % CHUNK_SIZE, z % CHUNK_SIZE);
 }
 
 void World::render(Shader shaderProgram) const {
-    for (auto& pair : this->chunkManager->chunks) {
-        Chunk& chunk = pair.second;
-        std::vector<std::vector<Cube*>> water;
-        water.push_back(chunk.render(shaderProgram));
-        for (auto waterBlocks : water) {
-            for (auto & waterBlock : waterBlocks) {
-                waterBlock->render(shaderProgram);
-            }
-        }
-    }
+    // Pass 1: opaque geometry
+    for (auto& [pos, chunk] : this->chunkManager->chunks)
+        chunk.render(shaderProgram);
+
+    // Pass 2: water (after all opaque to preserve transparency)
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    for (auto& [pos, chunk] : this->chunkManager->chunks)
+        chunk.renderWater(shaderProgram);
+    glDisable(GL_BLEND);
 }
 
 void World::update(glm::vec3 cameraPosition) const {
