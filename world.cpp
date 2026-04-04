@@ -82,7 +82,11 @@ int World::render(Shader shaderProgram, glm::mat4 viewProjection) const {
         glm::vec3 minP(pos.x * CHUNK_SIZE, 0, pos.y * CHUNK_SIZE);
         glm::vec3 maxP(minP.x + CHUNK_SIZE, CHUNK_SIZE, minP.z + CHUNK_SIZE);
         if (!aabbInFrustum(planes, minP, maxP)) continue;
-        chunk.render(shaderProgram);
+        Chunk* nx_neg = this->chunkManager->getChunk(pos.x - 1, pos.y);
+        Chunk* nx_pos = this->chunkManager->getChunk(pos.x + 1, pos.y);
+        Chunk* nz_neg = this->chunkManager->getChunk(pos.x, pos.y - 1);
+        Chunk* nz_pos = this->chunkManager->getChunk(pos.x, pos.y + 1);
+        chunk.render(shaderProgram, nx_neg, nx_pos, nz_neg, nz_pos);
         rendered++;
     }
 
@@ -93,7 +97,11 @@ int World::render(Shader shaderProgram, glm::mat4 viewProjection) const {
         glm::vec3 minP(pos.x * CHUNK_SIZE, 0, pos.y * CHUNK_SIZE);
         glm::vec3 maxP(minP.x + CHUNK_SIZE, CHUNK_SIZE, minP.z + CHUNK_SIZE);
         if (!aabbInFrustum(planes, minP, maxP)) continue;
-        chunk.renderWater(shaderProgram);
+        Chunk* nx_neg = this->chunkManager->getChunk(pos.x - 1, pos.y);
+        Chunk* nx_pos = this->chunkManager->getChunk(pos.x + 1, pos.y);
+        Chunk* nz_neg = this->chunkManager->getChunk(pos.x, pos.y - 1);
+        Chunk* nz_pos = this->chunkManager->getChunk(pos.x, pos.y + 1);
+        chunk.renderWater(shaderProgram, nx_neg, nx_pos, nz_neg, nz_pos);
     }
     glDisable(GL_BLEND);
 
