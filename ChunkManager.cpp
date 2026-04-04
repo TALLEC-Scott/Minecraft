@@ -49,7 +49,6 @@ void ChunkManager::unloadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
 
 void ChunkManager::generateChunk(int x, int z) {
     Chunk chunk(x, z, terrainGenerator);
-    chunk.translate(x, 0, z);
     chunks[glm::ivec2(x, z)] = std::move(chunk);
 }
 
