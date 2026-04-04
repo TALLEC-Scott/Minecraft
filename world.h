@@ -1,5 +1,6 @@
 #pragma once
 
+#include <glm/glm.hpp>
 #include "chunk.h"
 #include "shader.h"
 #include "TerrainGenerator.h"
@@ -18,6 +19,6 @@ public:
     ChunkManager* chunkManager;
 	~World();
 
-    void render(Shader shaderProgram) const;
+    void render(Shader shaderProgram, glm::mat4 viewProjection) const;
     void update(glm::vec3 cameraPosition) const;
 };
