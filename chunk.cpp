@@ -115,7 +115,7 @@ static Cube* getBlockCross(Chunk* self, int i, int j, int k,
 
 void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
     // Vertex layout: pos(3) + texcoord(2) + normal(3) + texLayer(1) = 9 floats
-    // Worst case: all blocks exposed on all 6 faces
+    // Positions are chunk-local (0.0–15.5), decoded in shader as local + chunkOffset
     constexpr int MAX_BLOCKS = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
     constexpr int MAX_FACES  = MAX_BLOCKS * 6;
     constexpr int FLOATS_PER_FACE = 4 * 9; // 4 verts × 9 floats
@@ -125,7 +125,6 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
     std::vector<unsigned int> opaqueIdx, waterIdx;
     opaqueVerts.reserve(MAX_FACES * FLOATS_PER_FACE);
     opaqueIdx.reserve(MAX_FACES * INDICES_PER_FACE);
-    // Water is at most one face (top) per block at the water level
     waterVerts.reserve(CHUNK_SIZE * CHUNK_SIZE * FLOATS_PER_FACE);
     waterIdx.reserve(CHUNK_SIZE * CHUNK_SIZE * INDICES_PER_FACE);
     unsigned int opaqueBase = 0, waterBase = 0;
@@ -142,7 +141,6 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
                 glm::vec3 pos(chunkX * CHUNK_SIZE + i, j, chunkY * CHUNK_SIZE + k);
 
                 for (int f = 0; f < 6; f++) {
-                    // Water only renders its top face
                     if (isWater && f != 4) continue;
 
                     int ni = i + FACE_NEIGHBORS[f][0];
@@ -207,7 +205,7 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, allIdx.size() * sizeof(unsigned int), allIdx.data(), GL_DYNAMIC_DRAW);
 
     constexpr int STRIDE = 9 * sizeof(float);
-    // layout 0: position
+    // layout 0: position (chunk-local, shader adds chunkOffset)
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, STRIDE, (void*)0);
     glEnableVertexAttribArray(0);
     // layout 1: texcoord
