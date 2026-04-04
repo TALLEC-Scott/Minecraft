@@ -1,2 +1,8 @@
 .vs/
 x64
+benchmark_results.txt
+benchmark_history/
+build/
+build_asan/
+build_debug/
+*.md

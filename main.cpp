@@ -9,6 +9,9 @@
 #include <stb/stb_image.h>
 
 #include <vector>
+#include <iomanip>
+#include <fstream>
+#include <algorithm>
 
 #include "shader.h"
 #include "texture.h"
@@ -194,7 +197,8 @@ void processInput(GLFWwindow* window) {
 	}
 }
 
-int main(void) {
+int main(int argc, char* argv[]) {
+	bool benchmarkMode = (argc > 1 && std::string(argv[1]) == "--benchmark");
 	if (!glfwInit()) {
 		std::cout << "Failed to initialize GLFW" << std::endl;
 		return -1;
@@ -253,13 +257,87 @@ int main(void) {
 	glFrontFace(GL_CW);
 
 	double lastTime = glfwGetTime();
+	double lastFrameTime = lastTime;
 	int nbFrames = 0;
+	int chunksRendered = 0;
     glm::vec3 lightColor(1.0f, 1.0f, 1.0f); // white light
 
 
 
    // ChunkManager chunkManager(1, 16, *w->terrainGenerator); // renderDistance=5, chunkSize=16
 
+
+    // Benchmark mode: fixed camera, 300 warm-up + 300 measured frames, write results to file
+    if (benchmarkMode) {
+        constexpr int WARMUP_FRAMES  = 300;
+        constexpr int MEASURE_FRAMES = 300;
+        std::vector<double> frameTimes;
+        frameTimes.reserve(MEASURE_FRAMES);
+
+        glm::mat4 projection = glm::perspective(glm::radians(45.0f),
+            (float)windowWidth / (float)windowHeight, 0.1f, 5000.0f);
+        glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
+        int frame = 0;
+
+        while (!glfwWindowShouldClose(window) && frame < WARMUP_FRAMES + MEASURE_FRAMES) {
+            if (frame < WARMUP_FRAMES) {
+                // Phase 1 (warmup): spin 360° in place so surrounding chunks load
+                float angle = glm::radians((float)frame / WARMUP_FRAMES * 360.0f);
+                camera.changeDirection(glm::vec3(std::cos(angle), 0.0f, std::sin(angle)));
+            } else {
+                // Phase 2 (measured): move forward at sprint speed, stay horizontal
+                camera.changeDirection(glm::vec3(1.0f, 0.0f, 0.0f));
+                camera.speedUp();
+                camera.forward();
+            }
+
+            setSkyColor(0.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            shaderProgram.use();
+
+            glm::vec3 lightPos((CHUNK_SIZE * RENDER_DISTANCE) / 2, 1000.0f, 0.0f);
+            shaderProgram.setVec3("lightPos", lightPos);
+            shaderProgram.setVec3("lightColor", lightColor);
+            shaderProgram.setMat4("projection", projection);
+            shaderProgram.setMat4("model", glm::mat4(1.0f));
+            camera.defineLookAt(shaderProgram);
+
+            TextureArray::bind();
+            w->update(camera.getPosition());
+            glm::mat4 vp = projection * camera.getViewMatrix();
+
+            double t0 = glfwGetTime();
+            w->render(shaderProgram, vp);
+            glfwSwapBuffers(window);
+            double t1 = glfwGetTime();
+
+            if (frame >= WARMUP_FRAMES)
+                frameTimes.push_back((t1 - t0) * 1000.0);
+
+            glfwPollEvents();
+            frame++;
+        }
+
+        // Compute and write stats
+        double sum = 0, minT = frameTimes[0], maxT = frameTimes[0];
+        for (double t : frameTimes) { sum += t; minT = std::min(minT, t); maxT = std::max(maxT, t); }
+        double avg = sum / frameTimes.size();
+        std::sort(frameTimes.begin(), frameTimes.end());
+        double p99 = frameTimes[(size_t)(frameTimes.size() * 0.99)];
+
+        std::ofstream out("benchmark_results.txt");
+        out << std::fixed << std::setprecision(2);
+        out << "frames:  " << MEASURE_FRAMES << "\n";
+        out << "avg:     " << avg  << " ms  (" << (int)(1000.0/avg)  << " fps)\n";
+        out << "min:     " << minT << " ms  (" << (int)(1000.0/minT) << " fps)\n";
+        out << "max:     " << maxT << " ms  (" << (int)(1000.0/maxT) << " fps)\n";
+        out << "p99:     " << p99  << " ms  (" << (int)(1000.0/p99)  << " fps)\n";
+        out.close();
+
+        std::cout << "Benchmark complete. Results written to benchmark_results.txt" << std::endl;
+        shaderProgram.destroy();
+        goto cleanup;
+    }
 
     bool sceneChanged = true; // Initially set to true to render the scene
     while (!glfwWindowShouldClose(window)) {
@@ -275,13 +353,16 @@ int main(void) {
 
 		camera.fall();
 
-		// Display FPS
 		double currentTime = glfwGetTime();
+		double frameTime = (currentTime - lastFrameTime) * 1000.0; // ms
+		lastFrameTime = currentTime;
 		nbFrames++;
 		if (currentTime - lastTime >= 1.0) {
+			int totalChunks = (int)w->chunkManager->chunks.size();
 			std::stringstream ss;
-			ss << "POGL" << " [" << nbFrames << " FPS]";
-
+			ss << "POGL  |  " << nbFrames << " FPS"
+			   << "  |  " << std::fixed << std::setprecision(1) << frameTime << " ms"
+			   << "  |  chunks: " << chunksRendered << "/" << totalChunks;
 			glfwSetWindowTitle(window, ss.str().c_str());
 			nbFrames = 0;
 			lastTime += 1.0;
@@ -315,7 +396,7 @@ int main(void) {
         TextureArray::bind();
         w->update(camera.getPosition());
         glm::mat4 viewProjection = projection * camera.getViewMatrix();
-        w->render(shaderProgram, viewProjection);
+        chunksRendered = w->render(shaderProgram, viewProjection);
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
@@ -323,6 +404,7 @@ int main(void) {
 
 	shaderProgram.destroy();
 	} // world and shaderProgram destroyed here, while GL context is still valid
+	cleanup:
 	TextureArray::destroy();
 
 	glfwDestroyWindow(window);
