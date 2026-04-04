@@ -6,6 +6,8 @@
 #include <glm/vec3.hpp>
 #include "chunk.h"
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 struct Vec2Hash {
     std::size_t operator()(const glm::ivec2& vec) const {

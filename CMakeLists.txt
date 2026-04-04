@@ -10,6 +10,7 @@ endif()
 
 find_package(OpenGL REQUIRED)
 find_package(glfw3 3.3 REQUIRED)
+find_package(Threads REQUIRED)
 
 
 add_executable(minecraft
@@ -23,4 +24,5 @@ target_compile_options(minecraft PRIVATE $<$<CONFIG:Release>:-O3 -march=native>)
 target_link_libraries(minecraft
         ${OPENGL_gl_LIBRARY}
         glfw
+        Threads::Threads
         )
