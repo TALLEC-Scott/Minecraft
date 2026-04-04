@@ -66,9 +66,10 @@ public:
     Chunk(const Chunk&) = delete;
     Chunk& operator=(const Chunk&) = delete;
 
-    void buildMesh();
-    std::vector<Cube*> render(Shader shaderProgram);
-    void renderWater(Shader shaderProgram);
+    void buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
+    std::vector<Cube*> render(Shader shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
+    void renderWater(Shader shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
+    void markDirty() { meshDirty = true; }
     void destroy();
     void destroyBlock(int x, int y, int z);
 

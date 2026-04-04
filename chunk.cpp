@@ -101,7 +101,19 @@ Cube* Chunk::getBlock(int i, int j, int k) {
     return &blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k];
 }
 
-void Chunk::buildMesh() {
+// Returns the block at local (i,j,k), crossing into a neighbor chunk if needed.
+// Returns nullptr when out of vertical bounds or when the neighbor chunk isn't loaded.
+static Cube* getBlockCross(Chunk* self, int i, int j, int k,
+                            Chunk* nx_neg, Chunk* nx_pos,
+                            Chunk* nz_neg, Chunk* nz_pos) {
+    if (i < 0)           return nx_neg ? nx_neg->getBlock(CHUNK_SIZE - 1, j, k) : nullptr;
+    if (i >= CHUNK_SIZE) return nx_pos ? nx_pos->getBlock(0,              j, k) : nullptr;
+    if (k < 0)           return nz_neg ? nz_neg->getBlock(i, j, CHUNK_SIZE - 1) : nullptr;
+    if (k >= CHUNK_SIZE) return nz_pos ? nz_pos->getBlock(i, j, 0)              : nullptr;
+    return self->getBlock(i, j, k);
+}
+
+void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
     // Vertex layout: pos(3) + texcoord(2) + normal(3) + texLayer(1) = 9 floats
     // Worst case: all blocks exposed on all 6 faces
     constexpr int MAX_BLOCKS = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
@@ -136,7 +148,7 @@ void Chunk::buildMesh() {
                     int ni = i + FACE_NEIGHBORS[f][0];
                     int nj = j + FACE_NEIGHBORS[f][1];
                     int nk = k + FACE_NEIGHBORS[f][2];
-                    Cube* nb = getBlock(ni, nj, nk);
+                    Cube* nb = getBlockCross(this, ni, nj, nk, nx_neg, nx_pos, nz_neg, nz_pos);
                     block_type nbType = nb ? nb->getType() : AIR;
 
                     bool expose = (nb == nullptr)
@@ -216,8 +228,8 @@ void Chunk::buildMesh() {
     meshDirty = false;
 }
 
-std::vector<Cube*> Chunk::render(Shader shaderProgram) {
-    if (meshDirty) buildMesh();
+std::vector<Cube*> Chunk::render(Shader shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
+    if (meshDirty) buildMesh(nx_neg, nx_pos, nz_neg, nz_pos);
 
     if (opaqueIndexCount > 0) {
         glBindVertexArray(chunkVAO);
@@ -227,7 +239,7 @@ std::vector<Cube*> Chunk::render(Shader shaderProgram) {
     return {};
 }
 
-void Chunk::renderWater(Shader shaderProgram) {
+void Chunk::renderWater(Shader shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
     if (waterIndexCount > 0) {
         glBindVertexArray(chunkVAO);
         glDrawElements(GL_TRIANGLES, waterIndexCount, GL_UNSIGNED_INT,

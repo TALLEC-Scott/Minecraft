@@ -4,6 +4,7 @@
 
 #include "ChunkManager.h"
 #include "world.h"
+#include <initializer_list>
 
 static constexpr int MAX_CHUNKS_PER_FRAME = 10;
 
@@ -50,6 +51,11 @@ void ChunkManager::unloadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
 void ChunkManager::generateChunk(int x, int z) {
     Chunk chunk(x, z, terrainGenerator);
     chunks[glm::ivec2(x, z)] = std::move(chunk);
+    // Invalidate neighbors so they rebuild without their now-internal border faces
+    for (auto& [dx, dz] : std::initializer_list<std::pair<int,int>>{{-1,0},{1,0},{0,-1},{0,1}}) {
+        auto it = chunks.find(glm::ivec2(x + dx, z + dz));
+        if (it != chunks.end()) it->second.markDirty();
+    }
 }
 
 Chunk *ChunkManager::getChunk(int chunkX, int chunkZ) {
