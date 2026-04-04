@@ -315,7 +315,8 @@ int main(void) {
 
         TextureArray::bind();
         w->update(camera.getPosition());
-        w->render(shaderProgram);
+        glm::mat4 viewProjection = projection * camera.getViewMatrix();
+        w->render(shaderProgram, viewProjection);
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
