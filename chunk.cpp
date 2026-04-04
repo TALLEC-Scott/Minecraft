@@ -61,7 +61,6 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
                 this->heights[i][k] = height;
 
                 Cube* block = &blocks[i * CHUNK_SIZE * CHUNK_SIZE + j * CHUNK_SIZE + k];
-                block->setPosition(i, j, k);
 
                 int limit_grass = (int)(0.95 * height) < 1 ? height - 1 : (int)(0.95 * height);
                 int limit_stone = (int)(0.7 * height) < 1 ? height - 2 : (int)(0.7 * height);
@@ -117,7 +116,7 @@ void Chunk::buildMesh() {
 
                 bool isWater = (type == WATER);
                 float layer = static_cast<float>(TextureArray::layerForType(type));
-                glm::vec3 pos = block->getPosition();
+                glm::vec3 pos(chunkX * CHUNK_SIZE + i, j, chunkY * CHUNK_SIZE + k);
 
                 for (int f = 0; f < 6; f++) {
                     // Water only renders its top face
@@ -226,11 +225,6 @@ void Chunk::renderWater(Shader shaderProgram) {
     }
 }
 
-void Chunk::translate(GLfloat x, GLfloat y, GLfloat z) {
-    for (int i = 0; i < CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE; i++)
-        blocks[i].translate(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
-    meshDirty = true;
-}
 
 void Chunk::destroyBlock(int x, int y, int z) {
     blocks[x * CHUNK_SIZE * CHUNK_SIZE + y * CHUNK_SIZE + z].setType(AIR);
