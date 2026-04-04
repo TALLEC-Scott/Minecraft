@@ -11,6 +11,7 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <unordered_map>
 
 class Shader {
 	public:
@@ -32,6 +33,10 @@ class Shader {
 		void setMat2(const std::string& name, const glm::mat2& matrix) const;
 		void setMat3(const std::string& name, const glm::mat3& matrix) const;
 		void setMat4(const std::string& name, const glm::mat4& matrix) const;
+
+	private:
+		mutable std::unordered_map<std::string, GLint> uniformCache;
+		GLint loc(const std::string& name) const;
 };
 
 #endif
