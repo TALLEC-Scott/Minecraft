@@ -269,8 +269,8 @@ int main(int argc, char* argv[]) {
 
     // Benchmark mode: fixed camera, 300 warm-up + 300 measured frames, write results to file
     if (benchmarkMode) {
-        constexpr int WARMUP_FRAMES  = 300;
-        constexpr int MEASURE_FRAMES = 300;
+        constexpr int WARMUP_FRAMES  = 600;
+        constexpr int MEASURE_FRAMES = 600;
         std::vector<double> frameTimes;
         frameTimes.reserve(MEASURE_FRAMES);
 

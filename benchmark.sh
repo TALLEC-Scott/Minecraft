@@ -13,7 +13,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-O3 -march=native" 
 make -C build -j$(nproc) > /dev/null 2>&1
 echo "Build done."
 
-echo "Running benchmark (300 warmup + 300 measured frames)..."
+echo "Running benchmark (600 warmup + 600 measured frames)..."
 ./build/minecraft --benchmark
 
 # Display results
