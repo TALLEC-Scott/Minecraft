@@ -1,14 +1,14 @@
 #version 330 core
 
 layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec3 aCol;
-layout (location = 2) in vec2 aTexCoord;
-layout (location = 3) in vec3 aNormal;
+layout (location = 1) in vec2 aTexCoord;
+layout (location = 2) in vec3 aNormal;
+layout (location = 3) in float aTexLayer;
 
-out vec3 ourColor;
 out vec2 TexCoord;
 out vec3 Normal;
 out vec3 FragPos;
+out float texLayer;
 
 uniform vec2 windowSize;
 
@@ -16,21 +16,12 @@ uniform mat4 projection;
 uniform mat4 view;
 uniform mat4 model;
 
-uniform vec3 translation;
-
 void main() {
-    ourColor = aCol;
     TexCoord = aTexCoord;
+    texLayer = aTexLayer;
 
-    vec3 translatedPos = aPos + translation;
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
 
-    gl_Position = projection * view * model * vec4(translatedPos, 1.0);
-
-
-    // Calculate the position in world space for use in the fragment shader
-    FragPos = vec3(model * vec4(translatedPos, 1.0));
-
-    // Calculate the transformed normal for use in the fragment shader
-    Normal = mat3(transpose(inverse(model))) * aNormal + translation;;
-
+    FragPos = vec3(model * vec4(aPos, 1.0));
+    Normal = mat3(transpose(inverse(model))) * aNormal;
 }
