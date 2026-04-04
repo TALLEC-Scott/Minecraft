@@ -70,7 +70,6 @@ public:
     std::vector<Cube*> render(Shader shaderProgram);
     void renderWater(Shader shaderProgram);
     void destroy();
-    void translate(GLfloat x, GLfloat y, GLfloat z);
     void destroyBlock(int x, int y, int z);
 
     int getLocalHeight(int x, int y);
