@@ -678,6 +678,7 @@ void Chunk::renderWater(const Shader& /*shaderProgram*/, Chunk* /*nx_neg*/, Chun
 
 void Chunk::destroyBlock(int x, int y, int z) {
     blocks[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].setType(AIR);
+    computeSkyLight(); // recompute — broken block may expose new areas to light
     meshDirty = true;
 }
 
