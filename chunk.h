@@ -17,7 +17,7 @@ class Chunk {
 public:
     Chunk()
     {
-        blocks = new Cube[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
+        blocks = new Cube[CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
         chunkX = -1;
         chunkY = -1;
     }
