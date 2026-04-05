@@ -281,7 +281,7 @@ int main(int argc, char* argv[]) {
 
 	TextureArray::initialize();
 	{
-	Shader shaderProgram("./Shaders/vert.shd", "./Shaders/frag.shd");
+	Shader shaderProgram("assets/Shaders/vert.shd", "assets/Shaders/frag.shd");
 	World world = World();
 	w = &world;
 
@@ -312,6 +312,28 @@ int main(int argc, char* argv[]) {
 	glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, SUN_STRIDE, (void*)(9*sizeof(float)));
 	glEnableVertexAttribArray(4);
 	glBindVertexArray(0);
+
+	// Wireframe highlight cube (12 edges = 24 line vertices)
+	GLuint highlightVAO, highlightVBO;
+	glGenVertexArrays(1, &highlightVAO);
+	glGenBuffers(1, &highlightVBO);
+	glBindVertexArray(highlightVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, highlightVBO);
+	glBufferData(GL_ARRAY_BUFFER, 24 * 10 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+	constexpr int HL_STRIDE = 10 * sizeof(float);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, HL_STRIDE, (void*)0);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, HL_STRIDE, (void*)(3*sizeof(float)));
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, HL_STRIDE, (void*)(5*sizeof(float)));
+	glEnableVertexAttribArray(2);
+	glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, HL_STRIDE, (void*)(8*sizeof(float)));
+	glEnableVertexAttribArray(3);
+	glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, HL_STRIDE, (void*)(9*sizeof(float)));
+	glEnableVertexAttribArray(4);
+	glBindVertexArray(0);
+	bool hasHighlight = false;
+	glm::ivec3 highlightBlock(0);
 
 	double lastTime = glfwGetTime();
 	double lastFrameTime = lastTime;
@@ -461,11 +483,10 @@ int main(int argc, char* argv[]) {
 		glm::vec2 windowSize = glm::vec2(windowWidth, windowHeight);
 		shaderProgram.setVec2("windowSize", windowSize);
 
-		glm::vec3 targetPosition = camera.getTargetPosition();
-		int targetBlockX = static_cast<int>(std::round(targetPosition.x));
-		int targetBlockY = static_cast<int>(std::round(targetPosition.y));
-		int targetBlockZ = static_cast<int>(std::round(targetPosition.z));
-		targeted = glm::ivec3(targetBlockX, targetBlockY, targetBlockZ);
+		// Raycast to find targeted block
+		glm::vec3 camFront = glm::normalize(camera.getTargetPosition() - cameraPos);
+		hasHighlight = w->raycast(cameraPos, camFront, 8.0f, highlightBlock);
+		targeted = highlightBlock;
 
         TextureArray::bind();
         w->update(camera.getPosition());
@@ -511,6 +532,50 @@ int main(int argc, char* argv[]) {
         }
 
         chunksRendered = w->render(shaderProgram, viewProjection, camera.getPosition());
+
+        // Wireframe block highlight
+        if (hasHighlight) {
+            float x = (float)highlightBlock.x;
+            float y = (float)highlightBlock.y;
+            float z = (float)highlightBlock.z;
+            // Slightly expanded cube to avoid z-fighting (0.502 instead of 0.5)
+            float e = 0.502f;
+            // 12 edges × 2 vertices = 24 vertices, each 10 floats
+            // Using texture layer 0 (none) and ao=1, normal doesn't matter for lines
+            float hlVerts[24 * 10];
+            int vi = 0;
+            auto addVert = [&](float vx, float vy, float vz) {
+                hlVerts[vi++] = vx; hlVerts[vi++] = vy; hlVerts[vi++] = vz;
+                hlVerts[vi++] = 0; hlVerts[vi++] = 0; // uv
+                hlVerts[vi++] = 0; hlVerts[vi++] = 0; hlVerts[vi++] = 0; // normal
+                hlVerts[vi++] = 0; // layer
+                hlVerts[vi++] = 1; // ao
+            };
+            // 8 corners
+            float cx[8]={x-e,x-e,x+e,x+e,x-e,x-e,x+e,x+e};
+            float cy[8]={y-e,y+e,y+e,y-e,y-e,y+e,y+e,y-e};
+            float cz[8]={z-e,z-e,z-e,z-e,z+e,z+e,z+e,z+e};
+            // 12 edges: bottom(0-1,1-2,2-3,3-0), top(4-5,5-6,6-7,7-4), verticals(0-4,1-5,2-6,3-7)
+            int edges[12][2]={{0,1},{1,2},{2,3},{3,0},{4,5},{5,6},{6,7},{7,4},{0,4},{1,5},{2,6},{3,7}};
+            for (auto& edge : edges) {
+                addVert(cx[edge[0]], cy[edge[0]], cz[edge[0]]);
+                addVert(cx[edge[1]], cy[edge[1]], cz[edge[1]]);
+            }
+
+            glBindBuffer(GL_ARRAY_BUFFER, highlightVBO);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(hlVerts), hlVerts);
+
+            shaderProgram.setFloat("emissive", 1.0f);
+            glDisable(GL_CULL_FACE);
+            glLineWidth(2.0f);
+
+            glBindVertexArray(highlightVAO);
+            glDrawArrays(GL_LINES, 0, 24);
+            glBindVertexArray(0);
+
+            glEnable(GL_CULL_FACE);
+            shaderProgram.setFloat("emissive", 0.0f);
+        }
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();

@@ -131,3 +131,60 @@ int World::render(Shader shaderProgram, glm::mat4 viewProjection, glm::vec3 came
 void World::update(glm::vec3 cameraPosition) const {
     this->chunkManager->update(cameraPosition);
 }
+
+bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::ivec3& hitPos) const {
+    // DDA voxel traversal
+    direction = glm::normalize(direction);
+    glm::ivec3 pos = glm::ivec3(std::floor(origin.x), std::floor(origin.y), std::floor(origin.z));
+    glm::ivec3 step;
+    glm::vec3 tMax, tDelta;
+
+    for (int i = 0; i < 3; i++) {
+        if (direction[i] > 0) {
+            step[i] = 1;
+            tMax[i] = ((pos[i] + 1) - origin[i]) / direction[i];
+        } else if (direction[i] < 0) {
+            step[i] = -1;
+            tMax[i] = (pos[i] - origin[i]) / direction[i];
+        } else {
+            step[i] = 0;
+            tMax[i] = 1e30f;
+        }
+        tDelta[i] = (direction[i] != 0) ? std::abs(1.0f / direction[i]) : 1e30f;
+    }
+
+    float dist = 0;
+    while (dist < maxDist) {
+        // Check current block
+        if (pos.y >= 0 && pos.y < CHUNK_HEIGHT) {
+            int chunkX = (pos.x >= 0) ? pos.x / CHUNK_SIZE : (pos.x - CHUNK_SIZE + 1) / CHUNK_SIZE;
+            int chunkZ = (pos.z >= 0) ? pos.z / CHUNK_SIZE : (pos.z - CHUNK_SIZE + 1) / CHUNK_SIZE;
+            Chunk* chunk = chunkManager->getChunk(chunkX, chunkZ);
+            if (chunk) {
+                int lx = pos.x - chunkX * CHUNK_SIZE;
+                int lz = pos.z - chunkZ * CHUNK_SIZE;
+                Cube* block = chunk->getBlock(lx, pos.y, lz);
+                if (block && block->getType() != AIR && block->getType() != WATER) {
+                    hitPos = pos;
+                    return true;
+                }
+            }
+        }
+
+        // Step to next voxel boundary
+        if (tMax.x < tMax.y && tMax.x < tMax.z) {
+            dist = tMax.x;
+            tMax.x += tDelta.x;
+            pos.x += step.x;
+        } else if (tMax.y < tMax.z) {
+            dist = tMax.y;
+            tMax.y += tDelta.y;
+            pos.y += step.y;
+        } else {
+            dist = tMax.z;
+            tMax.z += tDelta.z;
+            pos.z += step.z;
+        }
+    }
+    return false;
+}

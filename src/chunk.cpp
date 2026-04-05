@@ -61,9 +61,10 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
             int globalX = chunkX * CHUNK_SIZE + i;
             int globalZ = chunkY * CHUNK_SIZE + k;
 
-            int height = terrain.getHeight(globalX, globalZ);
+            Biome biome;
+            int height = terrain.getHeightAndBiome(globalX, globalZ, biome);
             this->heights[i][k] = height;
-            Biome biome = terrain.getBiome(globalX, globalZ);
+            this->biomes[i][k] = biome;
             const BiomeParams& bp = terrain.getBiomeParams(biome);
 
             int limit_grass = std::max(1, (int)(0.95 * height));
@@ -99,24 +100,24 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
     }
 
     // --- Shore post-pass: convert blocks adjacent to water ---
+    // Water only exists at j <= WATER_LEVEL, so only check blocks up to WATER_LEVEL+1
     for (int i = 0; i < CHUNK_SIZE; i++) {
-        for (int j = 0; j < CHUNK_HEIGHT; j++) {
-            for (int k = 0; k < CHUNK_SIZE; k++) {
+        block_type shoreBlock = (biomes[i][0] == BIOME_TUNDRA) ? GRAVEL : SAND; // approx per-row
+        for (int k = 0; k < CHUNK_SIZE; k++) {
+            if (biomes[i][k] == BIOME_TUNDRA) shoreBlock = GRAVEL;
+            else shoreBlock = SAND;
+
+            for (int j = 0; j <= WATER_LEVEL + 1 && j < CHUNK_HEIGHT; j++) {
                 Cube* block = getBlock(i, j, k);
                 block_type bt = block->getType();
                 if (bt != DIRT && bt != GRASS && bt != STONE && bt != GRAVEL) continue;
 
-                int globalX = chunkX * CHUNK_SIZE + i;
-                int globalZ = chunkY * CHUNK_SIZE + k;
-                Biome biome = terrain.getBiome(globalX, globalZ);
-                block_type shoreBlock = (biome == BIOME_TUNDRA) ? GRAVEL : SAND;
-
-                bool underwater = false;
-                for (int y = j + 1; y <= WATER_LEVEL && y < CHUNK_HEIGHT; y++) {
-                    Cube* above = getBlock(i, y, k);
-                    if (above && above->getType() == WATER) { underwater = true; break; }
+                // Check if underwater (any water block above in this column)
+                if (j < WATER_LEVEL) {
+                    Cube* above = getBlock(i, j + 1, k);
+                    if (above && above->getType() == WATER) { block->setType(shoreBlock); continue; }
                 }
-                if (underwater) { block->setType(shoreBlock); continue; }
+                // Check 6 neighbors for water adjacency
                 static const int dirs[6][3] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
                 for (auto& d : dirs) {
                     Cube* nb = getBlock(i+d[0], j+d[1], k+d[2]);
@@ -211,6 +212,30 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
         if (crown && crown->getType() == AIR) crown->setType(LEAVES);
     }
 
+    // --- Cactus placement in desert biomes ---
+    std::uniform_int_distribution<int> cactusDist(2, 4); // height 2-4
+    for (int t = 0; t < 3; t++) {
+        int cx = posDist(rng);
+        int cz = posDist(rng);
+        int roll = chanceDist(rng);
+        if (roll >= 30) continue; // 30% chance
+
+        if (biomes[cx][cz] != BIOME_DESERT) continue;
+
+        int surface = heights[cx][cz];
+        if (surface <= WATER_LEVEL) continue;
+        int cactusH = cactusDist(rng);
+        if (surface + cactusH >= CHUNK_HEIGHT) continue;
+
+        Cube* surfBlock = getBlock(cx, surface, cz);
+        if (!surfBlock || surfBlock->getType() != SAND) continue;
+
+        for (int y = surface + 1; y <= surface + cactusH; y++) {
+            Cube* b = getBlock(cx, y, cz);
+            if (b && b->getType() == AIR) b->setType(CACTUS);
+        }
+    }
+
     // Compute maxSolidY: highest non-AIR block (scan top-down for speed)
     maxSolidY = 0;
     for (int j = CHUNK_HEIGHT - 1; j >= 0; j--) {
@@ -251,6 +276,32 @@ static bool isOpaqueCross(Chunk* self, int i, int j, int k,
 
 void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
     double _buildStart = glfwGetTime();
+
+    // Precompute opacity cache with 1-block padding for fast AO lookups.
+    // Indexed as opaq[x+1][y][z+1] where x,z in [-1..CHUNK_SIZE], y in [0..maxSolidY+1]
+    int opaqueH = std::min(maxSolidY + 2, (int)CHUNK_HEIGHT);
+    constexpr int OX = CHUNK_SIZE + 2, OZ = CHUNK_SIZE + 2;
+    std::vector<uint8_t> opaq(OX * opaqueH * OZ, 0);
+    auto oIdx = [&](int x, int y, int z) -> int { return (x+1) * opaqueH * OZ + y * OZ + (z+1); };
+
+    // Fill interior
+    for (int x = 0; x < CHUNK_SIZE; x++)
+        for (int y = 0; y < opaqueH; y++)
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                block_type t = blocks[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].getType();
+                opaq[oIdx(x,y,z)] = (t != AIR && t != WATER) ? 1 : 0;
+            }
+    // Fill borders from neighbors
+    for (int y = 0; y < opaqueH; y++)
+        for (int z = 0; z < CHUNK_SIZE; z++) {
+            if (nx_neg) { block_type t = nx_neg->getBlock(CHUNK_SIZE-1,y,z)->getType(); opaq[oIdx(-1,y,z)] = (t!=AIR&&t!=WATER)?1:0; }
+            if (nx_pos) { block_type t = nx_pos->getBlock(0,y,z)->getType(); opaq[oIdx(CHUNK_SIZE,y,z)] = (t!=AIR&&t!=WATER)?1:0; }
+        }
+    for (int y = 0; y < opaqueH; y++)
+        for (int x = 0; x < CHUNK_SIZE; x++) {
+            if (nz_neg) { block_type t = nz_neg->getBlock(x,y,CHUNK_SIZE-1)->getType(); opaq[oIdx(x,y,-1)] = (t!=AIR&&t!=WATER)?1:0; }
+            if (nz_pos) { block_type t = nz_pos->getBlock(x,y,0)->getType(); opaq[oIdx(x,y,CHUNK_SIZE)] = (t!=AIR&&t!=WATER)?1:0; }
+        }
 
     // Greedy meshing: merge coplanar same-type adjacent faces into larger quads.
     // Vertex layout: pos(3) + texcoord(2) + normal(3) + texLayer(1) + ao(1) = 10 floats/vertex.
@@ -369,18 +420,15 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
                     float ao[4];
                     for (int vi = 0; vi < 4; vi++) {
                         int bc[3]; bc[fd.d] = d; bc[fd.u] = bu[vi]; bc[fd.v] = bv[vi];
-                        // Normal direction offset
                         int n[3] = {0,0,0}; n[fd.d] = fd.d_sign;
-                        // Side offsets along u and v
                         int su[3] = {0,0,0}; su[fd.u] = cu[vi];
                         int sv[3] = {0,0,0}; sv[fd.v] = cv[vi];
 
-                        int s1 = isOpaqueCross(this, bc[0]+n[0]+su[0], bc[1]+n[1]+su[1], bc[2]+n[2]+su[2],
-                                               nx_neg, nx_pos, nz_neg, nz_pos);
-                        int s2 = isOpaqueCross(this, bc[0]+n[0]+sv[0], bc[1]+n[1]+sv[1], bc[2]+n[2]+sv[2],
-                                               nx_neg, nx_pos, nz_neg, nz_pos);
-                        int cr = isOpaqueCross(this, bc[0]+n[0]+su[0]+sv[0], bc[1]+n[1]+su[1]+sv[1], bc[2]+n[2]+su[2]+sv[2],
-                                               nx_neg, nx_pos, nz_neg, nz_pos);
+                        // Fast AO lookup using precomputed opacity cache
+                        int px = bc[0]+n[0], py = bc[1]+n[1], pz = bc[2]+n[2];
+                        int s1 = (py+su[1] >= 0 && py+su[1] < opaqueH) ? opaq[oIdx(px+su[0], py+su[1], pz+su[2])] : 0;
+                        int s2 = (py+sv[1] >= 0 && py+sv[1] < opaqueH) ? opaq[oIdx(px+sv[0], py+sv[1], pz+sv[2])] : 0;
+                        int cr = (py+su[1]+sv[1] >= 0 && py+su[1]+sv[1] < opaqueH) ? opaq[oIdx(px+su[0]+sv[0], py+su[1]+sv[1], pz+su[2]+sv[2])] : 0;
                         int aoVal = (s1 && s2) ? 0 : 3 - (s1 + s2 + cr);
                         ao[vi] = AO_CURVE[aoVal];
                     }

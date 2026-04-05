@@ -6,23 +6,24 @@ GLuint TextureArray::id = 0;
 
 // Must match block_type enum order: AIR, GRASS, DIRT, STONE, COAL_ORE, BEDROCK, WATER, SAND, GLOWSTONE
 static const char* TEXTURE_PATHS[] = {
-    "./Textures/none.png",
-    "./Textures/grass.png",
-    "./Textures/dirt.png",
-    "./Textures/stone.png",
-    "./Textures/coal_ore.png",
-    "./Textures/bedrock.png",
-    "./Textures/water.png",
-    "./Textures/sand.png",
-    "./Textures/glowstone.png",
-    "./Textures/wood.png",
-    "./Textures/leaves.png",
-    "./Textures/grass_side.png",
-    "./Textures/sun.png",
-    "./Textures/snow.png",
-    "./Textures/gravel.png",
+    "assets/Textures/none.png",
+    "assets/Textures/grass.png",
+    "assets/Textures/dirt.png",
+    "assets/Textures/stone.png",
+    "assets/Textures/coal_ore.png",
+    "assets/Textures/bedrock.png",
+    "assets/Textures/water.png",
+    "assets/Textures/sand.png",
+    "assets/Textures/glowstone.png",
+    "assets/Textures/wood.png",
+    "assets/Textures/leaves.png",
+    "assets/Textures/grass_side.png",
+    "assets/Textures/sun.png",
+    "assets/Textures/snow.png",
+    "assets/Textures/gravel.png",
+    "assets/Textures/cactus.png",
 };
-static constexpr int NUM_LAYERS = 15;
+static constexpr int NUM_LAYERS = 16;
 
 void TextureArray::initialize() {
     stbi_set_flip_vertically_on_load(true);

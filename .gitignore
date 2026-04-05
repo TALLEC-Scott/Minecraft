@@ -1,8 +1,24 @@
-.vs/
-x64
-benchmark_results.txt
-benchmark_history/
+# Build
 build/
 build_asan/
 build_debug/
-*.md
+
+# IDE
+.vs/
+x64/
+
+CLAUDE.md
+AGENT.md
+QWEN.md
+GEMINI.md
+
+# Generated
+benchmark_results.txt
+benchmark_history/
+profile_results.txt
+terrain_map*.png
+
+# Tool binaries
+scripts/mapgen
+scripts/check_biomes
+mapgen
