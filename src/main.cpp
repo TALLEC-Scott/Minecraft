@@ -24,6 +24,7 @@
 #include "world.h"
 #include "ChunkManager.h"
 #include "texture_array.h"
+#include "player.h"
 
 #define WINDOW_WIDTH 1000
 #define WINDOW_HEIGHT 1000
@@ -31,9 +32,7 @@
 int windowWidth = WINDOW_WIDTH;
 int windowHeight = WINDOW_HEIGHT;
 
-Camera camera = Camera();
-glm::ivec3 targeted = glm::ivec3(0);
-
+Player player;
 World* w = nullptr;
 
 bool xKeyPressed = false;
@@ -44,17 +43,6 @@ bool fullscreenMode = false;
 
 bool doDaylightCycle = true;
 bool previousDaylight = false;
-
-// Double-tap space detection
-bool spaceWasPressed = false;
-double lastSpaceTap = 0.0;
-constexpr double DOUBLE_TAP_TIME = 0.3; // seconds
-
-// Punch animation state
-bool isPunching = false;
-double punchStartTime = 0.0;
-constexpr double PUNCH_DURATION = 0.3; // seconds
-bool leftClickHeld = false;
 
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
@@ -67,40 +55,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 }
 
 void cursorPositionCallback(GLFWwindow* window, double xPos, double yPos) {
-    static double lastX = WINDOW_WIDTH / 2;
-    static double lastY = WINDOW_HEIGHT / 2;
-    static bool firstMouse = true;
-    static float yaw = -90.0f;
-    static float pitch = 0.0f;
-
-    if (firstMouse) {
-        lastX = xPos;
-        lastY = yPos;
-        firstMouse = false;
-    }
-
-    float sensitivity = 0.1f;
-    float xOffset = xPos - lastX;
-    float yOffset = lastY - yPos;
-    lastX = xPos;
-    lastY = yPos;
-
-    xOffset *= sensitivity;
-    yOffset *= sensitivity;
-
-    yaw += xOffset;
-    pitch += yOffset;
-
-    if (pitch > 89.0f)
-        pitch = 89.0f;
-    if (pitch < -89.0f)
-        pitch = -89.0f;
-
-    glm::vec3 direction;
-    direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-    direction.y = sin(glm::radians(pitch));
-    direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-    camera.changeDirection(direction);
+    player.updateMouseLook(xPos, yPos, windowWidth, windowHeight);
 }
 
 void setSkyColor(float angle) {
@@ -149,47 +104,8 @@ void processInput(GLFWwindow* window) {
 		previousDaylight = false;
 	}
 
-	/** Camera moves **/
-	// Forward
-	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-		camera.forward();
-	// Back
-	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-		camera.back();
-	// Left
-	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-		camera.left();
-	// Right
-	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-		camera.right();
-	// Space: double-tap toggles walk/fly, single press = jump (walk) or fly up (fly)
-	{
-		bool spaceDown = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
-		if (spaceDown && !spaceWasPressed) {
-			double now = glfwGetTime();
-			if (now - lastSpaceTap < DOUBLE_TAP_TIME) {
-				camera.toggleWalkMode();
-				lastSpaceTap = 0; // prevent triple-tap
-			} else {
-				lastSpaceTap = now;
-				if (camera.isWalkMode())
-					camera.jump();
-				else
-					camera.up();
-			}
-		} else if (spaceDown && !camera.isWalkMode()) {
-			camera.up(); // hold space to fly up
-		}
-		spaceWasPressed = spaceDown;
-	}
-	// Down (fly mode only)
-	if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
-		camera.down();
-	// Run
-	if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS || (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS))
-		camera.speedUp();
-	else
-		camera.resetSpeed();
+	// Player input
+	player.handleInput(window, w);
 
 	// Enable/Disable fullscreen mode
 	bool f12KeyDown = glfwGetKey(window, GLFW_KEY_F12) == GLFW_PRESS;
@@ -208,14 +124,6 @@ void processInput(GLFWwindow* window) {
 	}
 	f12KeyPressed = f12KeyDown;
 
-	// Left click: punch animation + break block
-	bool leftDown = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
-	if (leftDown && !leftClickHeld && w != nullptr) {
-		isPunching = true;
-		punchStartTime = glfwGetTime();
-		w->destroyBlock(targeted);
-	}
-	leftClickHeld = leftDown;
 }
 
 int main(int argc, char* argv[]) {
@@ -409,8 +317,6 @@ int main(int argc, char* argv[]) {
 	glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, HL_STRIDE, (void*)(9*sizeof(float)));
 	glEnableVertexAttribArray(4);
 	glBindVertexArray(0);
-	bool hasHighlight = false;
-	glm::ivec3 highlightBlock(0);
 
 	// First-person arm mesh (a simple box)
 	GLuint armVAO, armVBO, armEBO;
@@ -508,12 +414,12 @@ int main(int argc, char* argv[]) {
             if (frame < WARMUP_FRAMES) {
                 // Phase 1 (warmup): spin 360° in place so surrounding chunks load
                 float angle = glm::radians((float)frame / WARMUP_FRAMES * 360.0f);
-                camera.changeDirection(glm::vec3(std::cos(angle), 0.0f, std::sin(angle)));
+                player.getCamera().changeDirection(glm::vec3(std::cos(angle), 0.0f, std::sin(angle)));
             } else {
                 // Phase 2 (measured): move forward at sprint speed, stay horizontal
-                camera.changeDirection(glm::vec3(1.0f, 0.0f, 0.0f));
-                camera.speedUp();
-                camera.forward();
+                player.getCamera().changeDirection(glm::vec3(1.0f, 0.0f, 0.0f));
+                player.getCamera().speedUp();
+                player.getCamera().forward();
             }
 
             setSkyColor(0.0f);
@@ -525,19 +431,19 @@ int main(int argc, char* argv[]) {
             shaderProgram.setVec3("lightColor", lightColor);
             shaderProgram.setMat4("projection", projection);
             shaderProgram.setMat4("model", glm::mat4(1.0f));
-            camera.defineLookAt(shaderProgram);
+            player.defineLookAt(shaderProgram);
 
             TextureArray::bind();
 
             if (measuring) profiler.beginUpdate();
-            w->update(camera.getPosition());
+            w->update(player.getPosition());
             if (measuring) profiler.endUpdate();
 
-            glm::mat4 vp = projection * camera.getViewMatrix();
+            glm::mat4 vp = projection * player.getViewMatrix();
 
             double t0 = glfwGetTime();
             if (measuring) profiler.beginRender();
-            w->render(shaderProgram, vp, camera.getPosition());
+            w->render(shaderProgram, vp, player.getPosition());
             if (measuring) profiler.endRender();
 
             if (measuring) profiler.beginSwap();
@@ -578,43 +484,8 @@ int main(int argc, char* argv[]) {
         setSkyColor(timeValue);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		// Walk mode: ground detection + collision
-		if (camera.isWalkMode()) {
-			glm::vec3 pos = camera.getPosition();
-
-			// Block check via context pointer (no static hack)
-			auto blockCheck = [](int bx, int by, int bz, void* ctx) -> bool {
-				auto* cm = static_cast<ChunkManager*>(ctx);
-				int cx = (bx >= 0) ? bx / CHUNK_SIZE : (bx - CHUNK_SIZE + 1) / CHUNK_SIZE;
-				int cz = (bz >= 0) ? bz / CHUNK_SIZE : (bz - CHUNK_SIZE + 1) / CHUNK_SIZE;
-				Chunk* chunk = cm->getChunk(cx, cz);
-				if (!chunk || by < 0 || by >= CHUNK_HEIGHT) return false;
-				Cube* b = chunk->getBlock(bx - cx * CHUNK_SIZE, by, bz - cz * CHUNK_SIZE);
-				return b && b->getType() != AIR && b->getType() != WATER;
-			};
-
-			int bx = (int)std::floor(pos.x);
-			int bz = (int)std::floor(pos.z);
-
-			// Find ground: pre-compute chunk once, scan column directly
-			int cx = (bx >= 0) ? bx / CHUNK_SIZE : (bx - CHUNK_SIZE + 1) / CHUNK_SIZE;
-			int cz = (bz >= 0) ? bz / CHUNK_SIZE : (bz - CHUNK_SIZE + 1) / CHUNK_SIZE;
-			int lx = bx - cx * CHUNK_SIZE;
-			int lz = bz - cz * CHUNK_SIZE;
-			Chunk* chunk = w->chunkManager->getChunk(cx, cz);
-			float groundY = 0;
-			if (chunk) {
-				for (int y = std::min((int)pos.y + 1, CHUNK_HEIGHT - 1); y >= 0; y--) {
-					Cube* b = chunk->getBlock(lx, y, lz);
-					if (b && b->getType() != AIR && b->getType() != WATER) {
-						groundY = (float)(y + 1);
-						break;
-					}
-				}
-			}
-
-			camera.update(groundY, blockCheck, w->chunkManager);
-		}
+		// Player physics + targeting
+		player.update(w);
 
 		double currentTime = glfwGetTime();
 		double frameTime = (currentTime - lastFrameTime) * 1000.0; // ms
@@ -634,7 +505,7 @@ int main(int argc, char* argv[]) {
 		processInput(window);
 		shaderProgram.use();
 
-		glm::vec3 cameraPos = camera.getPosition();
+		glm::vec3 cameraPos = player.getPosition();
 
         // Sun orbits east-west (X axis) overhead, centered on camera
         glm::vec3 lightPos(cameraPos.x + cos(timeValue) * radius,
@@ -643,7 +514,7 @@ int main(int argc, char* argv[]) {
         shaderProgram.setVec3("lightPos", lightPos);
 		shaderProgram.setVec3("lightColor", lightColor);
 
-		camera.defineLookAt(shaderProgram);
+		player.defineLookAt(shaderProgram);
 
 		glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 5000.0f);
 		shaderProgram.setMat4("projection", projection);
@@ -654,14 +525,11 @@ int main(int argc, char* argv[]) {
 		glm::vec2 windowSize = glm::vec2(windowWidth, windowHeight);
 		shaderProgram.setVec2("windowSize", windowSize);
 
-		// Raycast to find targeted block
-		glm::vec3 camFront = glm::normalize(camera.getTargetPosition() - cameraPos);
-		hasHighlight = w->raycast(cameraPos, camFront, 8.0f, highlightBlock);
-		targeted = highlightBlock;
+		// Targeting handled by player.update()
 
         TextureArray::bind();
-        w->update(camera.getPosition());
-        glm::mat4 viewProjection = projection * camera.getViewMatrix();
+        w->update(player.getPosition());
+        glm::mat4 viewProjection = projection * player.getViewMatrix();
 
         // Render sun billboard (before terrain, no depth write)
         constexpr float SUN_DISTANCE = 800.0f;
@@ -702,7 +570,7 @@ int main(int argc, char* argv[]) {
             shaderProgram.setFloat("emissive", 0.0f);
         }
 
-        chunksRendered = w->render(shaderProgram, viewProjection, camera.getPosition());
+        chunksRendered = w->render(shaderProgram, viewProjection, player.getPosition());
 
         // Clouds: precomputed grid translated to follow camera + drift
         if (cloudIndexCount > 0) {
@@ -739,7 +607,8 @@ int main(int argc, char* argv[]) {
         }
 
         // Wireframe block highlight
-        if (hasHighlight) {
+        if (player.hasTargetedBlock()) {
+            glm::ivec3 highlightBlock = player.getTargetedBlock();
             float x = (float)highlightBlock.x;
             float y = (float)highlightBlock.y;
             float z = (float)highlightBlock.z;
@@ -784,27 +653,7 @@ int main(int argc, char* argv[]) {
 
 		// First-person arm
 		{
-			// Update punch animation
-			double now = glfwGetTime();
-			if (isPunching && (now - punchStartTime) > PUNCH_DURATION)
-				isPunching = false;
-
-			// Compute swing angle
-			float swingAngle = 0.0f;
-			if (isPunching) {
-				float t = (float)((now - punchStartTime) / PUNCH_DURATION);
-				// Swing forward then back: sin curve
-				swingAngle = std::sin(t * 3.14159f) * -60.0f; // degrees
-			}
-
-			// Arm position in view space: bottom-right of screen
-			glm::mat4 armModel = glm::mat4(1.0f);
-			// Position relative to camera (in view space, so identity view)
-			armModel = glm::translate(armModel, glm::vec3(0.4f, -0.4f, -0.6f));
-			// Apply punch rotation (swing around X axis)
-			armModel = glm::rotate(armModel, glm::radians(swingAngle), glm::vec3(1, 0, 0));
-			// Slight tilt for natural look
-			armModel = glm::rotate(armModel, glm::radians(-10.0f), glm::vec3(0, 0, 1));
+			glm::mat4 armModel = player.getArmModelMatrix();
 
 			glClear(GL_DEPTH_BUFFER_BIT); // arm always on top
 			shaderProgram.setMat4("view", glm::mat4(1.0f)); // identity view (screen space)
@@ -820,7 +669,7 @@ int main(int argc, char* argv[]) {
 			shaderProgram.setFloat("emissive", 0.0f);
 			shaderProgram.setMat4("model", glm::mat4(1.0f));
 			// Restore view matrix for next frame
-			camera.defineLookAt(shaderProgram);
+			player.defineLookAt(shaderProgram);
 		}
 
 		glfwSwapBuffers(window);

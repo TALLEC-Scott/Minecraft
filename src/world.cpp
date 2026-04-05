@@ -2,6 +2,7 @@
 #include "profiler.h"
 #include <array>
 #include <algorithm>
+#include <cmath>
 
 // Extract 6 frustum planes from a combined projection*view matrix (Gribb-Hartmann).
 // Each plane is vec4(normal.xyz, distance). A point p is inside if dot(plane.xyz, p) + plane.w >= 0.
@@ -36,15 +37,18 @@ World::World() {
 }
 
 void World::destroyBlock(glm::vec3 position) const {
-    int chunkX = (int)position.x / CHUNK_SIZE;
-    int chunkZ = (int)position.z / CHUNK_SIZE;
+    int bx = (int)std::floor(position.x);
+    int by = (int)std::floor(position.y);
+    int bz = (int)std::floor(position.z);
+    if (by < 0 || by >= CHUNK_HEIGHT) return;
 
-    int x_chunk = (int)position.x % CHUNK_SIZE;
-    int y_chunk = (int)position.y % CHUNK_HEIGHT;
-    int z_chunk = (int)position.z % CHUNK_SIZE;
+    int chunkX = (bx >= 0) ? bx / CHUNK_SIZE : (bx - CHUNK_SIZE + 1) / CHUNK_SIZE;
+    int chunkZ = (bz >= 0) ? bz / CHUNK_SIZE : (bz - CHUNK_SIZE + 1) / CHUNK_SIZE;
+    int lx = bx - chunkX * CHUNK_SIZE;
+    int lz = bz - chunkZ * CHUNK_SIZE;
 
     auto chunk = this->chunkManager->getChunk(chunkX, chunkZ);
-    if (chunk) chunk->destroyBlock(x_chunk, y_chunk, z_chunk);
+    if (chunk) chunk->destroyBlock(lx, by, lz);
 }
 
 World::~World() {
