@@ -9,7 +9,7 @@
 
 class World {
 public:
-	World();
+	World(unsigned int seed = 0);
 
     //void render(Shader& shaderProgram);
 	void destroyBlock(glm::vec3 position) const;
