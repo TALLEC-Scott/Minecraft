@@ -247,7 +247,7 @@ int main(int argc, char* argv[]) {
 
 	glfwSetCursorPosCallback(window, cursorPositionCallback);
 
-	glfwSwapInterval(0); // Disable vsync for accurate benchmarking
+	if (benchmarkMode) glfwSwapInterval(0); // Disable vsync only for benchmarking
 
 	// Headless mode: create an FBO so rendering goes to an offscreen buffer
 	// instead of through the WSL2/D3D12 presentation pipeline.

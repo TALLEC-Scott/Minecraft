@@ -202,11 +202,20 @@ static Cube* getBlockCross(Chunk* self, int i, int j, int k,
     return self->getBlock(i, j, k);
 }
 
+// Check if block at (i,j,k) is opaque (solid, not air/water). Uses cross-chunk lookup.
+static bool isOpaqueCross(Chunk* self, int i, int j, int k,
+                          Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
+    Cube* b = getBlockCross(self, i, j, k, nx_neg, nx_pos, nz_neg, nz_pos);
+    if (!b) return false;
+    block_type t = b->getType();
+    return t != AIR && t != WATER;
+}
+
 void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
     double _buildStart = glfwGetTime();
 
     // Greedy meshing: merge coplanar same-type adjacent faces into larger quads.
-    // Vertex layout: pos(3) + texcoord(2) + normal(3) + texLayer(1) = 9 floats/vertex.
+    // Vertex layout: pos(3) + texcoord(2) + normal(3) + texLayer(1) + ao(1) = 10 floats/vertex.
 
     struct FaceDef {
         int d, u, v;              // axis indices for normal, first tangent, second tangent
@@ -307,6 +316,37 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
                         {0.f,0.f}, {0.f,(float)h}, {(float)w,(float)h}, {(float)w,0.f}
                     };
 
+                    // Per-vertex AO: check 3 corner neighbors per vertex
+                    // For each vertex, find the block at that corner and the
+                    // two side + one diagonal neighbor in the face's normal direction.
+                    static const float AO_CURVE[4] = {0.25f, 0.5f, 0.75f, 1.0f};
+                    int bu[4], bv[4], cu[4], cv[4];
+                    bu[0] = bu[1] = (fd.u_sign > 0) ? u : u + w - 1;
+                    bu[2] = bu[3] = (fd.u_sign > 0) ? u + w - 1 : u;
+                    bv[0] = bv[3] = (fd.v_sign > 0) ? v : v + h - 1;
+                    bv[1] = bv[2] = (fd.v_sign > 0) ? v + h - 1 : v;
+                    cu[0] = cu[1] = -fd.u_sign; cu[2] = cu[3] = fd.u_sign;
+                    cv[0] = cv[3] = -fd.v_sign; cv[1] = cv[2] = fd.v_sign;
+
+                    float ao[4];
+                    for (int vi = 0; vi < 4; vi++) {
+                        int bc[3]; bc[fd.d] = d; bc[fd.u] = bu[vi]; bc[fd.v] = bv[vi];
+                        // Normal direction offset
+                        int n[3] = {0,0,0}; n[fd.d] = fd.d_sign;
+                        // Side offsets along u and v
+                        int su[3] = {0,0,0}; su[fd.u] = cu[vi];
+                        int sv[3] = {0,0,0}; sv[fd.v] = cv[vi];
+
+                        int s1 = isOpaqueCross(this, bc[0]+n[0]+su[0], bc[1]+n[1]+su[1], bc[2]+n[2]+su[2],
+                                               nx_neg, nx_pos, nz_neg, nz_pos);
+                        int s2 = isOpaqueCross(this, bc[0]+n[0]+sv[0], bc[1]+n[1]+sv[1], bc[2]+n[2]+sv[2],
+                                               nx_neg, nx_pos, nz_neg, nz_pos);
+                        int cr = isOpaqueCross(this, bc[0]+n[0]+su[0]+sv[0], bc[1]+n[1]+su[1]+sv[1], bc[2]+n[2]+su[2]+sv[2],
+                                               nx_neg, nx_pos, nz_neg, nz_pos);
+                        int aoVal = (s1 && s2) ? 0 : 3 - (s1 + s2 + cr);
+                        ao[vi] = AO_CURVE[aoVal];
+                    }
+
                     bool isWater = (bt == (int)WATER);
                     auto& verts = isWater ? waterVerts : opaqueVerts;
                     auto& idx   = isWater ? waterIdx   : opaqueIdx;
@@ -322,6 +362,7 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
                         verts.push_back(norm.y);
                         verts.push_back(norm.z);
                         verts.push_back(layer);
+                        verts.push_back(ao[vi]);
                     }
                     idx.push_back(base); idx.push_back(base+1); idx.push_back(base+2);
                     idx.push_back(base+2); idx.push_back(base+3); idx.push_back(base);
@@ -361,19 +402,18 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, chunkEBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, allIdx.size() * sizeof(unsigned int), allIdx.data(), GL_DYNAMIC_DRAW);
 
-    constexpr int STRIDE = 9 * sizeof(float);
-    // layout 0: position (chunk-local, shader adds chunkOffset)
+    constexpr int STRIDE = 10 * sizeof(float);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, STRIDE, (void*)0);
     glEnableVertexAttribArray(0);
-    // layout 1: texcoord
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, STRIDE, (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
-    // layout 2: normal
     glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, STRIDE, (void*)(5 * sizeof(float)));
     glEnableVertexAttribArray(2);
-    // layout 3: texLayer
     glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(8 * sizeof(float)));
     glEnableVertexAttribArray(3);
+    // layout 4: ambient occlusion
+    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(9 * sizeof(float)));
+    glEnableVertexAttribArray(4);
 
     glBindVertexArray(0);
 
