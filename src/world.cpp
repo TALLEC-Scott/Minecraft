@@ -69,7 +69,7 @@ Cube* World::getBlock(int x, int y, int z) const {
     return res->getBlock(x - chunkX * CHUNK_SIZE, y, z - chunkZ * CHUNK_SIZE);
 }
 
-int World::render(Shader shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const {
+int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const {
     g_frame.meshBuildBudget = 8; // reset per frame
     auto planes = extractFrustumPlanes(viewProjection);
 

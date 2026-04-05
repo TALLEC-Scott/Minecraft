@@ -24,7 +24,7 @@ class Player {
     glm::vec3 getPosition() const { return camera.getPosition(); }
     glm::vec3 getFront() const { return camera.getFront(); }
     glm::mat4 getViewMatrix() const { return camera.getViewMatrix(); }
-    void defineLookAt(Shader shaderProgram) { camera.defineLookAt(shaderProgram); }
+    void defineLookAt(const Shader& shaderProgram) { camera.defineLookAt(shaderProgram); }
 
     bool hasTargetedBlock() const { return hasHighlight; }
     glm::ivec3 getTargetedBlock() const { return targeted; }

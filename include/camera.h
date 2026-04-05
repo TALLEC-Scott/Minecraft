@@ -38,7 +38,7 @@ class Camera {
     glm::vec3 getPosition() const;
     glm::vec3 getFront() const { return cameraFront; }
 
-    void defineLookAt(Shader shaderProgram);
+    void defineLookAt(const Shader& shaderProgram);
     glm::mat4 getViewMatrix() const;
 
   private:

@@ -18,7 +18,7 @@ class World {
     ChunkManager* chunkManager;
     ~World();
 
-    int render(Shader shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const;
+    int render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const;
     void update(glm::vec3 cameraPosition) const;
     // Raycast: returns true if a block was hit, sets hitPos to the block coordinates
     bool raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::ivec3& hitPos) const;
