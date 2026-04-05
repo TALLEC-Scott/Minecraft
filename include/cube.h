@@ -17,7 +17,8 @@ enum block_type {
     WOOD,
     LEAVES,
     SNOW,
-    GRAVEL
+    GRAVEL,
+    CACTUS
 };
 
 enum Biome {

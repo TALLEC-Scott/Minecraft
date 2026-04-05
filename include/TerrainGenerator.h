@@ -20,6 +20,8 @@ public:
 
     int getHeight(int x, int y);
     Biome getBiome(int x, int y);
+    // Combined: avoids recomputing continental noise
+    int getHeightAndBiome(int x, int y, Biome& outBiome);
     double getTemperature(int x, int y);
     double getMoisture(int x, int y);
     const BiomeParams& getBiomeParams(Biome b);

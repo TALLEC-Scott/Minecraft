@@ -17,11 +17,13 @@ public:
         }
         if (t == SNOW) return SNOW_LAYER;
         if (t == GRAVEL) return GRAVEL_LAYER;
+        if (t == CACTUS) return CACTUS_LAYER;
         return static_cast<int>(t);
     }
     static constexpr int GRASS_SIDE_LAYER = 11;
     static constexpr int SUN_LAYER = 12;
     static constexpr int SNOW_LAYER = 13;
     static constexpr int GRAVEL_LAYER = 14;
+    static constexpr int CACTUS_LAYER = 15;
     static GLuint id;
 };

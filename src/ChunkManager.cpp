@@ -6,7 +6,7 @@
 #include "world.h"
 #include <initializer_list>
 
-static constexpr int MAX_CHUNKS_PER_FRAME = 10;
+static constexpr int MAX_CHUNKS_PER_FRAME = 4;
 
 ChunkManager::ChunkManager(int renderDistance, int chunkSize, TerrainGenerator &terrainGenerator)
         : terrainGenerator(terrainGenerator) {

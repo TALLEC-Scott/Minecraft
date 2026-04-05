@@ -84,6 +84,7 @@ public:
 private:
     Cube* blocks = nullptr;
     int heights[CHUNK_SIZE][CHUNK_SIZE]{};
+    Biome biomes[CHUNK_SIZE][CHUNK_SIZE]{};
     int chunkX = -1;
     int chunkY = -1;
 
