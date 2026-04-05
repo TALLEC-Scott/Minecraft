@@ -25,5 +25,6 @@ public:
     static constexpr int SNOW_LAYER = 13;
     static constexpr int GRAVEL_LAYER = 14;
     static constexpr int CACTUS_LAYER = 15;
+    static constexpr int CLOUD_LAYER = 16;
     static GLuint id;
 };
