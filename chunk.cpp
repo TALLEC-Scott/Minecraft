@@ -54,59 +54,73 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
     this->chunkX = chunkX;
     this->chunkY = chunkY;
 
-    constexpr int WATER_LEVEL = CHUNK_HEIGHT / 4; // 16
+    constexpr int WATER_LEVEL = CHUNK_HEIGHT / 2; // 32, matches terrain gen sea level
 
     for (int i = 0; i < CHUNK_SIZE; i++) {
-        for (int j = 0; j < CHUNK_HEIGHT; j++) {
-            for (int k = 0; k < CHUNK_SIZE; k++) {
-                int globalX = chunkX * CHUNK_SIZE + i;
-                int globalY = chunkY * CHUNK_SIZE + k;
+        for (int k = 0; k < CHUNK_SIZE; k++) {
+            int globalX = chunkX * CHUNK_SIZE + i;
+            int globalZ = chunkY * CHUNK_SIZE + k;
 
-                int height = terrain.getHeight(globalX, globalY);
-                this->heights[i][k] = height;
+            int height = terrain.getHeight(globalX, globalZ);
+            this->heights[i][k] = height;
+            Biome biome = terrain.getBiome(globalX, globalZ);
+            const BiomeParams& bp = terrain.getBiomeParams(biome);
 
+            int limit_grass = std::max(1, (int)(0.95 * height));
+            int limit_stone = std::max(1, (int)(0.7 * height));
+
+            for (int j = 0; j < CHUNK_HEIGHT; j++) {
                 Cube* block = &blocks[i * CHUNK_HEIGHT * CHUNK_SIZE + j * CHUNK_SIZE + k];
-
-                int limit_grass = (int)(0.95 * height) < 1 ? height - 1 : (int)(0.95 * height);
-                int limit_stone = (int)(0.7 * height) < 1 ? height - 2 : (int)(0.7 * height);
-
-                double detailNoise = terrain.getNoise(globalX, globalY, j);
+                double detailNoise = terrain.getNoise(globalX, globalZ, j);
 
                 if (j > height) {
                     block->setType(j <= WATER_LEVEL ? WATER : AIR);
-                } else {
-                    if (j == 0)
-                        block->setType(BEDROCK);
-                    else if (j < limit_stone)
-                        block->setType((detailNoise < 0.5 && detailNoise > 0.45) ? COAL_ORE : STONE);
-                    else if (j < limit_grass)
-                        block->setType(DIRT);
+                } else if (j == 0) {
+                    block->setType(BEDROCK);
+                } else if (j < limit_stone) {
+                    block->setType((detailNoise > 0.45 && detailNoise < 0.5) ? COAL_ORE : STONE);
+                } else if (j < limit_grass) {
+                    block->setType(bp.subsurfaceBlock);
+                } else if (j == height) {
+                    // Surface: altitude overrides biome at high elevations
+                    int snowLine = WATER_LEVEL + 35;   // ~99
+                    int stoneLine = WATER_LEVEL + 15;   // ~79
+                    if (height >= snowLine && biome == BIOME_TUNDRA)
+                        block->setType(SNOW);          // snow peaks in cold biomes
+                    else if (height >= stoneLine)
+                        block->setType(STONE);         // exposed rock at high altitude
                     else
-                        block->setType(GRASS);
+                        block->setType(bp.surfaceBlock); // biome surface (grass/sand/snow)
+                } else {
+                    block->setType(bp.subsurfaceBlock);
                 }
             }
         }
     }
 
-    // --- Sand: convert dirt/grass below or adjacent to water into sand ---
+    // --- Shore post-pass: convert blocks adjacent to water ---
     for (int i = 0; i < CHUNK_SIZE; i++) {
         for (int j = 0; j < CHUNK_HEIGHT; j++) {
             for (int k = 0; k < CHUNK_SIZE; k++) {
                 Cube* block = getBlock(i, j, k);
                 block_type bt = block->getType();
-                if (bt != DIRT && bt != GRASS) continue;
-                // If there's water anywhere above this column at this position, it's underwater
+                if (bt != DIRT && bt != GRASS && bt != STONE && bt != GRAVEL) continue;
+
+                int globalX = chunkX * CHUNK_SIZE + i;
+                int globalZ = chunkY * CHUNK_SIZE + k;
+                Biome biome = terrain.getBiome(globalX, globalZ);
+                block_type shoreBlock = (biome == BIOME_TUNDRA) ? GRAVEL : SAND;
+
                 bool underwater = false;
                 for (int y = j + 1; y <= WATER_LEVEL && y < CHUNK_HEIGHT; y++) {
                     Cube* above = getBlock(i, y, k);
                     if (above && above->getType() == WATER) { underwater = true; break; }
                 }
-                if (underwater) { block->setType(SAND); continue; }
-                // Also convert if directly adjacent to water (shoreline)
+                if (underwater) { block->setType(shoreBlock); continue; }
                 static const int dirs[6][3] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
                 for (auto& d : dirs) {
                     Cube* nb = getBlock(i+d[0], j+d[1], k+d[2]);
-                    if (nb && nb->getType() == WATER) { block->setType(SAND); break; }
+                    if (nb && nb->getType() == WATER) { block->setType(shoreBlock); break; }
                 }
             }
         }
@@ -117,36 +131,60 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
     uint64_t treeSeed = static_cast<uint64_t>(chunkX) * 73856093ULL
                       ^ static_cast<uint64_t>(chunkY) * 19349663ULL;
     std::mt19937 rng(static_cast<unsigned int>(treeSeed));
-    std::uniform_int_distribution<int> posDist(2, CHUNK_SIZE - 3); // [2..13]
+    std::uniform_int_distribution<int> posDist(2, CHUNK_SIZE - 3);
     std::uniform_int_distribution<int> chanceDist(0, 99);
-    std::uniform_int_distribution<int> trunkDist(3, 5);   // trunk height 3-5
-    std::uniform_int_distribution<int> radiusDist(1, 2);   // canopy radius 1-2
-    std::uniform_int_distribution<int> layersDist(2, 3);   // canopy layers 2-3
+    std::uniform_int_distribution<int> trunkDist(3, 5);
+    std::uniform_int_distribution<int> radiusDist(1, 2);
+    std::uniform_int_distribution<int> layersDist(2, 3);
 
-    constexpr int TREE_ATTEMPTS = 3;
-    constexpr int TREE_CHANCE = 40; // percent
-    constexpr int TREE_WATER_LEVEL = CHUNK_HEIGHT / 4;
+    // Tree density from biome params (checked per tree position for accuracy at borders)
 
-    for (int t = 0; t < TREE_ATTEMPTS; t++) {
+    constexpr int MAX_TREE_ATTEMPTS = 5;
+    constexpr int TREE_WATER_LEVEL = CHUNK_HEIGHT / 2;
+
+    for (int t = 0; t < MAX_TREE_ATTEMPTS; t++) {
         int tx = posDist(rng);
         int tz = posDist(rng);
+
+        // Check biome at this tree position for density/chance
+        int treeGlobalX = chunkX * CHUNK_SIZE + tx;
+        int treeGlobalZ = chunkY * CHUNK_SIZE + tz;
+        Biome treeBiome = terrain.getBiome(treeGlobalX, treeGlobalZ);
+        const BiomeParams& tbp = terrain.getBiomeParams(treeBiome);
+        if (tbp.treeDensity <= 0.0f) continue;
+
+        // Scale attempts: consume RNG but skip low-density biomes probabilistically
         int roll = chanceDist(rng);
-        if (roll >= TREE_CHANCE) continue;
+        int effectiveChance = static_cast<int>(tbp.treeChance * tbp.treeDensity);
+        if (roll >= effectiveChance) continue;
 
         int trunkH = trunkDist(rng);
         int radius = radiusDist(rng);
         int layers = layersDist(rng);
-        int totalH = trunkH + layers + 1; // trunk + canopy + crown
+        int totalH = trunkH + layers + 1;
 
         int surface = heights[tx][tz];
         if (surface <= TREE_WATER_LEVEL) continue;
         if (surface + totalH >= CHUNK_HEIGHT) continue;
-        // Ensure canopy stays in-bounds
         if (tx - radius < 0 || tx + radius >= CHUNK_SIZE) continue;
         if (tz - radius < 0 || tz + radius >= CHUNK_SIZE) continue;
 
         Cube* surfaceBlock = getBlock(tx, surface, tz);
-        if (!surfaceBlock || surfaceBlock->getType() != GRASS) continue;
+        if (!surfaceBlock || surfaceBlock->getType() != tbp.surfaceBlock) continue;
+        if (tbp.surfaceBlock != GRASS) continue; // only plant trees on grass
+
+        // Slope check: reject if any neighbor height differs by more than 2
+        bool tooSteep = false;
+        for (int dx = -1; dx <= 1 && !tooSteep; dx++) {
+            for (int dz = -1; dz <= 1 && !tooSteep; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                int nx = tx + dx, nz = tz + dz;
+                if (nx >= 0 && nx < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
+                    if (std::abs(heights[nx][nz] - surface) > 2) tooSteep = true;
+                }
+            }
+        }
+        if (tooSteep) continue;
 
         // Trunk
         for (int y = surface + 1; y <= surface + trunkH; y++) {
