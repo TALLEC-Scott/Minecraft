@@ -12,7 +12,9 @@ enum block_type {
     BEDROCK,
     WATER,
     SAND,
-    GLOWSTONE
+    GLOWSTONE,
+    WOOD,
+    LEAVES
 };
 
 class Cube {
