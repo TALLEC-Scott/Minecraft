@@ -3,6 +3,7 @@
 //
 
 #include "ChunkManager.h"
+#include <cmath>
 #include "world.h"
 #include <initializer_list>
 
@@ -15,7 +16,9 @@ ChunkManager::ChunkManager(int renderDistance, int chunkSize, TerrainGenerator &
 }
 
 void ChunkManager::update(glm::vec3 cameraPosition) {
-    glm::ivec2 currentChunk = glm::ivec2(cameraPosition.x / CHUNK_SIZE, cameraPosition.z / CHUNK_SIZE);
+    int cx = (int)std::floor(cameraPosition.x / CHUNK_SIZE);
+    int cz = (int)std::floor(cameraPosition.z / CHUNK_SIZE);
+    glm::ivec2 currentChunk = glm::ivec2(cx, cz);
 
     glm::ivec2 minChunk = currentChunk - glm::ivec2(RENDER_DISTANCE);
     glm::ivec2 maxChunk = currentChunk + glm::ivec2(RENDER_DISTANCE);

@@ -63,20 +63,15 @@ Chunk* World::getChunk(int x, int y) {
 Cube* World::getBlock(int x, int y, int z) const {
     if (y < 0 || y >= CHUNK_HEIGHT)
         return nullptr;
-    if (x < 0 || x >= CHUNK_SIZE * RENDER_DISTANCE || z < 0 || z >= CHUNK_SIZE * RENDER_DISTANCE)
-        return nullptr;
 
-    int chunkX = x / CHUNK_SIZE;
-    int chunkZ = z / CHUNK_SIZE;
-
-    if (chunkX < 0 || chunkX >= RENDER_DISTANCE || chunkZ < 0 || chunkZ >= RENDER_DISTANCE)
-        return nullptr;
+    int chunkX = (x >= 0) ? x / CHUNK_SIZE : (x - CHUNK_SIZE + 1) / CHUNK_SIZE;
+    int chunkZ = (z >= 0) ? z / CHUNK_SIZE : (z - CHUNK_SIZE + 1) / CHUNK_SIZE;
 
     auto res = this->chunkManager->getChunk(chunkX, chunkZ);
     if (res == nullptr)
         return nullptr;
 
-    return res->getBlock(x % CHUNK_SIZE, y % CHUNK_HEIGHT, z % CHUNK_SIZE);
+    return res->getBlock(x - chunkX * CHUNK_SIZE, y, z - chunkZ * CHUNK_SIZE);
 }
 
 int World::render(Shader shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const {

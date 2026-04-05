@@ -550,7 +550,9 @@ int Chunk::getLocalHeight(int x, int y) {
 }
 
 int Chunk::getGlobalHeight(int x, int y) {
-    return heights[x % CHUNK_SIZE][y % CHUNK_SIZE];
+    int lx = ((x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    int lz = ((y % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    return heights[lx][lz];
 }
 
 void Chunk::destroy() {
