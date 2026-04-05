@@ -48,7 +48,7 @@ static const int FACE_NEIGHBORS[6][3] = {
 };
 
 Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
-    blocks = new Cube[CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
+    blocks = new Cube[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE];
     this->chunkX = chunkX;
     this->chunkY = chunkY;
 
@@ -65,7 +65,6 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
             this->biomes[i][k] = biome;
             const BiomeParams& bp = terrain.getBiomeParams(biome);
 
-            int limit_grass = std::max(1, (int)(0.95 * height));
             int limit_stone = std::max(1, (int)(0.7 * height));
 
             for (int j = 0; j < CHUNK_HEIGHT; j++) {
@@ -78,8 +77,6 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
                     block->setType(BEDROCK);
                 } else if (j < limit_stone) {
                     block->setType((detailNoise > 0.45 && detailNoise < 0.5) ? COAL_ORE : STONE);
-                } else if (j < limit_grass) {
-                    block->setType(bp.subsurfaceBlock);
                 } else if (j == height) {
                     // Surface: altitude overrides biome at high elevations
                     int snowLine = WATER_LEVEL + 35;  // ~99
@@ -91,6 +88,7 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
                     else
                         block->setType(bp.surfaceBlock); // biome surface (grass/sand/snow)
                 } else {
+                    // Below surface (limit_stone <= j < height): subsurface material
                     block->setType(bp.subsurfaceBlock);
                 }
             }
@@ -286,7 +284,7 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
     // Precompute opacity cache with 1-block padding for fast AO lookups.
     int opaqueH = std::min(maxSolidY + 2, (int)CHUNK_HEIGHT);
     constexpr int OX = CHUNK_SIZE + 2, OZ = CHUNK_SIZE + 2;
-    std::vector<uint8_t> opaq(OX * opaqueH * OZ, 0);
+    std::vector<uint8_t> opaq(static_cast<size_t>(OX) * opaqueH * OZ, 0);
     auto oIdx = [&](int x, int y, int z) -> int { return (x + 1) * opaqueH * OZ + y * OZ + (z + 1); };
 
     // Fill interior
@@ -340,13 +338,13 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
     static constexpr int DIM[3] = {CHUNK_SIZE, CHUNK_HEIGHT, CHUNK_SIZE};
     static constexpr int MAX_DIM = CHUNK_HEIGHT > CHUNK_SIZE ? CHUNK_HEIGHT : CHUNK_SIZE;
 
-    constexpr int MAX_FACES = CHUNK_SIZE * CHUNK_HEIGHT * 4;
+    constexpr size_t MAX_FACES = static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * 4;
     std::vector<float> opaqueVerts, waterVerts;
     std::vector<unsigned int> opaqueIdx, waterIdx;
     opaqueVerts.reserve(MAX_FACES * 4 * 9);
     opaqueIdx.reserve(MAX_FACES * 6);
-    waterVerts.reserve(CHUNK_SIZE * CHUNK_SIZE * 4 * 9);
-    waterIdx.reserve(CHUNK_SIZE * CHUNK_SIZE * 6);
+    waterVerts.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 4 * 9);
+    waterIdx.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 6);
     unsigned int opaqueBase = 0, waterBase = 0;
 
     int mask[MAX_DIM][MAX_DIM];
@@ -535,7 +533,7 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, allIdx.size() * sizeof(unsigned int), allIdx.data(), GL_DYNAMIC_DRAW);
 
     constexpr int STRIDE = 10 * sizeof(float);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, STRIDE, (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, STRIDE, nullptr);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, STRIDE, (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
@@ -558,7 +556,8 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
     g_frame.meshBuilds++;
 }
 
-std::vector<Cube*> Chunk::render(Shader shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
+std::vector<Cube*> Chunk::render(const Shader& /*shaderProgram*/, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg,
+                                 Chunk* nz_pos) {
     if (meshDirty && g_frame.meshBuildBudget > 0) {
         buildMesh(nx_neg, nx_pos, nz_neg, nz_pos);
         g_frame.meshBuildBudget--;
@@ -566,7 +565,7 @@ std::vector<Cube*> Chunk::render(Shader shaderProgram, Chunk* nx_neg, Chunk* nx_
 
     if (opaqueIndexCount > 0) {
         glBindVertexArray(chunkVAO);
-        glDrawElements(GL_TRIANGLES, opaqueIndexCount, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, opaqueIndexCount, GL_UNSIGNED_INT, nullptr);
         glBindVertexArray(0);
         g_frame.opaqueTriangles += opaqueIndexCount / 3;
         g_frame.vertexCount += opaqueIndexCount / 6 * 4; // 4 verts per 6 indices (quad)
@@ -575,7 +574,8 @@ std::vector<Cube*> Chunk::render(Shader shaderProgram, Chunk* nx_neg, Chunk* nx_
     return {};
 }
 
-void Chunk::renderWater(Shader shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
+void Chunk::renderWater(const Shader& /*shaderProgram*/, Chunk* /*nx_neg*/, Chunk* /*nx_pos*/, Chunk* /*nz_neg*/,
+                        Chunk* /*nz_pos*/) {
     if (waterIndexCount > 0) {
         glBindVertexArray(chunkVAO);
         glDrawElements(GL_TRIANGLES, waterIndexCount, GL_UNSIGNED_INT, (void*)waterIndexOffset);

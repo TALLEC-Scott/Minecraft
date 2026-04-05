@@ -44,7 +44,7 @@ bool fullscreenMode = false;
 bool doDaylightCycle = true;
 bool previousDaylight = false;
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+void framebuffer_size_callback(GLFWwindow* /*window*/, int width, int height) {
     // make sure the viewport matches the new window dimensions; note that width axnd
     // height will be significantly larger than specified on retina displays.
     glViewport(0, 0, width, height);
@@ -52,7 +52,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     windowHeight = height;
 }
 
-void cursorPositionCallback(GLFWwindow* window, double xPos, double yPos) {
+void cursorPositionCallback(GLFWwindow* /*window*/, double xPos, double yPos) {
     player.updateMouseLook(xPos, yPos, windowWidth, windowHeight);
 }
 
@@ -61,7 +61,7 @@ void setSkyColor(float angle) {
     glm::vec3 duskColor(0.15f, 0.15f, 0.25f);
 
     // Factor in range [0, 1]
-    float t = (cos(angle) + 1.0f) * 0.5f;
+    float t = (std::cos(angle) + 1.0f) * 0.5f;
 
     // Interpolate between the colors based on the cosine of the angle
     glm::vec3 skyColor = duskColor * (1.0f - t) + noonColor * t;
@@ -148,8 +148,8 @@ int main(int argc, char* argv[]) {
 
     std::cout << "Using OpenGL 3.3 Core Profile" << std::endl;
 
-    GLFWwindow* window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "POGL", NULL, NULL);
-    if (window == NULL) {
+    GLFWwindow* window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "POGL", nullptr, nullptr);
+    if (window == nullptr) {
         std::cout << "Failed to create window" << std::endl;
         glfwTerminate();
         return -1;
@@ -167,7 +167,7 @@ int main(int argc, char* argv[]) {
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
     glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_DISABLED);
-    glfwSetCursorPos(window, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
+    glfwSetCursorPos(window, static_cast<double>(WINDOW_WIDTH) / 2.0, static_cast<double>(WINDOW_HEIGHT) / 2.0);
 
     glfwSetCursorPosCallback(window, cursorPositionCallback);
 
@@ -222,9 +222,9 @@ int main(int argc, char* argv[]) {
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sunEBO);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(sunIdx), sunIdx, GL_STATIC_DRAW);
         glBindBuffer(GL_ARRAY_BUFFER, sunVBO);
-        glBufferData(GL_ARRAY_BUFFER, 4 * 10 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(4 * 10) * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
         constexpr int SUN_STRIDE = 10 * sizeof(float);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, SUN_STRIDE, (void*)0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, SUN_STRIDE, nullptr);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, SUN_STRIDE, (void*)(3 * sizeof(float)));
         glEnableVertexAttribArray(1);
@@ -255,9 +255,10 @@ int main(int argc, char* argv[]) {
                     double cn = world.terrainGenerator->getNoise(gx, gz);
                     if (cn < 0.65) continue;
 
-                    float x0 = (gx - CLOUD_GRID / 2) * CLOUD_BLOCK;
+                    constexpr int CLOUD_HALF = CLOUD_GRID / 2;
+                    float x0 = static_cast<float>(gx - CLOUD_HALF) * CLOUD_BLOCK;
                     float x1 = x0 + CLOUD_BLOCK;
-                    float z0 = (gz - CLOUD_GRID / 2) * CLOUD_BLOCK;
+                    float z0 = static_cast<float>(gz - CLOUD_HALF) * CLOUD_BLOCK;
                     float z1 = z0 + CLOUD_BLOCK;
                     float v[] = {
                         x0, 0, z0, 0, 0, 0, 1, 0, cl, 1, x0, 0, z1, 0, 1, 0, 1, 0, cl, 1,
@@ -284,7 +285,7 @@ int main(int argc, char* argv[]) {
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cloudEBO);
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, cidx.size() * sizeof(unsigned int), cidx.data(), GL_STATIC_DRAW);
             constexpr int CL_STRIDE = 10 * sizeof(float);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, CL_STRIDE, (void*)0);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, CL_STRIDE, nullptr);
             glEnableVertexAttribArray(0);
             glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, CL_STRIDE, (void*)(3 * sizeof(float)));
             glEnableVertexAttribArray(1);
@@ -303,9 +304,9 @@ int main(int argc, char* argv[]) {
         glGenBuffers(1, &highlightVBO);
         glBindVertexArray(highlightVAO);
         glBindBuffer(GL_ARRAY_BUFFER, highlightVBO);
-        glBufferData(GL_ARRAY_BUFFER, 24 * 10 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(24 * 10) * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
         constexpr int HL_STRIDE = 10 * sizeof(float);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, HL_STRIDE, (void*)0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, HL_STRIDE, nullptr);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, HL_STRIDE, (void*)(3 * sizeof(float)));
         glEnableVertexAttribArray(1);
@@ -594,7 +595,7 @@ int main(int argc, char* argv[]) {
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, armEBO);
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
             constexpr int ARM_STRIDE = 10 * sizeof(float);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, ARM_STRIDE, (void*)0);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, ARM_STRIDE, nullptr);
             glEnableVertexAttribArray(0);
             glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, ARM_STRIDE, (void*)(3 * sizeof(float)));
             glEnableVertexAttribArray(1);
@@ -740,7 +741,7 @@ int main(int argc, char* argv[]) {
             glm::vec3 cameraPos = player.getPosition();
 
             // Sun orbits east-west (X axis) overhead, centered on camera
-            glm::vec3 lightPos(cameraPos.x + cos(timeValue) * radius, sin(timeValue) * radius, cameraPos.z);
+            glm::vec3 lightPos(cameraPos.x + std::cos(timeValue) * radius, std::sin(timeValue) * radius, cameraPos.z);
             shaderProgram.setVec3("lightPos", lightPos);
             shaderProgram.setVec3("lightColor", lightColor);
 
@@ -828,7 +829,7 @@ int main(int argc, char* argv[]) {
                 glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
                 glBindVertexArray(sunVAO);
-                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
                 glBindVertexArray(0);
 
                 glDepthMask(GL_TRUE);
@@ -863,7 +864,7 @@ int main(int argc, char* argv[]) {
                                                                       tileOriginZ + tz * CLOUD_TILE));
                         shaderProgram.setMat4("model", cloudModel);
                         glBindVertexArray(cloudVAO);
-                        glDrawElements(GL_TRIANGLES, cloudIndexCount, GL_UNSIGNED_INT, 0);
+                        glDrawElements(GL_TRIANGLES, cloudIndexCount, GL_UNSIGNED_INT, nullptr);
                     }
                 }
                 glBindVertexArray(0);
@@ -935,7 +936,7 @@ int main(int argc, char* argv[]) {
                 glDisable(GL_CULL_FACE);
 
                 glBindVertexArray(armVAO);
-                glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+                glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
                 glBindVertexArray(0);
 
                 glEnable(GL_CULL_FACE);

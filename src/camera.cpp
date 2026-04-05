@@ -122,7 +122,7 @@ glm::mat4 Camera::getViewMatrix() const {
     return glm::lookAt(cameraPosition, cameraPosition + cameraFront, cameraUp);
 }
 
-void Camera::defineLookAt(Shader shaderProgram) {
+void Camera::defineLookAt(const Shader& shaderProgram) {
     shaderProgram.setMat4("view", getViewMatrix());
 }
 

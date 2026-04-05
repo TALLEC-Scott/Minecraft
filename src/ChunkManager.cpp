@@ -9,10 +9,10 @@
 
 static constexpr int MAX_CHUNKS_PER_FRAME = 4;
 
-ChunkManager::ChunkManager(int renderDistance, int chunkSize, TerrainGenerator& terrainGenerator)
+ChunkManager::ChunkManager(int renderDistance, int /*chunkSize*/, TerrainGenerator& terrainGenerator)
     : terrainGenerator(terrainGenerator) {
     int diameter = 2 * renderDistance + 1;
-    chunks.reserve(diameter * diameter * 2);
+    chunks.reserve(static_cast<size_t>(diameter) * diameter * 2);
 }
 
 void ChunkManager::update(glm::vec3 cameraPosition) {

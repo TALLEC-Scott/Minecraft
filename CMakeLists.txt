@@ -51,3 +51,33 @@ target_link_libraries(minecraft
     glfw
     Threads::Threads
 )
+
+# --- Unit Tests ---
+option(BUILD_TESTS "Build unit tests" ON)
+if(BUILD_TESTS)
+  include(FetchContent)
+  FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG v1.14.0
+  )
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(googletest)
+
+  enable_testing()
+  include(GoogleTest)
+
+  # Test sources that don't need OpenGL
+  add_executable(tests
+      tests/test_terrain.cpp
+      tests/test_coordinates.cpp
+      tests/test_biomes.cpp
+      src/TerrainGenerator.cpp
+      src/perlin_noise.cpp
+  )
+  target_include_directories(tests PRIVATE include Libraries/include)
+  target_link_libraries(tests GTest::gtest_main)
+  # Don't run clang-tidy on tests
+  set_target_properties(tests PROPERTIES CXX_CLANG_TIDY "")
+  gtest_discover_tests(tests)
+endif()

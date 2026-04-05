@@ -52,7 +52,7 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     leftClickHeld = leftDown;
 }
 
-void Player::updateMouseLook(double xPos, double yPos, int windowWidth, int windowHeight) {
+void Player::updateMouseLook(double xPos, double yPos, int /*windowWidth*/, int /*windowHeight*/) {
     if (firstMouse) {
         firstMouse = false;
         return;

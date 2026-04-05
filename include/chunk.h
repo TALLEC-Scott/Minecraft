@@ -16,7 +16,7 @@
 class Chunk {
   public:
     Chunk() {
-        blocks = new Cube[CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
+        blocks = new Cube[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE];
         chunkX = -1;
         chunkY = -1;
     }
@@ -64,8 +64,8 @@ class Chunk {
     Chunk& operator=(const Chunk&) = delete;
 
     void buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
-    std::vector<Cube*> render(Shader shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
-    void renderWater(Shader shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
+    std::vector<Cube*> render(const Shader& shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
+    void renderWater(const Shader& shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
     void markDirty() { meshDirty = true; }
     void destroy();
     void destroyBlock(int x, int y, int z);

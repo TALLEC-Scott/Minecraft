@@ -6,9 +6,9 @@ Checks: >
   -bugprone-reserved-identifier,
   -bugprone-macro-parentheses,
   performance-*,
+  -performance-no-int-to-ptr,
   modernize-use-nullptr,
   modernize-use-override,
-  modernize-use-auto,
   readability-redundant-*,
   misc-unused-*
 
