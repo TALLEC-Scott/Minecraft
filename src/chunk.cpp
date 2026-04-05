@@ -278,7 +278,6 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
     double _buildStart = glfwGetTime();
 
     // Precompute opacity cache with 1-block padding for fast AO lookups.
-    // Indexed as opaq[x+1][y][z+1] where x,z in [-1..CHUNK_SIZE], y in [0..maxSolidY+1]
     int opaqueH = std::min(maxSolidY + 2, (int)CHUNK_HEIGHT);
     constexpr int OX = CHUNK_SIZE + 2, OZ = CHUNK_SIZE + 2;
     std::vector<uint8_t> opaq(OX * opaqueH * OZ, 0);
@@ -513,7 +512,10 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
 }
 
 std::vector<Cube*> Chunk::render(Shader shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
-    if (meshDirty) buildMesh(nx_neg, nx_pos, nz_neg, nz_pos);
+    if (meshDirty && g_frame.meshBuildBudget > 0) {
+        buildMesh(nx_neg, nx_pos, nz_neg, nz_pos);
+        g_frame.meshBuildBudget--;
+    }
 
     if (opaqueIndexCount > 0) {
         glBindVertexArray(chunkVAO);

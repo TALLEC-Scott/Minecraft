@@ -17,6 +17,7 @@
 struct FrameAccum {
     double meshBuildMs = 0;
     int meshBuilds = 0;
+    int meshBuildBudget = 8; // max mesh builds per frame
     int opaqueTriangles = 0;
     int waterTriangles = 0;
     int opaqueDrawCalls = 0;
@@ -24,7 +25,7 @@ struct FrameAccum {
     int chunksRendered = 0;
     int vertexCount = 0;
 
-    void reset() { *this = {}; }
+    void reset() { *this = {}; meshBuildBudget = 8; }
 };
 
 // Global accumulator — cheaply written to from hot paths

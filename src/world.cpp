@@ -76,6 +76,7 @@ Cube* World::getBlock(int x, int y, int z) const {
 }
 
 int World::render(Shader shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const {
+    g_frame.meshBuildBudget = 8; // reset per frame
     auto planes = extractFrustumPlanes(viewProjection);
 
     // Collect visible chunks and sort front-to-back for early-Z rejection
