@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <fstream>
 #include <algorithm>
+#include <cmath>
 
 #include "profiler.h"
 
@@ -247,7 +248,7 @@ int main(int argc, char* argv[]) {
 
 	glfwSetCursorPosCallback(window, cursorPositionCallback);
 
-	if (benchmarkMode) glfwSwapInterval(0); // Disable vsync only for benchmarking
+	glfwSwapInterval(0); // Disable vsync
 
 	// Headless mode: create an FBO so rendering goes to an offscreen buffer
 	// instead of through the WSL2/D3D12 presentation pipeline.

@@ -31,7 +31,7 @@ static bool aabbInFrustum(const std::array<glm::vec4, 6>& planes, glm::vec3 minP
 }
 
 World::World() {
-    this->terrainGenerator = new TerrainGenerator(0, 0.1, 0, CHUNK_HEIGHT / 2);
+    this->terrainGenerator = new TerrainGenerator(0, 0.1, 0, CHUNK_HEIGHT);
     this->chunkManager = new ChunkManager(RENDER_DISTANCE, CHUNK_SIZE, *terrainGenerator);
 }
 

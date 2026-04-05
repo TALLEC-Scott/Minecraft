@@ -3,7 +3,7 @@
 GLfloat g = GRAVITY;
 
 Camera::Camera() {
-	this->cameraPosition = glm::vec3(15.0f, 20.0f, 15.0f);
+	this->cameraPosition = glm::vec3(15.0f, 90.0f, 15.0f);
 	this->cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
 	this->cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
 	this->cameraSpeed = SPEED;
