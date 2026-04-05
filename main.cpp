@@ -288,6 +288,30 @@ int main(int argc, char* argv[]) {
 	glCullFace(GL_BACK);
 	glFrontFace(GL_CW);
 
+	// Sun billboard quad
+	GLuint sunVAO, sunVBO, sunEBO;
+	glGenVertexArrays(1, &sunVAO);
+	glGenBuffers(1, &sunVBO);
+	glGenBuffers(1, &sunEBO);
+	unsigned int sunIdx[] = {0,1,2, 2,3,0};
+	glBindVertexArray(sunVAO);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sunEBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(sunIdx), sunIdx, GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, sunVBO);
+	glBufferData(GL_ARRAY_BUFFER, 4 * 10 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+	constexpr int SUN_STRIDE = 10 * sizeof(float);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, SUN_STRIDE, (void*)0);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, SUN_STRIDE, (void*)(3*sizeof(float)));
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, SUN_STRIDE, (void*)(5*sizeof(float)));
+	glEnableVertexAttribArray(2);
+	glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, SUN_STRIDE, (void*)(8*sizeof(float)));
+	glEnableVertexAttribArray(3);
+	glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, SUN_STRIDE, (void*)(9*sizeof(float)));
+	glEnableVertexAttribArray(4);
+	glBindVertexArray(0);
+
 	double lastTime = glfwGetTime();
 	double lastFrameTime = lastTime;
 	int nbFrames = 0;
@@ -386,7 +410,7 @@ int main(int argc, char* argv[]) {
 
     bool sceneChanged = true; // Initially set to true to render the scene
     while (!glfwWindowShouldClose(window)) {
-        float speed = 0.1;
+        float speed = 0.05;
 		float timeValue = 0.0f;
 		if (doDaylightCycle) {
 			timeValue = glfwGetTime() * speed;
@@ -416,12 +440,16 @@ int main(int argc, char* argv[]) {
 		processInput(window);
 		shaderProgram.use();
 
-        // Calculate the new light position
-        glm::vec3 lightPos((CHUNK_SIZE * RENDER_DISTANCE) / 2, sin(timeValue) * radius, cos(timeValue) * radius);        shaderProgram.setVec3("lightPos", lightPos);
+		glm::vec3 cameraPos = camera.getPosition();
+
+        // Sun orbits east-west (X axis) overhead, centered on camera
+        glm::vec3 lightPos(cameraPos.x + cos(timeValue) * radius,
+                           sin(timeValue) * radius,
+                           cameraPos.z);
+        shaderProgram.setVec3("lightPos", lightPos);
 		shaderProgram.setVec3("lightColor", lightColor);
 
 		camera.defineLookAt(shaderProgram);
-		glm::vec3 cameraPos = camera.getPosition();
 
 		glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 5000.0f);
 		shaderProgram.setMat4("projection", projection);
@@ -441,6 +469,46 @@ int main(int argc, char* argv[]) {
         TextureArray::bind();
         w->update(camera.getPosition());
         glm::mat4 viewProjection = projection * camera.getViewMatrix();
+
+        // Render sun billboard (before terrain, no depth write)
+        constexpr float SUN_DISTANCE = 800.0f;
+        constexpr float SUN_SIZE = 60.0f;
+        if (lightPos.y > 0) { // only when sun is above horizon
+            glm::vec3 sunDir = glm::normalize(lightPos - cameraPos);
+            glm::vec3 sunCenter = cameraPos + sunDir * SUN_DISTANCE;
+            // Avoid degenerate cross product when sun is directly overhead
+            glm::vec3 upRef = (glm::abs(sunDir.y) > 0.99f) ? glm::vec3(1,0,0) : glm::vec3(0,1,0);
+            glm::vec3 right = glm::normalize(glm::cross(sunDir, upRef)) * SUN_SIZE;
+            glm::vec3 up = glm::normalize(glm::cross(right, sunDir)) * SUN_SIZE;
+
+            float sunLayer = (float)TextureArray::SUN_LAYER;
+            float sunVerts[40] = {
+                // pos(3) + uv(2) + normal(3) + layer(1) + ao(1)
+                sunCenter.x-right.x-up.x, sunCenter.y-right.y-up.y, sunCenter.z-right.z-up.z, 0,0, 0,0,1, sunLayer, 1,
+                sunCenter.x-right.x+up.x, sunCenter.y-right.y+up.y, sunCenter.z-right.z+up.z, 0,1, 0,0,1, sunLayer, 1,
+                sunCenter.x+right.x+up.x, sunCenter.y+right.y+up.y, sunCenter.z+right.z+up.z, 1,1, 0,0,1, sunLayer, 1,
+                sunCenter.x+right.x-up.x, sunCenter.y+right.y-up.y, sunCenter.z+right.z-up.z, 1,0, 0,0,1, sunLayer, 1,
+            };
+
+            glBindBuffer(GL_ARRAY_BUFFER, sunVBO);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(sunVerts), sunVerts);
+
+            shaderProgram.setFloat("emissive", 1.0f);
+            glDepthMask(GL_FALSE);    // don't write to depth (sun is behind everything)
+            glDisable(GL_CULL_FACE);  // billboard visible from both sides
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            glBindVertexArray(sunVAO);
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+            glBindVertexArray(0);
+
+            glDepthMask(GL_TRUE);
+            glEnable(GL_CULL_FACE);
+            glDisable(GL_BLEND);
+            shaderProgram.setFloat("emissive", 0.0f);
+        }
+
         chunksRendered = w->render(shaderProgram, viewProjection, camera.getPosition());
 
 		glfwSwapBuffers(window);

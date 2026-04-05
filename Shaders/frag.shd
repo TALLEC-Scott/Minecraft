@@ -11,8 +11,16 @@ out vec4 FragColor;
 uniform vec3 lightPos;
 uniform vec3 lightColor;
 uniform sampler2DArray ourTexture;
+uniform float emissive; // 1.0 = self-lit (sun), 0.0 = normal lighting
 
 void main() {
+    vec4 texColor = texture(ourTexture, vec3(TexCoord, texLayer));
+
+    if (emissive > 0.5) {
+        FragColor = texColor;
+        return;
+    }
+
     vec3 norm = normalize(Normal);
 
     // Face-direction shading: modulates diffuse only
@@ -26,6 +34,5 @@ void main() {
 
     float light = (0.15 + diff * 1.2) * ao;
 
-    vec4 texColor = texture(ourTexture, vec3(TexCoord, texLayer));
     FragColor = vec4(texColor.rgb * light * lightColor, texColor.a);
 }

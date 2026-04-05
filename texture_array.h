@@ -18,5 +18,6 @@ public:
         return static_cast<int>(t);
     }
     static constexpr int GRASS_SIDE_LAYER = 11;
+    static constexpr int SUN_LAYER = 12;
     static GLuint id;
 };
