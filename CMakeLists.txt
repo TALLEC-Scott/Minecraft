@@ -26,6 +26,7 @@ add_executable(minecraft
     src/perlin_noise.cpp
     src/ChunkManager.cpp
     src/texture_array.cpp
+    src/player.cpp
 )
 
 target_include_directories(minecraft PRIVATE include Libraries/include)
