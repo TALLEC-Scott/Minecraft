@@ -9,12 +9,12 @@
 static std::array<glm::vec4, 6> extractFrustumPlanes(const glm::mat4& m) {
     return {{
         // Left, Right, Bottom, Top, Near, Far
-        glm::vec4(m[0][3]+m[0][0], m[1][3]+m[1][0], m[2][3]+m[2][0], m[3][3]+m[3][0]),
-        glm::vec4(m[0][3]-m[0][0], m[1][3]-m[1][0], m[2][3]-m[2][0], m[3][3]-m[3][0]),
-        glm::vec4(m[0][3]+m[0][1], m[1][3]+m[1][1], m[2][3]+m[2][1], m[3][3]+m[3][1]),
-        glm::vec4(m[0][3]-m[0][1], m[1][3]-m[1][1], m[2][3]-m[2][1], m[3][3]-m[3][1]),
-        glm::vec4(m[0][3]+m[0][2], m[1][3]+m[1][2], m[2][3]+m[2][2], m[3][3]+m[3][2]),
-        glm::vec4(m[0][3]-m[0][2], m[1][3]-m[1][2], m[2][3]-m[2][2], m[3][3]-m[3][2]),
+        glm::vec4(m[0][3] + m[0][0], m[1][3] + m[1][0], m[2][3] + m[2][0], m[3][3] + m[3][0]),
+        glm::vec4(m[0][3] - m[0][0], m[1][3] - m[1][0], m[2][3] - m[2][0], m[3][3] - m[3][0]),
+        glm::vec4(m[0][3] + m[0][1], m[1][3] + m[1][1], m[2][3] + m[2][1], m[3][3] + m[3][1]),
+        glm::vec4(m[0][3] - m[0][1], m[1][3] - m[1][1], m[2][3] - m[2][1], m[3][3] - m[3][1]),
+        glm::vec4(m[0][3] + m[0][2], m[1][3] + m[1][2], m[2][3] + m[2][2], m[3][3] + m[3][2]),
+        glm::vec4(m[0][3] - m[0][2], m[1][3] - m[1][2], m[2][3] - m[2][2], m[3][3] - m[3][2]),
     }};
 }
 
@@ -22,11 +22,8 @@ static std::array<glm::vec4, 6> extractFrustumPlanes(const glm::mat4& m) {
 static bool aabbInFrustum(const std::array<glm::vec4, 6>& planes, glm::vec3 minP, glm::vec3 maxP) {
     for (auto& p : planes) {
         // Pick the positive vertex (corner most in the direction of the plane normal)
-        glm::vec3 pv(p.x >= 0 ? maxP.x : minP.x,
-                     p.y >= 0 ? maxP.y : minP.y,
-                     p.z >= 0 ? maxP.z : minP.z);
-        if (p.x * pv.x + p.y * pv.y + p.z * pv.z + p.w < 0)
-            return false;
+        glm::vec3 pv(p.x >= 0 ? maxP.x : minP.x, p.y >= 0 ? maxP.y : minP.y, p.z >= 0 ? maxP.z : minP.z);
+        if (p.x * pv.x + p.y * pv.y + p.z * pv.z + p.w < 0) return false;
     }
     return true;
 }
@@ -61,15 +58,13 @@ Chunk* World::getChunk(int x, int y) {
 }
 
 Cube* World::getBlock(int x, int y, int z) const {
-    if (y < 0 || y >= CHUNK_HEIGHT)
-        return nullptr;
+    if (y < 0 || y >= CHUNK_HEIGHT) return nullptr;
 
     int chunkX = (x >= 0) ? x / CHUNK_SIZE : (x - CHUNK_SIZE + 1) / CHUNK_SIZE;
     int chunkZ = (z >= 0) ? z / CHUNK_SIZE : (z - CHUNK_SIZE + 1) / CHUNK_SIZE;
 
     auto res = this->chunkManager->getChunk(chunkX, chunkZ);
-    if (res == nullptr)
-        return nullptr;
+    if (res == nullptr) return nullptr;
 
     return res->getBlock(x - chunkX * CHUNK_SIZE, y, z - chunkZ * CHUNK_SIZE);
 }
@@ -94,7 +89,7 @@ int World::render(Shader shaderProgram, glm::mat4 viewProjection, glm::vec3 came
         // Distance from camera to chunk center (squared, skip sqrt)
         glm::vec3 center(minP.x + CHUNK_SIZE * 0.5f, CHUNK_HEIGHT * 0.5f, minP.z + CHUNK_SIZE * 0.5f);
         glm::vec3 d = center - cameraPos;
-        visible.push_back({pos, const_cast<Chunk*>(&chunk), d.x*d.x + d.y*d.y + d.z*d.z});
+        visible.push_back({pos, const_cast<Chunk*>(&chunk), d.x * d.x + d.y * d.y + d.z * d.z});
     }
 
     std::sort(visible.begin(), visible.end(),

@@ -10,7 +10,7 @@ class World;
 class ChunkManager;
 
 class Player {
-public:
+  public:
     Player();
 
     // Input
@@ -35,7 +35,7 @@ public:
 
     Camera& getCamera() { return camera; }
 
-private:
+  private:
     Camera camera;
 
     // Block targeting

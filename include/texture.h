@@ -6,16 +6,16 @@
 #include <stb/stb_image.h>
 
 class Texture {
-public:
-	Texture();
-	Texture(const char* texPath);
+  public:
+    Texture();
+    Texture(const char* texPath);
 
-	unsigned int id;
+    unsigned int id;
 
-	void bind();
-	void destroy();
+    void bind();
+    void destroy();
 
-	~Texture();
+    ~Texture();
 };
 
 #endif

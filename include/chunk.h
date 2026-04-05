@@ -14,9 +14,8 @@
 #include "TerrainGenerator.h"
 
 class Chunk {
-public:
-    Chunk()
-    {
+  public:
+    Chunk() {
         blocks = new Cube[CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
         chunkX = -1;
         chunkY = -1;
@@ -26,14 +25,10 @@ public:
 
     // Move only — Cube GL buffers (now chunk-level) must not be double-freed
     Chunk(Chunk&& other) noexcept
-        : blocks(other.blocks), chunkX(other.chunkX), chunkY(other.chunkY),
-          chunkVAO(other.chunkVAO), chunkVBO(other.chunkVBO), chunkEBO(other.chunkEBO),
-          opaqueIndexCount(other.opaqueIndexCount),
-          waterIndexCount(other.waterIndexCount),
-          waterIndexOffset(other.waterIndexOffset),
-          meshDirty(other.meshDirty),
-          maxSolidY(other.maxSolidY)
-    {
+        : blocks(other.blocks), chunkX(other.chunkX), chunkY(other.chunkY), chunkVAO(other.chunkVAO),
+          chunkVBO(other.chunkVBO), chunkEBO(other.chunkEBO), opaqueIndexCount(other.opaqueIndexCount),
+          waterIndexCount(other.waterIndexCount), waterIndexOffset(other.waterIndexOffset), meshDirty(other.meshDirty),
+          maxSolidY(other.maxSolidY) {
         std::memcpy(heights, other.heights, sizeof(heights));
         other.blocks = nullptr;
         other.chunkVAO = other.chunkVBO = other.chunkEBO = 0;
@@ -81,7 +76,7 @@ public:
 
     ~Chunk();
 
-private:
+  private:
     Cube* blocks = nullptr;
     int heights[CHUNK_SIZE][CHUNK_SIZE]{};
     Biome biomes[CHUNK_SIZE][CHUNK_SIZE]{};

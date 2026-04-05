@@ -25,7 +25,10 @@ struct FrameAccum {
     int chunksRendered = 0;
     int vertexCount = 0;
 
-    void reset() { *this = {}; meshBuildBudget = 8; }
+    void reset() {
+        *this = {};
+        meshBuildBudget = 8;
+    }
 };
 
 // Global accumulator — cheaply written to from hot paths
@@ -53,7 +56,7 @@ struct FrameProfile {
 };
 
 class Profiler {
-public:
+  public:
     bool gpuTimerSupported = false;
 
     void init() {
@@ -81,21 +84,19 @@ public:
     }
 
     void beginUpdate() { updateStart = now(); }
-    void endUpdate()   { cur.updateMs = ms(updateStart); }
+    void endUpdate() { cur.updateMs = ms(updateStart); }
 
     void beginRender() {
         renderStart = now();
-        if (gpuTimerSupported)
-            glBeginQuery(GL_TIME_ELAPSED, gpuQueries[queryIdx]);
+        if (gpuTimerSupported) glBeginQuery(GL_TIME_ELAPSED, gpuQueries[queryIdx]);
     }
     void endRender() {
-        if (gpuTimerSupported)
-            glEndQuery(GL_TIME_ELAPSED);
+        if (gpuTimerSupported) glEndQuery(GL_TIME_ELAPSED);
         cur.renderMs = ms(renderStart);
     }
 
     void beginSwap() { swapStart = now(); }
-    void endSwap()   { cur.swapMs = ms(swapStart); }
+    void endSwap() { cur.swapMs = ms(swapStart); }
 
     void endFrame(int chunksTotal) {
         cur.totalMs = ms(frameStart);
@@ -135,9 +136,7 @@ public:
             return v[(size_t)(v.size() * p)];
         };
 
-        auto avg = [](const std::vector<double>& v) {
-            return std::accumulate(v.begin(), v.end(), 0.0) / v.size();
-        };
+        auto avg = [](const std::vector<double>& v) { return std::accumulate(v.begin(), v.end(), 0.0) / v.size(); };
 
         // Extract per-metric vectors
         std::vector<double> total, update, render, swap, meshBuild, gpu;
@@ -172,7 +171,7 @@ public:
         double avgVerts = std::accumulate(verts.begin(), verts.end(), 0.0) / n;
         int avgTotal_chunks = frames.back().chunksTotal;
 
-        auto pct = [](double part, double whole) { return whole > 0 ? part/whole*100 : 0; };
+        auto pct = [](double part, double whole) { return whole > 0 ? part / whole * 100 : 0; };
 
         std::ostringstream out;
         out << std::fixed << std::setprecision(2);
@@ -183,15 +182,16 @@ public:
         out << n << " measured frames\n\n";
 
         out << "Frame Time Breakdown (avg):\n";
-        out << "  total:     " << avgTotal << " ms  (" << (int)(1000/avgTotal) << " fps)\n";
-        out << "  update:    " << avgUpdate << " ms  [" << pct(avgUpdate,avgTotal) << "%]\n";
-        out << "  render:    " << avgRender << " ms  [" << pct(avgRender,avgTotal) << "%]  <- includes mesh builds\n";
-        out << "  swap:      " << avgSwap << " ms  [" << pct(avgSwap,avgTotal) << "%]\n\n";
+        out << "  total:     " << avgTotal << " ms  (" << (int)(1000 / avgTotal) << " fps)\n";
+        out << "  update:    " << avgUpdate << " ms  [" << pct(avgUpdate, avgTotal) << "%]\n";
+        out << "  render:    " << avgRender << " ms  [" << pct(avgRender, avgTotal) << "%]  <- includes mesh builds\n";
+        out << "  swap:      " << avgSwap << " ms  [" << pct(avgSwap, avgTotal) << "%]\n\n";
 
         out << "Render Breakdown (avg):\n";
-        out << "  mesh builds:  " << avgMeshBuild << " ms  [" << pct(avgMeshBuild,avgRender) << "% of render]";
+        out << "  mesh builds:  " << avgMeshBuild << " ms  [" << pct(avgMeshBuild, avgRender) << "% of render]";
         out << "  (" << avgMeshBuilds << " builds/frame)\n";
-        out << "  draw calls:   " << (avgRender - avgMeshBuild) << " ms  [" << pct(avgRender-avgMeshBuild,avgRender) << "% of render]";
+        out << "  draw calls:   " << (avgRender - avgMeshBuild) << " ms  [" << pct(avgRender - avgMeshBuild, avgRender)
+            << "% of render]";
         out << "  (" << avgDrawCalls << " calls/frame)\n\n";
 
         if (gpuTimerSupported) {
@@ -207,14 +207,21 @@ public:
 
         out << "Geometry (avg per frame):\n";
         out << "  chunks:    " << (int)avgChunks << " rendered / " << avgTotal_chunks << " loaded\n";
-        out << "  triangles: " << (int)avgOpaqueTri << " opaque + " << (int)avgWaterTri << " water = " << (int)(avgOpaqueTri+avgWaterTri) << " total\n";
+        out << "  triangles: " << (int)avgOpaqueTri << " opaque + " << (int)avgWaterTri
+            << " water = " << (int)(avgOpaqueTri + avgWaterTri) << " total\n";
         out << "  vertices:  " << (int)avgVerts << "\n\n";
 
         out << "Percentiles (ms):\n";
-        out << "  total:  avg=" << avg(total) << "  p50=" << percentile(total,0.50) << "  p95=" << percentile(total,0.95) << "  p99=" << percentile(total,0.99) << "  max=" << *std::max_element(total.begin(),total.end()) << "\n";
-        out << "  render: avg=" << avg(render) << "  p50=" << percentile(render,0.50) << "  p95=" << percentile(render,0.95) << "  p99=" << percentile(render,0.99) << "  max=" << *std::max_element(render.begin(),render.end()) << "\n";
+        out << "  total:  avg=" << avg(total) << "  p50=" << percentile(total, 0.50)
+            << "  p95=" << percentile(total, 0.95) << "  p99=" << percentile(total, 0.99)
+            << "  max=" << *std::max_element(total.begin(), total.end()) << "\n";
+        out << "  render: avg=" << avg(render) << "  p50=" << percentile(render, 0.50)
+            << "  p95=" << percentile(render, 0.95) << "  p99=" << percentile(render, 0.99)
+            << "  max=" << *std::max_element(render.begin(), render.end()) << "\n";
         if (gpuTimerSupported)
-            out << "  gpu:    avg=" << avg(gpu) << "  p50=" << percentile(gpu,0.50) << "  p95=" << percentile(gpu,0.95) << "  p99=" << percentile(gpu,0.99) << "  max=" << *std::max_element(gpu.begin(),gpu.end()) << "\n";
+            out << "  gpu:    avg=" << avg(gpu) << "  p50=" << percentile(gpu, 0.50)
+                << "  p95=" << percentile(gpu, 0.95) << "  p99=" << percentile(gpu, 0.99)
+                << "  max=" << *std::max_element(gpu.begin(), gpu.end()) << "\n";
 
         std::string report = out.str();
         std::cout << report;
@@ -229,7 +236,11 @@ public:
     void writeLegacyResults(int measureFrames) const {
         if (legacyFrameTimes.empty()) return;
         double sum = 0, minT = legacyFrameTimes[0], maxT = legacyFrameTimes[0];
-        for (double t : legacyFrameTimes) { sum += t; minT = std::min(minT, t); maxT = std::max(maxT, t); }
+        for (double t : legacyFrameTimes) {
+            sum += t;
+            minT = std::min(minT, t);
+            maxT = std::max(maxT, t);
+        }
         double avgT = sum / legacyFrameTimes.size();
         auto sorted = legacyFrameTimes;
         std::sort(sorted.begin(), sorted.end());
@@ -238,14 +249,14 @@ public:
         std::ofstream out("benchmark_results.txt");
         out << std::fixed << std::setprecision(2);
         out << "frames:  " << measureFrames << "\n";
-        out << "avg:     " << avgT << " ms  (" << (int)(1000.0/avgT) << " fps)\n";
-        out << "min:     " << minT << " ms  (" << (int)(1000.0/minT) << " fps)\n";
-        out << "max:     " << maxT << " ms  (" << (int)(1000.0/maxT) << " fps)\n";
-        out << "p99:     " << p99  << " ms  (" << (int)(1000.0/p99)  << " fps)\n";
+        out << "avg:     " << avgT << " ms  (" << (int)(1000.0 / avgT) << " fps)\n";
+        out << "min:     " << minT << " ms  (" << (int)(1000.0 / minT) << " fps)\n";
+        out << "max:     " << maxT << " ms  (" << (int)(1000.0 / maxT) << " fps)\n";
+        out << "p99:     " << p99 << " ms  (" << (int)(1000.0 / p99) << " fps)\n";
         out.close();
     }
 
-private:
+  private:
     double now() { return glfwGetTime(); }
     double ms(double start) { return (glfwGetTime() - start) * 1000.0; }
 

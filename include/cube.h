@@ -21,23 +21,15 @@ enum block_type {
     CACTUS
 };
 
-enum Biome {
-    BIOME_OCEAN,
-    BIOME_BEACH,
-    BIOME_PLAINS,
-    BIOME_FOREST,
-    BIOME_DESERT,
-    BIOME_TUNDRA,
-    BIOME_COUNT
-};
+enum Biome { BIOME_OCEAN, BIOME_BEACH, BIOME_PLAINS, BIOME_FOREST, BIOME_DESERT, BIOME_TUNDRA, BIOME_COUNT };
 
 class Cube {
-public:
+  public:
     Cube() : type(AIR) {}
 
     block_type getType() const { return type; }
     void setType(block_type t) { type = t; }
 
-private:
+  private:
     block_type type;
 };

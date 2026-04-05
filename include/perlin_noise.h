@@ -8,14 +8,13 @@
 #include <vector>
 
 class PerlinNoise {
-public:
-
+  public:
     PerlinNoise(unsigned int seed);
 
-    double noise(double x, double y); // 2D noise
+    double noise(double x, double y);           // 2D noise
     double noise(double x, double y, double z); // 3D noise
 
-private:
+  private:
     std::vector<int> p;
     double fade(double t);
     double lerp(double t, double a, double b);
