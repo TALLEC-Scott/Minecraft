@@ -200,7 +200,13 @@ void processInput(GLFWwindow* window) {
 }
 
 int main(int argc, char* argv[]) {
-	bool benchmarkMode = (argc > 1 && std::string(argv[1]) == "--benchmark");
+	bool benchmarkMode = false;
+	bool headlessMode = false;
+	for (int i = 1; i < argc; i++) {
+		std::string arg = argv[i];
+		if (arg == "--benchmark") benchmarkMode = true;
+		else if (arg == "--headless") headlessMode = true;
+	}
 	if (!glfwInit()) {
 		std::cout << "Failed to initialize GLFW" << std::endl;
 		return -1;
@@ -242,6 +248,29 @@ int main(int argc, char* argv[]) {
 	glfwSetCursorPosCallback(window, cursorPositionCallback);
 
 	glfwSwapInterval(0); // Disable vsync for accurate benchmarking
+
+	// Headless mode: create an FBO so rendering goes to an offscreen buffer
+	// instead of through the WSL2/D3D12 presentation pipeline.
+	GLuint headlessFBO = 0, headlessColor = 0, headlessDepth = 0;
+	if (headlessMode) {
+		glfwHideWindow(window);
+		glGenFramebuffers(1, &headlessFBO);
+		glBindFramebuffer(GL_FRAMEBUFFER, headlessFBO);
+
+		glGenTextures(1, &headlessColor);
+		glBindTexture(GL_TEXTURE_2D, headlessColor);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, WINDOW_WIDTH, WINDOW_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, headlessColor, 0);
+
+		glGenRenderbuffers(1, &headlessDepth);
+		glBindRenderbuffer(GL_RENDERBUFFER, headlessDepth);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, WINDOW_WIDTH, WINDOW_HEIGHT);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, headlessDepth);
+
+		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+			std::cout << "WARNING: Headless FBO incomplete!" << std::endl;
+	}
+
 	glEnable(GL_DEPTH_TEST);
 
 	int nrAttributes;
@@ -275,7 +304,12 @@ int main(int argc, char* argv[]) {
         constexpr int WARMUP_FRAMES  = 600;
         constexpr int MEASURE_FRAMES = 600;
 
-        std::string label = (argc > 2) ? argv[2] : "benchmark";
+        // Find label: first arg that isn't a flag
+        std::string label = "benchmark";
+        for (int i = 1; i < argc; i++) {
+            std::string a = argv[i];
+            if (a[0] != '-') { label = a; break; }
+        }
 
         Profiler profiler;
         profiler.init();
@@ -325,7 +359,10 @@ int main(int argc, char* argv[]) {
             if (measuring) profiler.endRender();
 
             if (measuring) profiler.beginSwap();
-            glfwSwapBuffers(window);
+            if (headlessMode)
+                glFinish();  // Drain GPU pipeline without WSL2 presentation overhead
+            else
+                glfwSwapBuffers(window);
             if (measuring) profiler.endSwap();
             double t1 = glfwGetTime();
 
@@ -413,6 +450,11 @@ int main(int argc, char* argv[]) {
 	shaderProgram.destroy();
 	} // world and shaderProgram destroyed here, while GL context is still valid
 	cleanup:
+	if (headlessFBO) {
+		glDeleteFramebuffers(1, &headlessFBO);
+		glDeleteTextures(1, &headlessColor);
+		glDeleteRenderbuffers(1, &headlessDepth);
+	}
 	TextureArray::destroy();
 
 	glfwDestroyWindow(window);

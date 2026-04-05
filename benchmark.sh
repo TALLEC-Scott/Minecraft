@@ -5,6 +5,15 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 LABEL="${1:-unlabeled}"
+HEADLESS=""
+if [ "$2" = "--headless" ] || [ "$1" = "--headless" ]; then
+    HEADLESS="--headless"
+    # If --headless was $1, shift label
+    if [ "$1" = "--headless" ]; then
+        LABEL="${2:-unlabeled}"
+    fi
+fi
+
 RESULTS_DIR="benchmark_history"
 mkdir -p "$RESULTS_DIR"
 
@@ -13,8 +22,10 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-O3 -march=native" 
 make -C build -j$(nproc) > /dev/null 2>&1
 echo "Build done."
 
-echo "Running benchmark (600 warmup + 600 measured frames)..."
-./build/minecraft --benchmark "$LABEL"
+MODE="benchmark"
+[ -n "$HEADLESS" ] && MODE="headless benchmark"
+echo "Running $MODE (600 warmup + 600 measured frames)..."
+./build/minecraft --benchmark $HEADLESS "$LABEL"
 
 # Display legacy results (backward compat)
 echo ""
