@@ -129,10 +129,12 @@ void processInput(GLFWwindow* window) {
 int main(int argc, char* argv[]) {
 	bool benchmarkMode = false;
 	bool headlessMode = false;
+	unsigned int worldSeed = 0;
 	for (int i = 1; i < argc; i++) {
 		std::string arg = argv[i];
 		if (arg == "--benchmark") benchmarkMode = true;
 		else if (arg == "--headless") headlessMode = true;
+		else if (arg == "--seed" && i + 1 < argc) worldSeed = std::stoul(argv[++i]);
 	}
 	if (!glfwInit()) {
 		std::cout << "Failed to initialize GLFW" << std::endl;
@@ -208,7 +210,8 @@ int main(int argc, char* argv[]) {
 	TextureArray::initialize();
 	{
 	Shader shaderProgram("assets/Shaders/vert.shd", "assets/Shaders/frag.shd");
-	World world = World();
+	World world(worldSeed);
+	std::cout << "World seed: " << worldSeed << std::endl;
 	w = &world;
 
 	glEnable(GL_CULL_FACE);

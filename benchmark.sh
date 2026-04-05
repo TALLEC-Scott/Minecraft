@@ -4,15 +4,17 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-LABEL="${1:-unlabeled}"
+LABEL=""
 HEADLESS=""
-if [ "$2" = "--headless" ] || [ "$1" = "--headless" ]; then
-    HEADLESS="--headless"
-    # If --headless was $1, shift label
-    if [ "$1" = "--headless" ]; then
-        LABEL="${2:-unlabeled}"
-    fi
-fi
+SEED=""
+for arg in "$@"; do
+    case "$arg" in
+        --headless) HEADLESS="--headless" ;;
+        --seed=*) SEED="--seed ${arg#--seed=}" ;;
+        *) [ -z "$LABEL" ] && LABEL="$arg" ;;
+    esac
+done
+[ -z "$LABEL" ] && LABEL="unlabeled"
 
 RESULTS_DIR="benchmark_history"
 mkdir -p "$RESULTS_DIR"
@@ -25,7 +27,7 @@ echo "Build done."
 MODE="benchmark"
 [ -n "$HEADLESS" ] && MODE="headless benchmark"
 echo "Running $MODE (600 warmup + 600 measured frames)..."
-./build/minecraft --benchmark $HEADLESS "$LABEL"
+./build/minecraft --benchmark $HEADLESS $SEED "$LABEL"
 
 # Display legacy results (backward compat)
 echo ""
