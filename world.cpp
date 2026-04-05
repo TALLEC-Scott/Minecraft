@@ -75,20 +75,39 @@ Cube* World::getBlock(int x, int y, int z) const {
     return res->getBlock(x % CHUNK_SIZE, y % CHUNK_SIZE, z % CHUNK_SIZE);
 }
 
-int World::render(Shader shaderProgram, glm::mat4 viewProjection) const {
+int World::render(Shader shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const {
     auto planes = extractFrustumPlanes(viewProjection);
-    int rendered = 0;
 
-    // Pass 1: opaque geometry
+    // Collect visible chunks and sort front-to-back for early-Z rejection
+    struct VisibleChunk {
+        glm::ivec2 pos;
+        Chunk* chunk;
+        float distSq;
+    };
+    std::vector<VisibleChunk> visible;
+    visible.reserve(chunkManager->chunks.size());
+
     for (auto& [pos, chunk] : chunkManager->chunks) {
         glm::vec3 minP(pos.x * CHUNK_SIZE, 0, pos.y * CHUNK_SIZE);
         glm::vec3 maxP(minP.x + CHUNK_SIZE, CHUNK_SIZE, minP.z + CHUNK_SIZE);
         if (!aabbInFrustum(planes, minP, maxP)) continue;
-        Chunk* nx_neg = chunkManager->getChunk(pos.x - 1, pos.y);
-        Chunk* nx_pos = chunkManager->getChunk(pos.x + 1, pos.y);
-        Chunk* nz_neg = chunkManager->getChunk(pos.x, pos.y - 1);
-        Chunk* nz_pos = chunkManager->getChunk(pos.x, pos.y + 1);
-        chunk.render(shaderProgram, nx_neg, nx_pos, nz_neg, nz_pos);
+        // Distance from camera to chunk center (squared, skip sqrt)
+        glm::vec3 center(minP.x + CHUNK_SIZE * 0.5f, CHUNK_SIZE * 0.5f, minP.z + CHUNK_SIZE * 0.5f);
+        glm::vec3 d = center - cameraPos;
+        visible.push_back({pos, const_cast<Chunk*>(&chunk), d.x*d.x + d.y*d.y + d.z*d.z});
+    }
+
+    std::sort(visible.begin(), visible.end(),
+              [](const VisibleChunk& a, const VisibleChunk& b) { return a.distSq < b.distSq; });
+
+    // Pass 1: opaque geometry (front-to-back)
+    int rendered = 0;
+    for (auto& vc : visible) {
+        Chunk* nx_neg = chunkManager->getChunk(vc.pos.x - 1, vc.pos.y);
+        Chunk* nx_pos = chunkManager->getChunk(vc.pos.x + 1, vc.pos.y);
+        Chunk* nz_neg = chunkManager->getChunk(vc.pos.x, vc.pos.y - 1);
+        Chunk* nz_pos = chunkManager->getChunk(vc.pos.x, vc.pos.y + 1);
+        vc.chunk->render(shaderProgram, nx_neg, nx_pos, nz_neg, nz_pos);
         rendered++;
         g_frame.chunksRendered++;
     }
@@ -96,15 +115,13 @@ int World::render(Shader shaderProgram, glm::mat4 viewProjection) const {
     // Pass 2: water back-to-front for correct transparency
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    for (auto& [pos, chunk] : chunkManager->chunks) {
-        glm::vec3 minP(pos.x * CHUNK_SIZE, 0, pos.y * CHUNK_SIZE);
-        glm::vec3 maxP(minP.x + CHUNK_SIZE, CHUNK_SIZE, minP.z + CHUNK_SIZE);
-        if (!aabbInFrustum(planes, minP, maxP)) continue;
-        Chunk* nx_neg = chunkManager->getChunk(pos.x - 1, pos.y);
-        Chunk* nx_pos = chunkManager->getChunk(pos.x + 1, pos.y);
-        Chunk* nz_neg = chunkManager->getChunk(pos.x, pos.y - 1);
-        Chunk* nz_pos = chunkManager->getChunk(pos.x, pos.y + 1);
-        chunk.renderWater(shaderProgram, nx_neg, nx_pos, nz_neg, nz_pos);
+    for (int i = (int)visible.size() - 1; i >= 0; i--) {
+        auto& vc = visible[i];
+        Chunk* nx_neg = chunkManager->getChunk(vc.pos.x - 1, vc.pos.y);
+        Chunk* nx_pos = chunkManager->getChunk(vc.pos.x + 1, vc.pos.y);
+        Chunk* nz_neg = chunkManager->getChunk(vc.pos.x, vc.pos.y - 1);
+        Chunk* nz_pos = chunkManager->getChunk(vc.pos.x, vc.pos.y + 1);
+        vc.chunk->renderWater(shaderProgram, nx_neg, nx_pos, nz_neg, nz_pos);
     }
     glDisable(GL_BLEND);
 

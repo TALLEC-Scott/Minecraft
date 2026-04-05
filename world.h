@@ -19,6 +19,6 @@ public:
     ChunkManager* chunkManager;
 	~World();
 
-    int render(Shader shaderProgram, glm::mat4 viewProjection) const;
+    int render(Shader shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const;
     void update(glm::vec3 cameraPosition) const;
 };

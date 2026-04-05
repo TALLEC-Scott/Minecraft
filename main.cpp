@@ -321,7 +321,7 @@ int main(int argc, char* argv[]) {
 
             double t0 = glfwGetTime();
             if (measuring) profiler.beginRender();
-            w->render(shaderProgram, vp);
+            w->render(shaderProgram, vp, camera.getPosition());
             if (measuring) profiler.endRender();
 
             if (measuring) profiler.beginSwap();
@@ -404,7 +404,7 @@ int main(int argc, char* argv[]) {
         TextureArray::bind();
         w->update(camera.getPosition());
         glm::mat4 viewProjection = projection * camera.getViewMatrix();
-        chunksRendered = w->render(shaderProgram, viewProjection);
+        chunksRendered = w->render(shaderProgram, viewProjection, camera.getPosition());
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
