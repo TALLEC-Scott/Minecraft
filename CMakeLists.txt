@@ -8,6 +8,18 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Optional: enable clang-tidy during build with -DENABLE_CLANG_TIDY=ON
+option(ENABLE_CLANG_TIDY "Run clang-tidy during compilation" OFF)
+if(ENABLE_CLANG_TIDY)
+  find_program(CLANG_TIDY_EXE clang-tidy)
+  if(CLANG_TIDY_EXE)
+    set(CMAKE_CXX_CLANG_TIDY ${CLANG_TIDY_EXE})
+    message(STATUS "clang-tidy enabled: ${CLANG_TIDY_EXE}")
+  endif()
+endif()
+
 find_package(OpenGL REQUIRED)
 find_package(glfw3 3.3 REQUIRED)
 find_package(Threads REQUIRED)
