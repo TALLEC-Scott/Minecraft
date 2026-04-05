@@ -42,11 +42,13 @@ bool wireframeMode = false;
 bool f12KeyPressed = false;
 bool fullscreenMode = false;
 
-bool previousGravity = false;
-bool gravity = false;
-
 bool doDaylightCycle = true;
 bool previousDaylight = false;
+
+// Double-tap space detection
+bool spaceWasPressed = false;
+double lastSpaceTap = 0.0;
+constexpr double DOUBLE_TAP_TIME = 0.3; // seconds
 
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
@@ -130,18 +132,6 @@ void processInput(GLFWwindow* window) {
 	}
 	xKeyPressed = xKeyDown;
 
-	// Enable/Disable gravity
-	if (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS) {
-		if (!previousGravity) {
-			camera.switchGravity();
-			gravity = !gravity;
-		}
-		previousGravity = true;
-	}
-	else if (glfwGetKey(window, GLFW_KEY_G) == GLFW_RELEASE) {
-		previousGravity = false;
-	}
-
 	// Enable/Disable daylight cycle
 	if (glfwGetKey(window, GLFW_KEY_J) == GLFW_PRESS) {
 		if (!previousDaylight) {
@@ -166,10 +156,27 @@ void processInput(GLFWwindow* window) {
 	// Right
 	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
 		camera.right();
-	// Up
-	if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-		camera.up();
-	// Down
+	// Space: double-tap toggles walk/fly, single press = jump (walk) or fly up (fly)
+	{
+		bool spaceDown = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
+		if (spaceDown && !spaceWasPressed) {
+			double now = glfwGetTime();
+			if (now - lastSpaceTap < DOUBLE_TAP_TIME) {
+				camera.toggleWalkMode();
+				lastSpaceTap = 0; // prevent triple-tap
+			} else {
+				lastSpaceTap = now;
+				if (camera.isWalkMode())
+					camera.jump();
+				else
+					camera.up();
+			}
+		} else if (spaceDown && !camera.isWalkMode()) {
+			camera.up(); // hold space to fly up
+		}
+		spaceWasPressed = spaceDown;
+	}
+	// Down (fly mode only)
 	if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
 		camera.down();
 	// Run
@@ -502,7 +509,43 @@ int main(int argc, char* argv[]) {
         setSkyColor(timeValue);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		camera.fall();
+		// Walk mode: ground detection + collision
+		if (camera.isWalkMode()) {
+			glm::vec3 pos = camera.getPosition();
+
+			// Block check via context pointer (no static hack)
+			auto blockCheck = [](int bx, int by, int bz, void* ctx) -> bool {
+				auto* cm = static_cast<ChunkManager*>(ctx);
+				int cx = (bx >= 0) ? bx / CHUNK_SIZE : (bx - CHUNK_SIZE + 1) / CHUNK_SIZE;
+				int cz = (bz >= 0) ? bz / CHUNK_SIZE : (bz - CHUNK_SIZE + 1) / CHUNK_SIZE;
+				Chunk* chunk = cm->getChunk(cx, cz);
+				if (!chunk || by < 0 || by >= CHUNK_HEIGHT) return false;
+				Cube* b = chunk->getBlock(bx - cx * CHUNK_SIZE, by, bz - cz * CHUNK_SIZE);
+				return b && b->getType() != AIR && b->getType() != WATER;
+			};
+
+			int bx = (int)std::floor(pos.x);
+			int bz = (int)std::floor(pos.z);
+
+			// Find ground: pre-compute chunk once, scan column directly
+			int cx = (bx >= 0) ? bx / CHUNK_SIZE : (bx - CHUNK_SIZE + 1) / CHUNK_SIZE;
+			int cz = (bz >= 0) ? bz / CHUNK_SIZE : (bz - CHUNK_SIZE + 1) / CHUNK_SIZE;
+			int lx = bx - cx * CHUNK_SIZE;
+			int lz = bz - cz * CHUNK_SIZE;
+			Chunk* chunk = w->chunkManager->getChunk(cx, cz);
+			float groundY = 0;
+			if (chunk) {
+				for (int y = std::min((int)pos.y + 1, CHUNK_HEIGHT - 1); y >= 0; y--) {
+					Cube* b = chunk->getBlock(lx, y, lz);
+					if (b && b->getType() != AIR && b->getType() != WATER) {
+						groundY = (float)(y + 1);
+						break;
+					}
+				}
+			}
+
+			camera.update(groundY, blockCheck, w->chunkManager);
+		}
 
 		double currentTime = glfwGetTime();
 		double frameTime = (currentTime - lastFrameTime) * 1000.0; // ms
