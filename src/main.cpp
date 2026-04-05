@@ -313,6 +313,65 @@ int main(int argc, char* argv[]) {
 	glEnableVertexAttribArray(4);
 	glBindVertexArray(0);
 
+	// Cloud mesh: precomputed large tiling grid, shifted by model matrix each frame
+	GLuint cloudVAO, cloudVBO, cloudEBO;
+	int cloudIndexCount = 0;
+	{
+		constexpr int CLOUD_GRID = 128;  // tiling pattern (wraps infinitely)
+		constexpr int CLOUD_BLOCK = 12; // larger cloud pieces
+		float cl = (float)TextureArray::CLOUD_LAYER;
+
+		// Precompute cloud pattern: low-frequency noise for large connected blobs
+		std::vector<float> cverts;
+		std::vector<unsigned int> cidx;
+		unsigned int cbase = 0;
+
+		for (int gx = 0; gx < CLOUD_GRID; gx++) {
+			for (int gz = 0; gz < CLOUD_GRID; gz++) {
+				// Very low frequency → large continuous cloud masses
+				double cn = world.terrainGenerator->getNoise(gx, gz);
+				if (cn < 0.65) continue;
+
+				float x0 = (gx - CLOUD_GRID/2) * CLOUD_BLOCK;
+				float x1 = x0 + CLOUD_BLOCK;
+				float z0 = (gz - CLOUD_GRID/2) * CLOUD_BLOCK;
+				float z1 = z0 + CLOUD_BLOCK;
+				float v[] = {
+					x0,0,z0, 0,0, 0,1,0, cl,1,
+					x0,0,z1, 0,1, 0,1,0, cl,1,
+					x1,0,z1, 1,1, 0,1,0, cl,1,
+					x1,0,z0, 1,0, 0,1,0, cl,1,
+				};
+				for (float f : v) cverts.push_back(f);
+				cidx.push_back(cbase); cidx.push_back(cbase+1); cidx.push_back(cbase+2);
+				cidx.push_back(cbase+2); cidx.push_back(cbase+3); cidx.push_back(cbase);
+				cbase += 4;
+			}
+		}
+		cloudIndexCount = (int)cidx.size();
+
+		glGenVertexArrays(1, &cloudVAO);
+		glGenBuffers(1, &cloudVBO);
+		glGenBuffers(1, &cloudEBO);
+		glBindVertexArray(cloudVAO);
+		glBindBuffer(GL_ARRAY_BUFFER, cloudVBO);
+		glBufferData(GL_ARRAY_BUFFER, cverts.size()*sizeof(float), cverts.data(), GL_STATIC_DRAW);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cloudEBO);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, cidx.size()*sizeof(unsigned int), cidx.data(), GL_STATIC_DRAW);
+		constexpr int CL_STRIDE = 10 * sizeof(float);
+		glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,CL_STRIDE,(void*)0);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,CL_STRIDE,(void*)(3*sizeof(float)));
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(2,3,GL_FLOAT,GL_FALSE,CL_STRIDE,(void*)(5*sizeof(float)));
+		glEnableVertexAttribArray(2);
+		glVertexAttribPointer(3,1,GL_FLOAT,GL_FALSE,CL_STRIDE,(void*)(8*sizeof(float)));
+		glEnableVertexAttribArray(3);
+		glVertexAttribPointer(4,1,GL_FLOAT,GL_FALSE,CL_STRIDE,(void*)(9*sizeof(float)));
+		glEnableVertexAttribArray(4);
+		glBindVertexArray(0);
+	}
+
 	// Wireframe highlight cube (12 edges = 24 line vertices)
 	GLuint highlightVAO, highlightVBO;
 	glGenVertexArrays(1, &highlightVAO);
@@ -532,6 +591,40 @@ int main(int argc, char* argv[]) {
         }
 
         chunksRendered = w->render(shaderProgram, viewProjection, camera.getPosition());
+
+        // Clouds: precomputed grid translated to follow camera + drift
+        if (cloudIndexCount > 0) {
+            constexpr float CLOUD_Y = (float)(CHUNK_HEIGHT + 30);
+            constexpr int CLOUD_BLOCK_SIZE = 12;
+            constexpr int CLOUD_GRID_SIZE = 128;
+            constexpr float CLOUD_TILE = CLOUD_GRID_SIZE * CLOUD_BLOCK_SIZE; // 1024 blocks
+            float drift = (float)glfwGetTime() * 1.5f;
+
+            // Render a 3x3 grid of the cloud tile centered on camera for seamless tiling
+            shaderProgram.setFloat("emissive", 1.0f);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glDisable(GL_CULL_FACE);
+
+            float tileOriginX = std::floor(cameraPos.x / CLOUD_TILE) * CLOUD_TILE;
+            float tileOriginZ = std::floor(cameraPos.z / CLOUD_TILE) * CLOUD_TILE;
+
+            for (int tx = -1; tx <= 1; tx++) {
+                for (int tz = -1; tz <= 1; tz++) {
+                    glm::mat4 cloudModel = glm::translate(glm::mat4(1.0f),
+                        glm::vec3(tileOriginX + tx * CLOUD_TILE + drift, CLOUD_Y,
+                                  tileOriginZ + tz * CLOUD_TILE));
+                    shaderProgram.setMat4("model", cloudModel);
+                    glBindVertexArray(cloudVAO);
+                    glDrawElements(GL_TRIANGLES, cloudIndexCount, GL_UNSIGNED_INT, 0);
+                }
+            }
+            glBindVertexArray(0);
+            glEnable(GL_CULL_FACE);
+            glDisable(GL_BLEND);
+            shaderProgram.setFloat("emissive", 0.0f);
+            shaderProgram.setMat4("model", glm::mat4(1.0f));
+        }
 
         // Wireframe block highlight
         if (hasHighlight) {
