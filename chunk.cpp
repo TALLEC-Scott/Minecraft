@@ -87,13 +87,21 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
         }
     }
 
-    // --- Sand shores: convert dirt adjacent to water into sand ---
+    // --- Sand: convert dirt/grass below or adjacent to water into sand ---
     for (int i = 0; i < CHUNK_SIZE; i++) {
         for (int j = 0; j < CHUNK_HEIGHT; j++) {
             for (int k = 0; k < CHUNK_SIZE; k++) {
                 Cube* block = getBlock(i, j, k);
-                if (block->getType() != DIRT) continue;
-                // Check 6 neighbors for water
+                block_type bt = block->getType();
+                if (bt != DIRT && bt != GRASS) continue;
+                // If there's water anywhere above this column at this position, it's underwater
+                bool underwater = false;
+                for (int y = j + 1; y <= WATER_LEVEL && y < CHUNK_HEIGHT; y++) {
+                    Cube* above = getBlock(i, y, k);
+                    if (above && above->getType() == WATER) { underwater = true; break; }
+                }
+                if (underwater) { block->setType(SAND); continue; }
+                // Also convert if directly adjacent to water (shoreline)
                 static const int dirs[6][3] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
                 for (auto& d : dirs) {
                     Cube* nb = getBlock(i+d[0], j+d[1], k+d[2]);
