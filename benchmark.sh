@@ -14,34 +14,45 @@ make -C build -j$(nproc) > /dev/null 2>&1
 echo "Build done."
 
 echo "Running benchmark (600 warmup + 600 measured frames)..."
-./build/minecraft --benchmark
+./build/minecraft --benchmark "$LABEL"
 
-# Display results
+# Display legacy results (backward compat)
 echo ""
 echo "=== Results: $LABEL ==="
 cat benchmark_results.txt
 
-# Save a timestamped copy
+# Display profile breakdown if available
+if [ -f profile_results.txt ]; then
+    cat profile_results.txt
+fi
+
+# Save a timestamped copy with both legacy + profile data
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 OUTFILE="$RESULTS_DIR/${TIMESTAMP}_${LABEL}.txt"
-echo "label:   $LABEL" > "$OUTFILE"
-echo "commit:  $(git rev-parse --short HEAD) - $(git log -1 --pretty=%s)" >> "$OUTFILE"
-echo "date:    $(date)" >> "$OUTFILE"
-echo "" >> "$OUTFILE"
-cat benchmark_results.txt >> "$OUTFILE"
+{
+    echo "label:   $LABEL"
+    echo "commit:  $(git rev-parse --short HEAD) - $(git log -1 --pretty=%s)"
+    echo "date:    $(date)"
+    echo ""
+    cat benchmark_results.txt
+    if [ -f profile_results.txt ]; then
+        echo ""
+        cat profile_results.txt
+    fi
+} > "$OUTFILE"
 echo ""
 echo "Saved to $OUTFILE"
 
-# If there's a previous result, show a comparison
+# Compare with previous run
 PREV=$(ls "$RESULTS_DIR"/*.txt 2>/dev/null | grep -v "$OUTFILE" | tail -1)
 if [ -n "$PREV" ]; then
     echo ""
     echo "=== Comparison with previous run ==="
     echo "Previous: $(basename $PREV)"
-    prev_avg=$(grep "^avg:" "$PREV"     | awk '{print $2}')
-    curr_avg=$(grep "^avg:" benchmark_results.txt | awk '{print $2}')
-    prev_fps=$(grep "^avg:" "$PREV"     | grep -oP '\d+ fps' | grep -oP '\d+')
-    curr_fps=$(grep "^avg:" benchmark_results.txt | grep -oP '\d+ fps' | grep -oP '\d+')
+    prev_avg=$(grep "^avg:" "$PREV"     | head -1 | awk '{print $2}')
+    curr_avg=$(grep "^avg:" benchmark_results.txt | head -1 | awk '{print $2}')
+    prev_fps=$(grep "^avg:" "$PREV"     | head -1 | grep -oP '\d+ fps' | grep -oP '\d+')
+    curr_fps=$(grep "^avg:" benchmark_results.txt | head -1 | grep -oP '\d+ fps' | grep -oP '\d+')
     echo "avg frame time:  $prev_avg ms  ->  $curr_avg ms"
     echo "avg FPS:         $prev_fps  ->  $curr_fps"
     if [ -n "$prev_fps" ] && [ -n "$curr_fps" ] && [ "$prev_fps" -ne 0 ]; then

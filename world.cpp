@@ -1,4 +1,5 @@
 #include "world.h"
+#include "profiler.h"
 #include <array>
 #include <algorithm>
 
@@ -89,6 +90,7 @@ int World::render(Shader shaderProgram, glm::mat4 viewProjection) const {
         Chunk* nz_pos = chunkManager->getChunk(pos.x, pos.y + 1);
         chunk.render(shaderProgram, nx_neg, nx_pos, nz_neg, nz_pos);
         rendered++;
+        g_frame.chunksRendered++;
     }
 
     // Pass 2: water back-to-front for correct transparency

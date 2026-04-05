@@ -13,6 +13,8 @@
 #include <fstream>
 #include <algorithm>
 
+#include "profiler.h"
+
 #include "shader.h"
 #include "texture.h"
 #include "cube.h"
@@ -239,6 +241,7 @@ int main(int argc, char* argv[]) {
 
 	glfwSetCursorPosCallback(window, cursorPositionCallback);
 
+	glfwSwapInterval(0); // Disable vsync for accurate benchmarking
 	glEnable(GL_DEPTH_TEST);
 
 	int nrAttributes;
@@ -267,12 +270,15 @@ int main(int argc, char* argv[]) {
    // ChunkManager chunkManager(1, 16, *w->terrainGenerator); // renderDistance=5, chunkSize=16
 
 
-    // Benchmark mode: fixed camera, 300 warm-up + 300 measured frames, write results to file
+    // Benchmark mode: fixed camera, warm-up + measured frames, write results to file
     if (benchmarkMode) {
         constexpr int WARMUP_FRAMES  = 600;
         constexpr int MEASURE_FRAMES = 600;
-        std::vector<double> frameTimes;
-        frameTimes.reserve(MEASURE_FRAMES);
+
+        std::string label = (argc > 2) ? argv[2] : "benchmark";
+
+        Profiler profiler;
+        profiler.init();
 
         glm::mat4 projection = glm::perspective(glm::radians(45.0f),
             (float)windowWidth / (float)windowHeight, 0.1f, 5000.0f);
@@ -280,6 +286,9 @@ int main(int argc, char* argv[]) {
         int frame = 0;
 
         while (!glfwWindowShouldClose(window) && frame < WARMUP_FRAMES + MEASURE_FRAMES) {
+            bool measuring = (frame >= WARMUP_FRAMES);
+            if (measuring) profiler.beginFrame();
+
             if (frame < WARMUP_FRAMES) {
                 // Phase 1 (warmup): spin 360° in place so surrounding chunks load
                 float angle = glm::radians((float)frame / WARMUP_FRAMES * 360.0f);
@@ -303,38 +312,37 @@ int main(int argc, char* argv[]) {
             camera.defineLookAt(shaderProgram);
 
             TextureArray::bind();
+
+            if (measuring) profiler.beginUpdate();
             w->update(camera.getPosition());
+            if (measuring) profiler.endUpdate();
+
             glm::mat4 vp = projection * camera.getViewMatrix();
 
             double t0 = glfwGetTime();
+            if (measuring) profiler.beginRender();
             w->render(shaderProgram, vp);
+            if (measuring) profiler.endRender();
+
+            if (measuring) profiler.beginSwap();
             glfwSwapBuffers(window);
+            if (measuring) profiler.endSwap();
             double t1 = glfwGetTime();
 
-            if (frame >= WARMUP_FRAMES)
-                frameTimes.push_back((t1 - t0) * 1000.0);
+            if (measuring) {
+                profiler.recordLegacyFrameTime((t1 - t0) * 1000.0);
+                profiler.endFrame((int)w->chunkManager->chunks.size());
+            }
 
             glfwPollEvents();
             frame++;
         }
 
-        // Compute and write stats
-        double sum = 0, minT = frameTimes[0], maxT = frameTimes[0];
-        for (double t : frameTimes) { sum += t; minT = std::min(minT, t); maxT = std::max(maxT, t); }
-        double avg = sum / frameTimes.size();
-        std::sort(frameTimes.begin(), frameTimes.end());
-        double p99 = frameTimes[(size_t)(frameTimes.size() * 0.99)];
+        profiler.writeLegacyResults(MEASURE_FRAMES);
+        profiler.report(label);
+        profiler.destroy();
 
-        std::ofstream out("benchmark_results.txt");
-        out << std::fixed << std::setprecision(2);
-        out << "frames:  " << MEASURE_FRAMES << "\n";
-        out << "avg:     " << avg  << " ms  (" << (int)(1000.0/avg)  << " fps)\n";
-        out << "min:     " << minT << " ms  (" << (int)(1000.0/minT) << " fps)\n";
-        out << "max:     " << maxT << " ms  (" << (int)(1000.0/maxT) << " fps)\n";
-        out << "p99:     " << p99  << " ms  (" << (int)(1000.0/p99)  << " fps)\n";
-        out.close();
-
-        std::cout << "Benchmark complete. Results written to benchmark_results.txt" << std::endl;
+        std::cout << "\nBenchmark complete. Results written to benchmark_results.txt + profile_results.txt" << std::endl;
         shaderProgram.destroy();
         goto cleanup;
     }
