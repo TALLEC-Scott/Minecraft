@@ -50,6 +50,12 @@ bool spaceWasPressed = false;
 double lastSpaceTap = 0.0;
 constexpr double DOUBLE_TAP_TIME = 0.3; // seconds
 
+// Punch animation state
+bool isPunching = false;
+double punchStartTime = 0.0;
+constexpr double PUNCH_DURATION = 0.3; // seconds
+bool leftClickHeld = false;
+
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
@@ -202,9 +208,14 @@ void processInput(GLFWwindow* window) {
 	}
 	f12KeyPressed = f12KeyDown;
 
-	if (w != nullptr && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+	// Left click: punch animation + break block
+	bool leftDown = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+	if (leftDown && !leftClickHeld && w != nullptr) {
+		isPunching = true;
+		punchStartTime = glfwGetTime();
 		w->destroyBlock(targeted);
 	}
+	leftClickHeld = leftDown;
 }
 
 int main(int argc, char* argv[]) {
@@ -400,6 +411,64 @@ int main(int argc, char* argv[]) {
 	glBindVertexArray(0);
 	bool hasHighlight = false;
 	glm::ivec3 highlightBlock(0);
+
+	// First-person arm mesh (a simple box)
+	GLuint armVAO, armVBO, armEBO;
+	{
+		glGenVertexArrays(1, &armVAO);
+		glGenBuffers(1, &armVBO);
+		glGenBuffers(1, &armEBO);
+
+		float sl = (float)TextureArray::SKIN_LAYER;
+		// Box: 0.3 wide, 0.8 tall, 0.3 deep — positioned in view space
+		float w = 0.15f, h = 0.4f, d = 0.15f;
+		// 8 corners, 6 faces × 4 verts = 24 verts
+		// Each vert: pos(3) + uv(2) + normal(3) + layer(1) + ao(1) = 10
+		float verts[] = {
+			// Front face (+Z)
+			-w,-h, d, 0,0, 0,0,1, sl,1,  -w, h, d, 0,1, 0,0,1, sl,1,
+			 w, h, d, 1,1, 0,0,1, sl,1,   w,-h, d, 1,0, 0,0,1, sl,1,
+			// Back face (-Z)
+			 w,-h,-d, 0,0, 0,0,-1, sl,1,   w, h,-d, 0,1, 0,0,-1, sl,1,
+			-w, h,-d, 1,1, 0,0,-1, sl,1,  -w,-h,-d, 1,0, 0,0,-1, sl,1,
+			// Left (-X)
+			-w,-h,-d, 0,0, -1,0,0, sl,1,  -w, h,-d, 0,1, -1,0,0, sl,1,
+			-w, h, d, 1,1, -1,0,0, sl,1,  -w,-h, d, 1,0, -1,0,0, sl,1,
+			// Right (+X)
+			 w,-h, d, 0,0, 1,0,0, sl,1,   w, h, d, 0,1, 1,0,0, sl,1,
+			 w, h,-d, 1,1, 1,0,0, sl,1,   w,-h,-d, 1,0, 1,0,0, sl,1,
+			// Top (+Y)
+			-w, h, d, 0,0, 0,1,0, sl,1,  -w, h,-d, 0,1, 0,1,0, sl,1,
+			 w, h,-d, 1,1, 0,1,0, sl,1,   w, h, d, 1,0, 0,1,0, sl,1,
+			// Bottom (-Y)
+			-w,-h,-d, 0,0, 0,-1,0, sl,1,  -w,-h, d, 0,1, 0,-1,0, sl,1,
+			 w,-h, d, 1,1, 0,-1,0, sl,1,   w,-h,-d, 1,0, 0,-1,0, sl,1,
+		};
+		unsigned int indices[36];
+		for (int i = 0; i < 6; i++) {
+			int b = i * 4;
+			indices[i*6+0]=b; indices[i*6+1]=b+1; indices[i*6+2]=b+2;
+			indices[i*6+3]=b+2; indices[i*6+4]=b+3; indices[i*6+5]=b;
+		}
+
+		glBindVertexArray(armVAO);
+		glBindBuffer(GL_ARRAY_BUFFER, armVBO);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, armEBO);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+		constexpr int ARM_STRIDE = 10 * sizeof(float);
+		glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,ARM_STRIDE,(void*)0);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,ARM_STRIDE,(void*)(3*sizeof(float)));
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(2,3,GL_FLOAT,GL_FALSE,ARM_STRIDE,(void*)(5*sizeof(float)));
+		glEnableVertexAttribArray(2);
+		glVertexAttribPointer(3,1,GL_FLOAT,GL_FALSE,ARM_STRIDE,(void*)(8*sizeof(float)));
+		glEnableVertexAttribArray(3);
+		glVertexAttribPointer(4,1,GL_FLOAT,GL_FALSE,ARM_STRIDE,(void*)(9*sizeof(float)));
+		glEnableVertexAttribArray(4);
+		glBindVertexArray(0);
+	}
 
 	double lastTime = glfwGetTime();
 	double lastFrameTime = lastTime;
@@ -712,6 +781,47 @@ int main(int argc, char* argv[]) {
             glEnable(GL_CULL_FACE);
             shaderProgram.setFloat("emissive", 0.0f);
         }
+
+		// First-person arm
+		{
+			// Update punch animation
+			double now = glfwGetTime();
+			if (isPunching && (now - punchStartTime) > PUNCH_DURATION)
+				isPunching = false;
+
+			// Compute swing angle
+			float swingAngle = 0.0f;
+			if (isPunching) {
+				float t = (float)((now - punchStartTime) / PUNCH_DURATION);
+				// Swing forward then back: sin curve
+				swingAngle = std::sin(t * 3.14159f) * -60.0f; // degrees
+			}
+
+			// Arm position in view space: bottom-right of screen
+			glm::mat4 armModel = glm::mat4(1.0f);
+			// Position relative to camera (in view space, so identity view)
+			armModel = glm::translate(armModel, glm::vec3(0.4f, -0.4f, -0.6f));
+			// Apply punch rotation (swing around X axis)
+			armModel = glm::rotate(armModel, glm::radians(swingAngle), glm::vec3(1, 0, 0));
+			// Slight tilt for natural look
+			armModel = glm::rotate(armModel, glm::radians(-10.0f), glm::vec3(0, 0, 1));
+
+			glClear(GL_DEPTH_BUFFER_BIT); // arm always on top
+			shaderProgram.setMat4("view", glm::mat4(1.0f)); // identity view (screen space)
+			shaderProgram.setMat4("model", armModel);
+			shaderProgram.setFloat("emissive", 1.0f);
+			glDisable(GL_CULL_FACE);
+
+			glBindVertexArray(armVAO);
+			glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+			glBindVertexArray(0);
+
+			glEnable(GL_CULL_FACE);
+			shaderProgram.setFloat("emissive", 0.0f);
+			shaderProgram.setMat4("model", glm::mat4(1.0f));
+			// Restore view matrix for next frame
+			camera.defineLookAt(shaderProgram);
+		}
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
