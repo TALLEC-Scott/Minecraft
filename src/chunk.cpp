@@ -49,6 +49,7 @@ static const int FACE_NEIGHBORS[6][3] = {
 
 Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
     blocks = new Cube[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE];
+    skyLight = new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]();
     this->chunkX = chunkX;
     this->chunkY = chunkY;
 
@@ -251,6 +252,69 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
                 }
         if (found) break;
     }
+
+    computeSkyLight();
+}
+
+static bool isBlockOpaque(block_type t) {
+    return t != AIR && t != WATER;
+}
+
+void Chunk::computeSkyLight() {
+    const size_t total = static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE;
+    std::memset(skyLight, 0, total);
+
+    auto slIdx = [](int x, int y, int z) -> size_t {
+        return static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z;
+    };
+
+    // Phase 1: vertical ray — blocks with clear sky above get light 15
+    // Light passes through transparent blocks (air, water, leaves) without reduction
+    for (int x = 0; x < CHUNK_SIZE; x++) {
+        for (int z = 0; z < CHUNK_SIZE; z++) {
+            for (int y = CHUNK_HEIGHT - 1; y >= 0; y--) {
+                block_type bt = blocks[slIdx(x, y, z)].getType();
+                if (isBlockOpaque(bt)) break;
+                skyLight[slIdx(x, y, z)] = 15;
+            }
+        }
+    }
+
+    // Phase 2: BFS flood fill — light spreads sideways through air, -1 per step
+    std::vector<std::tuple<int, int, int>> queue;
+    queue.reserve(CHUNK_SIZE * CHUNK_SIZE * 4);
+
+    // Seed BFS with all blocks at light 15 that have a dark neighbor
+    for (int x = 0; x < CHUNK_SIZE; x++)
+        for (int y = 0; y <= maxSolidY + 1 && y < CHUNK_HEIGHT; y++)
+            for (int z = 0; z < CHUNK_SIZE; z++)
+                if (skyLight[slIdx(x, y, z)] == 15) queue.emplace_back(x, y, z);
+
+    static const int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    size_t head = 0;
+    while (head < queue.size()) {
+        auto [x, y, z] = queue[head++];
+        uint8_t light = skyLight[slIdx(x, y, z)];
+        if (light <= 1) continue;
+
+        for (auto& d : DIRS) {
+            int nx = x + d[0], ny = y + d[1], nz = z + d[2];
+            if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= CHUNK_HEIGHT || nz < 0 || nz >= CHUNK_SIZE) continue;
+
+            block_type bt = blocks[slIdx(nx, ny, nz)].getType();
+            if (isBlockOpaque(bt)) continue;
+
+            uint8_t newLight = (light >= 3) ? light - 3 : 0;
+            if (skyLight[slIdx(nx, ny, nz)] >= newLight) continue;
+            skyLight[slIdx(nx, ny, nz)] = newLight;
+            queue.emplace_back(nx, ny, nz);
+        }
+    }
+}
+
+uint8_t Chunk::getSkyLight(int x, int y, int z) const {
+    if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 15;
+    return skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z];
 }
 
 Cube* Chunk::getBlock(int i, int j, int k) {
@@ -389,7 +453,7 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
 
             if (!anyFace) continue; // entire slice is air, skip greedy sweep
 
-            // 2. Greedy sweep: find maximal rectangles of same type
+            // 2. Sweep mask and emit quads
             for (int u = 0; u < u_dim; u++) {
                 for (int v = 0; v < v_dim;) {
                     int bt = mask[u][v];
@@ -398,6 +462,7 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
                         continue;
                     }
 
+#if GREEDY_MESHING
                     int h = 1;
                     while (v + h < v_dim && mask[u][v + h] == bt) h++;
                     int w = 1;
@@ -407,6 +472,9 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
                         if (!ok) break;
                         w++;
                     }
+#else
+                    int h = 1, w = 1;
+#endif
 
                     float layer = (float)TextureArray::layerForFace((block_type)bt, f);
                     float d_val = (float)d + fd.d_sign * 0.5f;
@@ -436,7 +504,8 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
                     // Per-vertex AO: check 3 corner neighbors per vertex
                     // For each vertex, find the block at that corner and the
                     // two side + one diagonal neighbor in the face's normal direction.
-                    static const float AO_CURVE[4] = {0.25f, 0.5f, 0.75f, 1.0f};
+                    static const float AO_CURVE[4] = {0.55f, 0.7f, 0.85f, 1.0f};
+                    float skyLightVals[4];
                     int bu[4], bv[4], cu[4], cv[4];
                     bu[0] = bu[1] = (fd.u_sign > 0) ? u : u + w - 1;
                     bu[2] = bu[3] = (fd.u_sign > 0) ? u + w - 1 : u;
@@ -472,7 +541,12 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
                                      ? opaq[oIdx(px + su[0] + sv[0], py + su[1] + sv[1], pz + su[2] + sv[2])]
                                      : 0;
                         int aoVal = (s1 && s2) ? 0 : 3 - (s1 + s2 + cr);
+
                         ao[vi] = AO_CURVE[aoVal];
+
+                        // Sky light stored separately — applied in shader, not baked into AO
+                        uint8_t sl = getSkyLight(bc[0] + n[0], bc[1] + n[1], bc[2] + n[2]);
+                        skyLightVals[vi] = 0.4f + 0.6f * (sl / 15.0f);
                     }
 
                     bool isWater = (bt == (int)WATER);
@@ -491,17 +565,32 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
                         verts.push_back(norm.z);
                         verts.push_back(layer);
                         verts.push_back(ao[vi]);
+                        verts.push_back(skyLightVals[vi]);
                     }
-                    idx.push_back(base);
-                    idx.push_back(base + 1);
-                    idx.push_back(base + 2);
-                    idx.push_back(base + 2);
-                    idx.push_back(base + 3);
-                    idx.push_back(base);
+                    // Flip quad diagonal when AO is asymmetric to avoid interpolation artifacts
+                    if (ao[0] + ao[2] > ao[1] + ao[3]) {
+                        // Default diagonal: 0-1-2, 2-3-0
+                        idx.push_back(base);
+                        idx.push_back(base + 1);
+                        idx.push_back(base + 2);
+                        idx.push_back(base + 2);
+                        idx.push_back(base + 3);
+                        idx.push_back(base);
+                    } else {
+                        // Flipped diagonal: 1-2-3, 3-0-1
+                        idx.push_back(base + 1);
+                        idx.push_back(base + 2);
+                        idx.push_back(base + 3);
+                        idx.push_back(base + 3);
+                        idx.push_back(base);
+                        idx.push_back(base + 1);
+                    }
                     base += 4;
 
+#if GREEDY_MESHING
                     for (int du = 0; du < w; du++)
                         for (int dv = 0; dv < h; dv++) mask[u + du][v + dv] = -1;
+#endif
                     v += h;
                 }
             }
@@ -532,7 +621,7 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, chunkEBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, allIdx.size() * sizeof(unsigned int), allIdx.data(), GL_DYNAMIC_DRAW);
 
-    constexpr int STRIDE = 10 * sizeof(float);
+    constexpr int STRIDE = 11 * sizeof(float);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, STRIDE, nullptr);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, STRIDE, (void*)(3 * sizeof(float)));
@@ -541,9 +630,11 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(8 * sizeof(float)));
     glEnableVertexAttribArray(3);
-    // layout 4: ambient occlusion
     glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(9 * sizeof(float)));
     glEnableVertexAttribArray(4);
+    // layout 5: sky light
+    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(10 * sizeof(float)));
+    glEnableVertexAttribArray(5);
 
     glBindVertexArray(0);
 
@@ -615,6 +706,8 @@ void Chunk::destroy() {
     }
     delete[] blocks;
     blocks = nullptr;
+    delete[] skyLight;
+    skyLight = nullptr;
 }
 
 Chunk::~Chunk() {

@@ -7,6 +7,7 @@
 
 #include <cstring>
 #include <vector>
+#include <cstdint>
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include "cube.h"
@@ -17,6 +18,7 @@ class Chunk {
   public:
     Chunk() {
         blocks = new Cube[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE];
+        skyLight = new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]();
         chunkX = -1;
         chunkY = -1;
     }
@@ -25,12 +27,13 @@ class Chunk {
 
     // Move only — Cube GL buffers (now chunk-level) must not be double-freed
     Chunk(Chunk&& other) noexcept
-        : blocks(other.blocks), chunkX(other.chunkX), chunkY(other.chunkY), chunkVAO(other.chunkVAO),
-          chunkVBO(other.chunkVBO), chunkEBO(other.chunkEBO), opaqueIndexCount(other.opaqueIndexCount),
-          waterIndexCount(other.waterIndexCount), waterIndexOffset(other.waterIndexOffset), meshDirty(other.meshDirty),
-          maxSolidY(other.maxSolidY) {
+        : blocks(other.blocks), skyLight(other.skyLight), chunkX(other.chunkX), chunkY(other.chunkY),
+          chunkVAO(other.chunkVAO), chunkVBO(other.chunkVBO), chunkEBO(other.chunkEBO),
+          opaqueIndexCount(other.opaqueIndexCount), waterIndexCount(other.waterIndexCount),
+          waterIndexOffset(other.waterIndexOffset), meshDirty(other.meshDirty), maxSolidY(other.maxSolidY) {
         std::memcpy(heights, other.heights, sizeof(heights));
         other.blocks = nullptr;
+        other.skyLight = nullptr;
         other.chunkVAO = other.chunkVBO = other.chunkEBO = 0;
     }
 
@@ -42,6 +45,8 @@ class Chunk {
             if (chunkEBO) glDeleteBuffers(1, &chunkEBO);
 
             blocks = other.blocks;
+            delete[] skyLight;
+            skyLight = other.skyLight;
             chunkX = other.chunkX;
             chunkY = other.chunkY;
             chunkVAO = other.chunkVAO;
@@ -55,6 +60,7 @@ class Chunk {
             std::memcpy(heights, other.heights, sizeof(heights));
 
             other.blocks = nullptr;
+            other.skyLight = nullptr;
             other.chunkVAO = other.chunkVBO = other.chunkEBO = 0;
         }
         return *this;
@@ -76,8 +82,13 @@ class Chunk {
 
     ~Chunk();
 
+    // Sky light at local coords (0=full shadow, 15=full sky). Returns 15 for out-of-bounds.
+    uint8_t getSkyLight(int x, int y, int z) const;
+
   private:
+    void computeSkyLight();
     Cube* blocks = nullptr;
+    uint8_t* skyLight = nullptr; // per-block sky light level (0-15)
     int heights[CHUNK_SIZE][CHUNK_SIZE]{};
     Biome biomes[CHUNK_SIZE][CHUNK_SIZE]{};
     int chunkX = -1;
