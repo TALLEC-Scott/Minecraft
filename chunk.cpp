@@ -6,6 +6,7 @@
 #include "texture_array.h"
 #include "profiler.h"
 #include <glad/glad.h>
+#include <random>
 
 // Face definitions: 4 vertices per face, each vertex is (dx, dy, dz)
 // Order: Front(+Z), Back(-Z), Left(-X), Right(+X), Top(+Y), Bottom(-Y)
@@ -93,6 +94,53 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
                 }
             }
         }
+    }
+
+    // --- Tree placement ---
+    // Deterministic per-chunk PRNG seeded from chunk coordinates
+    uint64_t treeSeed = static_cast<uint64_t>(chunkX) * 73856093ULL
+                      ^ static_cast<uint64_t>(chunkY) * 19349663ULL;
+    std::mt19937 rng(static_cast<unsigned int>(treeSeed));
+    std::uniform_int_distribution<int> posDist(2, CHUNK_SIZE - 3); // [2..13]
+    std::uniform_int_distribution<int> chanceDist(0, 99);
+
+    constexpr int TREE_ATTEMPTS = 3;
+    constexpr int TREE_CHANCE = 40; // percent
+    constexpr int WATER_LEVEL = CHUNK_SIZE / 2; // 8
+
+    for (int t = 0; t < TREE_ATTEMPTS; t++) {
+        int tx = posDist(rng);
+        int tz = posDist(rng);
+        int roll = chanceDist(rng);
+        if (roll >= TREE_CHANCE) continue;
+
+        int surface = heights[tx][tz];
+        if (surface <= WATER_LEVEL) continue;
+        if (surface + 5 >= CHUNK_SIZE) continue;
+
+        Cube* surfaceBlock = getBlock(tx, surface, tz);
+        if (!surfaceBlock || surfaceBlock->getType() != GRASS) continue;
+
+        // Trunk: 3 blocks
+        for (int y = surface + 1; y <= surface + 3; y++) {
+            Cube* b = getBlock(tx, y, tz);
+            if (b) b->setType(WOOD);
+        }
+
+        // Leaves: 3x3 at y=surface+3 and y=surface+4
+        for (int ly = surface + 3; ly <= surface + 4; ly++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    if (dx == 0 && dz == 0 && ly == surface + 3) continue; // trunk
+                    Cube* b = getBlock(tx + dx, ly, tz + dz);
+                    if (b && b->getType() == AIR) b->setType(LEAVES);
+                }
+            }
+        }
+
+        // Crown
+        Cube* crown = getBlock(tx, surface + 5, tz);
+        if (crown && crown->getType() == AIR) crown->setType(LEAVES);
     }
 }
 
@@ -185,7 +233,7 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
                         w++;
                     }
 
-                    float layer = (float)TextureArray::layerForType((block_type)bt);
+                    float layer = (float)TextureArray::layerForFace((block_type)bt, f);
                     float d_val = (float)d + fd.d_sign * 0.5f;
                     float u_lo = (float)u - 0.5f, u_hi = (float)(u + w) - 0.5f;
                     float v_lo = (float)v - 0.5f, v_hi = (float)(v + h) - 0.5f;
