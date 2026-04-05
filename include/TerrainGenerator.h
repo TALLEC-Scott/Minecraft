@@ -10,12 +10,12 @@ struct BiomeParams {
     block_type subsurfaceBlock;
     float baseHeight;
     float amplitudeFactor;
-    float treeDensity;   // 0..1
-    float treeChance;    // 0..100
+    float treeDensity; // 0..1
+    float treeChance;  // 0..100
 };
 
 class TerrainGenerator {
-public:
+  public:
     TerrainGenerator(unsigned int seed, float scale, int minHeight, int maxHeight);
 
     int getHeight(int x, int y);
@@ -28,7 +28,7 @@ public:
     double getNoise(int x, int y);
     double getNoise(int x, int y, int z);
 
-private:
+  private:
     double octaveNoise(double x, double y, int octaves, double persistence, double lacunarity);
     double getContinental(double nx, double ny);
     PerlinNoise perlinNoise;

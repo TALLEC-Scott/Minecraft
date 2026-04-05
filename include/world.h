@@ -6,18 +6,17 @@
 #include "TerrainGenerator.h"
 #include "ChunkManager.h"
 
-
 class World {
-public:
-	World(unsigned int seed = 0);
+  public:
+    World(unsigned int seed = 0);
 
-    //void render(Shader& shaderProgram);
-	void destroyBlock(glm::vec3 position) const;
+    // void render(Shader& shaderProgram);
+    void destroyBlock(glm::vec3 position) const;
     Chunk* getChunk(int x, int y);
     Cube* getBlock(int x, int y, int z) const;
     TerrainGenerator* terrainGenerator;
     ChunkManager* chunkManager;
-	~World();
+    ~World();
 
     int render(Shader shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const;
     void update(glm::vec3 cameraPosition) const;

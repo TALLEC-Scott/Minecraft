@@ -23,14 +23,14 @@ class Chunk;
 
 class ChunkManager {
 
-public:
-    ChunkManager(int renderDistance, int chunkSize, TerrainGenerator &terrainGenerator);
+  public:
+    ChunkManager(int renderDistance, int chunkSize, TerrainGenerator& terrainGenerator);
     void update(glm::vec3 cameraPosition);
     void render(Shader shaderProgram);
     std::unordered_map<glm::ivec2, Chunk, Vec2Hash> chunks;
     Chunk* getChunk(int chunkX, int chunkZ);
 
-private:
+  private:
     TerrainGenerator& terrainGenerator;
 
     void loadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk);

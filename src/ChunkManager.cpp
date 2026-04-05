@@ -9,8 +9,8 @@
 
 static constexpr int MAX_CHUNKS_PER_FRAME = 4;
 
-ChunkManager::ChunkManager(int renderDistance, int chunkSize, TerrainGenerator &terrainGenerator)
-        : terrainGenerator(terrainGenerator) {
+ChunkManager::ChunkManager(int renderDistance, int chunkSize, TerrainGenerator& terrainGenerator)
+    : terrainGenerator(terrainGenerator) {
     int diameter = 2 * renderDistance + 1;
     chunks.reserve(diameter * diameter * 2);
 }
@@ -41,9 +41,9 @@ void ChunkManager::loadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
 }
 
 void ChunkManager::unloadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
-    for (auto it = chunks.begin(); it != chunks.end(); ) {
-        if (it->first.x < minChunk.x || it->first.x > maxChunk.x ||
-            it->first.y < minChunk.y || it->first.y > maxChunk.y) {
+    for (auto it = chunks.begin(); it != chunks.end();) {
+        if (it->first.x < minChunk.x || it->first.x > maxChunk.x || it->first.y < minChunk.y ||
+            it->first.y > maxChunk.y) {
             it = chunks.erase(it);
         } else {
             ++it;
@@ -55,13 +55,13 @@ void ChunkManager::generateChunk(int x, int z) {
     Chunk chunk(x, z, terrainGenerator);
     chunks[glm::ivec2(x, z)] = std::move(chunk);
     // Invalidate neighbors so they rebuild without their now-internal border faces
-    for (auto& [dx, dz] : std::initializer_list<std::pair<int,int>>{{-1,0},{1,0},{0,-1},{0,1}}) {
+    for (auto& [dx, dz] : std::initializer_list<std::pair<int, int>>{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}) {
         auto it = chunks.find(glm::ivec2(x + dx, z + dz));
         if (it != chunks.end()) it->second.markDirty();
     }
 }
 
-Chunk *ChunkManager::getChunk(int chunkX, int chunkZ) {
+Chunk* ChunkManager::getChunk(int chunkX, int chunkZ) {
     glm::ivec2 chunkPos = glm::ivec2(chunkX, chunkZ);
     auto it = chunks.find(chunkPos);
     if (it != chunks.end()) {

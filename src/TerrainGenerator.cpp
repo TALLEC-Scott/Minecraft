@@ -6,16 +6,16 @@
 
 const BiomeParams TerrainGenerator::BIOME_TABLE[BIOME_COUNT] = {
     // surface       subsurface   baseH  amp   treeDens  treeChance
-    {SAND,           SAND,         0.0f, 0.0f,  0.0f,    0.0f},  // OCEAN (height handled specially)
-    {SAND,           SAND,         0.0f, 0.0f,  0.0f,    0.0f},  // BEACH (height handled specially)
-    {GRASS,          DIRT,         0.0f, 0.0f,  0.15f,  20.0f},  // PLAINS
-    {GRASS,          DIRT,         0.0f, 0.0f,  0.8f,   50.0f},  // FOREST
-    {SAND,           SAND,         0.0f, 0.0f,  0.0f,    0.0f},  // DESERT
-    {SNOW,           DIRT,         0.0f, 0.0f,  0.0f,    0.0f},  // TUNDRA
+    {SAND, SAND, 0.0f, 0.0f, 0.0f, 0.0f},    // OCEAN (height handled specially)
+    {SAND, SAND, 0.0f, 0.0f, 0.0f, 0.0f},    // BEACH (height handled specially)
+    {GRASS, DIRT, 0.0f, 0.0f, 0.15f, 20.0f}, // PLAINS
+    {GRASS, DIRT, 0.0f, 0.0f, 0.8f, 50.0f},  // FOREST
+    {SAND, SAND, 0.0f, 0.0f, 0.0f, 0.0f},    // DESERT
+    {SNOW, DIRT, 0.0f, 0.0f, 0.0f, 0.0f},    // TUNDRA
 };
 
 TerrainGenerator::TerrainGenerator(unsigned int seed, float scale, int minHeight, int maxHeight)
-        : perlinNoise(seed), scale(scale), minHeight(minHeight), maxHeight(maxHeight) {}
+    : perlinNoise(seed), scale(scale), minHeight(minHeight), maxHeight(maxHeight) {}
 
 double TerrainGenerator::octaveNoise(double x, double y, int octaves, double persistence, double lacunarity) {
     double total = 0.0;
@@ -106,7 +106,7 @@ int TerrainGenerator::getHeight(int x, int y) {
         height += detail * 2.0 * st;
     } else {
         // Inland biomes: continuous continental value for smooth transitions
-        double inland = (c - 0.45) / 0.55; // 0..1
+        double inland = (c - 0.45) / 0.55;                   // 0..1
         double ist = inland * inland * (3.0 - 2.0 * inland); // smoothstep
 
         // Base height ramps from coast to deep inland
@@ -149,13 +149,17 @@ int TerrainGenerator::getHeightAndBiome(int x, int y, Biome& outBiome) {
     } else {
         double temp = getTemperature(x, y);
         double humid = getMoisture(x, y);
-        if (temp > 0.48 && humid < 0.42 && c < 0.75) outBiome = BIOME_DESERT;
+        if (temp > 0.48 && humid < 0.42 && c < 0.75)
+            outBiome = BIOME_DESERT;
         else {
             double altitudeCooling = std::max(0.0, (c - 0.5) / 0.5) * 0.35;
             temp -= altitudeCooling;
-            if (temp < 0.3) outBiome = BIOME_TUNDRA;
-            else if (humid > 0.5) outBiome = BIOME_FOREST;
-            else outBiome = BIOME_PLAINS;
+            if (temp < 0.3)
+                outBiome = BIOME_TUNDRA;
+            else if (humid > 0.5)
+                outBiome = BIOME_FOREST;
+            else
+                outBiome = BIOME_PLAINS;
         }
     }
 
@@ -183,7 +187,8 @@ int TerrainGenerator::getHeightAndBiome(int x, int y, Biome& outBiome) {
             double n = perlinNoise.noise(nx * ridgeFreq, ny * ridgeFreq);
             ridged += (1.0 - std::abs(n)) * ridgeAmp;
             ridgeMax += ridgeAmp;
-            ridgeAmp *= 0.5; ridgeFreq *= 2.0;
+            ridgeAmp *= 0.5;
+            ridgeFreq *= 2.0;
         }
         ridged /= ridgeMax;
         double shape = detail * (1.0 - ist) + ridged * ist;

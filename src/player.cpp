@@ -37,8 +37,7 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) camera.down();
 
     // Sprint
-    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS ||
-        glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
         camera.speedUp();
     else
         camera.resetSpeed();
@@ -48,8 +47,7 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     if (leftDown && !leftClickHeld && world) {
         isPunching = true;
         punchStartTime = glfwGetTime();
-        if (hasHighlight)
-            world->destroyBlock(glm::vec3(targeted));
+        if (hasHighlight) world->destroyBlock(glm::vec3(targeted));
     }
     leftClickHeld = leftDown;
 }
@@ -89,8 +87,7 @@ void Player::updateMouseLook(double xPos, double yPos, int windowWidth, int wind
 
 void Player::update(World* world) {
     // Update punch animation
-    if (isPunching && (glfwGetTime() - punchStartTime) > PUNCH_DURATION)
-        isPunching = false;
+    if (isPunching && (glfwGetTime() - punchStartTime) > PUNCH_DURATION) isPunching = false;
 
     // Physics
     findGroundAndUpdate(world);

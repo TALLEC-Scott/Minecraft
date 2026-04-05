@@ -3,7 +3,7 @@
 #include "cube.h"
 
 class TextureArray {
-public:
+  public:
     static void initialize();
     static void bind();
     static void destroy();
