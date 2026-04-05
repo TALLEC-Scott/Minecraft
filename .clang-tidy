@@ -1,0 +1,18 @@
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-reserved-identifier,
+  -bugprone-macro-parentheses,
+  performance-*,
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-use-auto,
+  readability-redundant-*,
+  misc-unused-*
+
+WarningsAsErrors: ''
+HeaderFilterRegex: 'include/.*\.h$'
+FormatStyle: file
+ExtraArgs: ['-std=c++20']
