@@ -31,7 +31,7 @@ static bool aabbInFrustum(const std::array<glm::vec4, 6>& planes, glm::vec3 minP
 }
 
 World::World() {
-    this->terrainGenerator = new TerrainGenerator(0, 0.1, 0, CHUNK_SIZE + 1);
+    this->terrainGenerator = new TerrainGenerator(0, 0.1, 0, CHUNK_HEIGHT / 2);
     this->chunkManager = new ChunkManager(RENDER_DISTANCE, CHUNK_SIZE, *terrainGenerator);
 }
 
@@ -40,7 +40,7 @@ void World::destroyBlock(glm::vec3 position) const {
     int chunkZ = (int)position.z / CHUNK_SIZE;
 
     int x_chunk = (int)position.x % CHUNK_SIZE;
-    int y_chunk = (int)position.y % CHUNK_SIZE;
+    int y_chunk = (int)position.y % CHUNK_HEIGHT;
     int z_chunk = (int)position.z % CHUNK_SIZE;
 
     auto chunk = this->chunkManager->getChunk(chunkX, chunkZ);
@@ -57,7 +57,7 @@ Chunk* World::getChunk(int x, int y) {
 }
 
 Cube* World::getBlock(int x, int y, int z) const {
-    if (y < 0 || y >= CHUNK_SIZE)
+    if (y < 0 || y >= CHUNK_HEIGHT)
         return nullptr;
     if (x < 0 || x >= CHUNK_SIZE * RENDER_DISTANCE || z < 0 || z >= CHUNK_SIZE * RENDER_DISTANCE)
         return nullptr;
@@ -72,7 +72,7 @@ Cube* World::getBlock(int x, int y, int z) const {
     if (res == nullptr)
         return nullptr;
 
-    return res->getBlock(x % CHUNK_SIZE, y % CHUNK_SIZE, z % CHUNK_SIZE);
+    return res->getBlock(x % CHUNK_SIZE, y % CHUNK_HEIGHT, z % CHUNK_SIZE);
 }
 
 int World::render(Shader shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const {
@@ -89,10 +89,10 @@ int World::render(Shader shaderProgram, glm::mat4 viewProjection, glm::vec3 came
 
     for (auto& [pos, chunk] : chunkManager->chunks) {
         glm::vec3 minP(pos.x * CHUNK_SIZE, 0, pos.y * CHUNK_SIZE);
-        glm::vec3 maxP(minP.x + CHUNK_SIZE, CHUNK_SIZE, minP.z + CHUNK_SIZE);
+        glm::vec3 maxP(minP.x + CHUNK_SIZE, CHUNK_HEIGHT, minP.z + CHUNK_SIZE);
         if (!aabbInFrustum(planes, minP, maxP)) continue;
         // Distance from camera to chunk center (squared, skip sqrt)
-        glm::vec3 center(minP.x + CHUNK_SIZE * 0.5f, CHUNK_SIZE * 0.5f, minP.z + CHUNK_SIZE * 0.5f);
+        glm::vec3 center(minP.x + CHUNK_SIZE * 0.5f, CHUNK_HEIGHT * 0.5f, minP.z + CHUNK_SIZE * 0.5f);
         glm::vec3 d = center - cameraPos;
         visible.push_back({pos, const_cast<Chunk*>(&chunk), d.x*d.x + d.y*d.y + d.z*d.z});
     }
