@@ -4,6 +4,7 @@
 
 #include "chunk.h"
 #include "texture_array.h"
+#include "profiler.h"
 #include <glad/glad.h>
 
 // Face definitions: 4 vertices per face, each vertex is (dx, dy, dz)
@@ -114,66 +115,119 @@ static Cube* getBlockCross(Chunk* self, int i, int j, int k,
 }
 
 void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
-    // Vertex layout: pos(3) + texcoord(2) + normal(3) + texLayer(1) = 9 floats
-    // Positions are chunk-local (0.0–15.5), decoded in shader as local + chunkOffset
-    constexpr int MAX_BLOCKS = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
-    constexpr int MAX_FACES  = MAX_BLOCKS * 6;
-    constexpr int FLOATS_PER_FACE = 4 * 9; // 4 verts × 9 floats
-    constexpr int INDICES_PER_FACE = 6;
+    double _buildStart = glfwGetTime();
 
+    // Greedy meshing: merge coplanar same-type adjacent faces into larger quads.
+    // Vertex layout: pos(3) + texcoord(2) + normal(3) + texLayer(1) = 9 floats/vertex.
+
+    struct FaceDef {
+        int d, u, v;              // axis indices for normal, first tangent, second tangent
+        int d_sign, u_sign, v_sign; // direction signs (±1) for correct winding order
+    };
+    static constexpr FaceDef FACE_DEFS[6] = {
+        {2, 0, 1,  1,  1,  1},  // Front +Z
+        {2, 0, 1, -1, -1,  1},  // Back  -Z
+        {0, 2, 1, -1,  1,  1},  // Left  -X
+        {0, 2, 1,  1, -1,  1},  // Right +X
+        {1, 0, 2,  1,  1, -1},  // Top   +Y
+        {1, 0, 2, -1,  1,  1},  // Bottom -Y
+    };
+
+    constexpr int MAX_FACES = CHUNK_SIZE * CHUNK_SIZE * 6;
     std::vector<float> opaqueVerts, waterVerts;
     std::vector<unsigned int> opaqueIdx, waterIdx;
-    opaqueVerts.reserve(MAX_FACES * FLOATS_PER_FACE);
-    opaqueIdx.reserve(MAX_FACES * INDICES_PER_FACE);
-    waterVerts.reserve(CHUNK_SIZE * CHUNK_SIZE * FLOATS_PER_FACE);
-    waterIdx.reserve(CHUNK_SIZE * CHUNK_SIZE * INDICES_PER_FACE);
+    opaqueVerts.reserve(MAX_FACES * 4 * 9);
+    opaqueIdx.reserve(MAX_FACES * 6);
+    waterVerts.reserve(CHUNK_SIZE * CHUNK_SIZE * 4 * 9);
+    waterIdx.reserve(CHUNK_SIZE * CHUNK_SIZE * 6);
     unsigned int opaqueBase = 0, waterBase = 0;
 
-    for (int i = 0; i < CHUNK_SIZE; i++) {
-        for (int j = 0; j < CHUNK_SIZE; j++) {
-            for (int k = 0; k < CHUNK_SIZE; k++) {
-                Cube* block = getBlock(i, j, k);
-                block_type type = block->getType();
-                if (type == AIR) continue;
+    int mask[CHUNK_SIZE][CHUNK_SIZE];
+    const float worldOff[3] = {(float)(chunkX * CHUNK_SIZE), 0.0f, (float)(chunkY * CHUNK_SIZE)};
 
-                bool isWater = (type == WATER);
-                float layer = static_cast<float>(TextureArray::layerForType(type));
-                glm::vec3 pos(chunkX * CHUNK_SIZE + i, j, chunkY * CHUNK_SIZE + k);
+    for (int f = 0; f < 6; f++) {
+        const FaceDef& fd = FACE_DEFS[f];
+        const glm::vec3& norm = FACE_NORMALS[f];
 
-                for (int f = 0; f < 6; f++) {
-                    if (isWater && f != 4) continue;
+        for (int d = 0; d < CHUNK_SIZE; d++) {
 
-                    int ni = i + FACE_NEIGHBORS[f][0];
-                    int nj = j + FACE_NEIGHBORS[f][1];
-                    int nk = k + FACE_NEIGHBORS[f][2];
-                    Cube* nb = getBlockCross(this, ni, nj, nk, nx_neg, nx_pos, nz_neg, nz_pos);
+            // 1. Build mask for this face direction and slice
+            for (int u = 0; u < CHUNK_SIZE; u++) {
+                for (int v = 0; v < CHUNK_SIZE; v++) {
+                    int c[3]; c[fd.d] = d; c[fd.u] = u; c[fd.v] = v;
+                    block_type bt = getBlock(c[0], c[1], c[2])->getType();
+                    if (bt == AIR || (bt == WATER && f != 4)) { mask[u][v] = -1; continue; }
+
+                    int nc[3] = {c[0], c[1], c[2]};
+                    nc[fd.d] += fd.d_sign;
+                    Cube* nb = getBlockCross(this, nc[0], nc[1], nc[2], nx_neg, nx_pos, nz_neg, nz_pos);
                     block_type nbType = nb ? nb->getType() : AIR;
+                    bool isWater = (bt == WATER);
+                    mask[u][v] = (!nb || nbType == AIR || (nbType == WATER && !isWater))
+                                 ? (int)bt : -1;
+                }
+            }
 
-                    bool expose = (nb == nullptr)
-                               || (nbType == AIR)
-                               || (nbType == WATER && !isWater);
-                    if (!expose) continue;
+            // 2. Greedy sweep: find maximal rectangles of same type
+            for (int u = 0; u < CHUNK_SIZE; u++) {
+                for (int v = 0; v < CHUNK_SIZE; ) {
+                    int bt = mask[u][v];
+                    if (bt == -1) { v++; continue; }
 
+                    int h = 1;
+                    while (v + h < CHUNK_SIZE && mask[u][v + h] == bt) h++;
+                    int w = 1;
+                    while (u + w < CHUNK_SIZE) {
+                        bool ok = true;
+                        for (int dv = 0; dv < h && ok; dv++)
+                            ok = (mask[u + w][v + dv] == bt);
+                        if (!ok) break;
+                        w++;
+                    }
+
+                    float layer = (float)TextureArray::layerForType((block_type)bt);
+                    float d_val = (float)d + fd.d_sign * 0.5f;
+                    float u_lo = (float)u - 0.5f, u_hi = (float)(u + w) - 0.5f;
+                    float v_lo = (float)v - 0.5f, v_hi = (float)(v + h) - 0.5f;
+                    float u0 = fd.u_sign > 0 ? u_lo : u_hi;
+                    float u1 = fd.u_sign > 0 ? u_hi : u_lo;
+                    float v0 = fd.v_sign > 0 ? v_lo : v_hi;
+                    float v1 = fd.v_sign > 0 ? v_hi : v_lo;
+
+                    float vp[4][3];
+                    vp[0][fd.d]=d_val; vp[0][fd.u]=u0; vp[0][fd.v]=v0;
+                    vp[1][fd.d]=d_val; vp[1][fd.u]=u0; vp[1][fd.v]=v1;
+                    vp[2][fd.d]=d_val; vp[2][fd.u]=u1; vp[2][fd.v]=v1;
+                    vp[3][fd.d]=d_val; vp[3][fd.u]=u1; vp[3][fd.v]=v0;
+
+                    const float uvs[4][2] = {
+                        {0.f,0.f}, {0.f,(float)h}, {(float)w,(float)h}, {(float)w,0.f}
+                    };
+
+                    bool isWater = (bt == (int)WATER);
                     auto& verts = isWater ? waterVerts : opaqueVerts;
                     auto& idx   = isWater ? waterIdx   : opaqueIdx;
                     unsigned int& base = isWater ? waterBase : opaqueBase;
 
-                    const glm::vec3& n = FACE_NORMALS[f];
-                    for (int v = 0; v < 4; v++) {
-                        glm::vec3 p = pos + FACE_VERTS[f][v];
-                        verts.push_back(p.x);
-                        verts.push_back(p.y);
-                        verts.push_back(p.z);
-                        verts.push_back(FACE_UVS[v].x);
-                        verts.push_back(FACE_UVS[v].y);
-                        verts.push_back(n.x);
-                        verts.push_back(n.y);
-                        verts.push_back(n.z);
+                    for (int vi = 0; vi < 4; vi++) {
+                        verts.push_back(vp[vi][0] + worldOff[0]);
+                        verts.push_back(vp[vi][1] + worldOff[1]);
+                        verts.push_back(vp[vi][2] + worldOff[2]);
+                        verts.push_back(uvs[vi][0]);
+                        verts.push_back(uvs[vi][1]);
+                        verts.push_back(norm.x);
+                        verts.push_back(norm.y);
+                        verts.push_back(norm.z);
                         verts.push_back(layer);
                     }
-                    idx.push_back(base+0); idx.push_back(base+1); idx.push_back(base+2);
-                    idx.push_back(base+2); idx.push_back(base+3); idx.push_back(base+0);
+                    idx.push_back(base); idx.push_back(base+1); idx.push_back(base+2);
+                    idx.push_back(base+2); idx.push_back(base+3); idx.push_back(base);
                     base += 4;
+
+                    for (int du = 0; du < w; du++)
+                        for (int dv = 0; dv < h; dv++)
+                            mask[u + du][v + dv] = -1;
+                    v += h;
                 }
             }
         }
@@ -224,6 +278,9 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
     waterIndexCount  = static_cast<int>(waterIdx.size());
     waterIndexOffset = opaqueIdx.size() * sizeof(unsigned int);
     meshDirty = false;
+
+    g_frame.meshBuildMs += (glfwGetTime() - _buildStart) * 1000.0;
+    g_frame.meshBuilds++;
 }
 
 std::vector<Cube*> Chunk::render(Shader shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
@@ -233,6 +290,9 @@ std::vector<Cube*> Chunk::render(Shader shaderProgram, Chunk* nx_neg, Chunk* nx_
         glBindVertexArray(chunkVAO);
         glDrawElements(GL_TRIANGLES, opaqueIndexCount, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
+        g_frame.opaqueTriangles += opaqueIndexCount / 3;
+        g_frame.vertexCount += opaqueIndexCount / 6 * 4; // 4 verts per 6 indices (quad)
+        g_frame.opaqueDrawCalls++;
     }
     return {};
 }
@@ -243,6 +303,8 @@ void Chunk::renderWater(Shader shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chun
         glDrawElements(GL_TRIANGLES, waterIndexCount, GL_UNSIGNED_INT,
                        (void*)waterIndexOffset);
         glBindVertexArray(0);
+        g_frame.waterTriangles += waterIndexCount / 3;
+        g_frame.waterDrawCalls++;
     }
 }
 
