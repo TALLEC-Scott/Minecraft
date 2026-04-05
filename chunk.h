@@ -31,7 +31,8 @@ public:
           opaqueIndexCount(other.opaqueIndexCount),
           waterIndexCount(other.waterIndexCount),
           waterIndexOffset(other.waterIndexOffset),
-          meshDirty(other.meshDirty)
+          meshDirty(other.meshDirty),
+          maxSolidY(other.maxSolidY)
     {
         std::memcpy(heights, other.heights, sizeof(heights));
         other.blocks = nullptr;
@@ -55,6 +56,7 @@ public:
             waterIndexCount = other.waterIndexCount;
             waterIndexOffset = other.waterIndexOffset;
             meshDirty = other.meshDirty;
+            maxSolidY = other.maxSolidY;
             std::memcpy(heights, other.heights, sizeof(heights));
 
             other.blocks = nullptr;
@@ -93,4 +95,5 @@ private:
     int waterIndexCount = 0;
     size_t waterIndexOffset = 0;
     bool meshDirty = true;
+    int maxSolidY = 0; // highest non-AIR y in chunk, used to skip empty slices
 };

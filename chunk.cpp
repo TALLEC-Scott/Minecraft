@@ -7,6 +7,7 @@
 #include "profiler.h"
 #include <glad/glad.h>
 #include <random>
+#include <algorithm>
 
 // Face definitions: 4 vertices per face, each vertex is (dx, dy, dz)
 // Order: Front(+Z), Back(-Z), Left(-X), Right(+X), Top(+Y), Bottom(-Y)
@@ -171,6 +172,16 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
         Cube* crown = getBlock(tx, canopyBase + layers, tz);
         if (crown && crown->getType() == AIR) crown->setType(LEAVES);
     }
+
+    // Compute maxSolidY: highest non-AIR block (scan top-down for speed)
+    maxSolidY = 0;
+    for (int j = CHUNK_HEIGHT - 1; j >= 0; j--) {
+        bool found = false;
+        for (int i = 0; i < CHUNK_SIZE && !found; i++)
+            for (int k = 0; k < CHUNK_SIZE && !found; k++)
+                if (getBlock(i, j, k)->getType() != AIR) { maxSolidY = j; found = true; }
+        if (found) break;
+    }
 }
 
 Cube* Chunk::getBlock(int i, int j, int k) {
@@ -226,14 +237,20 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
     int mask[MAX_DIM][MAX_DIM];
     const float worldOff[3] = {(float)(chunkX * CHUNK_SIZE), 0.0f, (float)(chunkY * CHUNK_SIZE)};
 
+    // Effective dimensions capped by maxSolidY+1 (skip pure-air region above)
+    const int effDIM[3] = {CHUNK_SIZE, maxSolidY + 2, CHUNK_SIZE}; // +2: need one slice above for top faces
+
     for (int f = 0; f < 6; f++) {
         const FaceDef& fd = FACE_DEFS[f];
         const glm::vec3& norm = FACE_NORMALS[f];
-        const int d_dim = DIM[fd.d], u_dim = DIM[fd.u], v_dim = DIM[fd.v];
+        const int d_dim = std::min(DIM[fd.d], effDIM[fd.d]);
+        const int u_dim = std::min(DIM[fd.u], effDIM[fd.u]);
+        const int v_dim = std::min(DIM[fd.v], effDIM[fd.v]);
 
         for (int d = 0; d < d_dim; d++) {
 
             // 1. Build mask for this face direction and slice
+            bool anyFace = false;
             for (int u = 0; u < u_dim; u++) {
                 for (int v = 0; v < v_dim; v++) {
                     int c[3]; c[fd.d] = d; c[fd.u] = u; c[fd.v] = v;
@@ -245,10 +262,14 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
                     Cube* nb = getBlockCross(this, nc[0], nc[1], nc[2], nx_neg, nx_pos, nz_neg, nz_pos);
                     block_type nbType = nb ? nb->getType() : AIR;
                     bool isWater = (bt == WATER);
-                    mask[u][v] = (!nb || nbType == AIR || (nbType == WATER && !isWater))
+                    int val = (!nb || nbType == AIR || (nbType == WATER && !isWater))
                                  ? (int)bt : -1;
+                    mask[u][v] = val;
+                    if (val != -1) anyFace = true;
                 }
             }
+
+            if (!anyFace) continue; // entire slice is air, skip greedy sweep
 
             // 2. Greedy sweep: find maximal rectangles of same type
             for (int u = 0; u < u_dim; u++) {
