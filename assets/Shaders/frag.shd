@@ -5,10 +5,11 @@ in vec3 Normal;
 in vec3 FragPos;
 in float texLayer;
 in float ao;
+in float skyLight;
 
 out vec4 FragColor;
 
-uniform vec3 lightPos;
+uniform vec3 sunDir;     // normalized direction TO the sun
 uniform vec3 lightColor;
 uniform sampler2DArray ourTexture;
 uniform float emissive; // 1.0 = self-lit (sun), 0.0 = normal lighting
@@ -28,11 +29,11 @@ void main() {
     if (norm.y > 0.5) faceBright = 1.0;       // top
     else if (norm.y < -0.5) faceBright = 0.5;  // bottom
 
-    // Diffuse lighting from sun
-    vec3 lightDir = normalize(lightPos - FragPos);
-    float diff = max(dot(norm, lightDir), 0.0) * faceBright;
+    // Directional sun light
+    float diff = max(dot(norm, sunDir), 0.0) * faceBright;
 
-    float light = (0.4 + diff * 0.8) * ao;
+    // Combine: AO for corner darkening, skyLight for shadow areas
+    float light = (0.4 + diff * 0.8) * ao * skyLight;
 
     FragColor = vec4(texColor.rgb * light * lightColor, texColor.a);
 }

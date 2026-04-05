@@ -25,6 +25,7 @@ class Camera {
 
     void speedUp();
     void resetSpeed();
+    void setSpeed(float speed) { cameraSpeed = speed; }
 
     glm::vec3 getTargetPosition();
 

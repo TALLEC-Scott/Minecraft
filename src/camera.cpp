@@ -60,11 +60,11 @@ void Camera::right() {
 }
 
 void Camera::speedUp() {
-    cameraSpeed = 3 * SPEED;
+    cameraSpeed = walkMode ? 3 * SPEED : 6 * SPEED;
 }
 
 void Camera::resetSpeed() {
-    cameraSpeed = SPEED;
+    cameraSpeed = walkMode ? SPEED : 3 * SPEED;
 }
 
 void Camera::toggleWalkMode() {

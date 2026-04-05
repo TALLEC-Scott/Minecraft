@@ -3,6 +3,7 @@
 #define RENDER_DISTANCE 16
 #define CHUNK_SIZE 16
 #define CHUNK_HEIGHT 128
+#define GREEDY_MESHING 0
 
 enum block_type {
     AIR,

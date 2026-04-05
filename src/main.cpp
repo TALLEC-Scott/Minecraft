@@ -648,9 +648,9 @@ int main(int argc, char* argv[]) {
                     float angle = glm::radians((float)frame / WARMUP_FRAMES * 360.0f);
                     player.getCamera().changeDirection(glm::vec3(std::cos(angle), 0.0f, std::sin(angle)));
                 } else {
-                    // Phase 2 (measured): move forward at sprint speed, stay horizontal
+                    // Phase 2 (measured): move forward at fixed sprint speed
                     player.getCamera().changeDirection(glm::vec3(1.0f, 0.0f, 0.0f));
-                    player.getCamera().speedUp();
+                    player.getCamera().setSpeed(3 * SPEED); // fixed benchmark speed
                     player.getCamera().forward();
                 }
 
@@ -659,7 +659,8 @@ int main(int argc, char* argv[]) {
                 shaderProgram.use();
 
                 glm::vec3 lightPos((CHUNK_SIZE * RENDER_DISTANCE) / 2, 1000.0f, 0.0f);
-                shaderProgram.setVec3("lightPos", lightPos);
+                glm::vec3 sunDir = glm::normalize(lightPos);
+                shaderProgram.setVec3("sunDir", sunDir);
                 shaderProgram.setVec3("lightColor", lightColor);
                 shaderProgram.setMat4("projection", projection);
                 shaderProgram.setMat4("model", glm::mat4(1.0f));
@@ -742,7 +743,8 @@ int main(int argc, char* argv[]) {
 
             // Sun orbits east-west (X axis) overhead, centered on camera
             glm::vec3 lightPos(cameraPos.x + std::cos(timeValue) * radius, std::sin(timeValue) * radius, cameraPos.z);
-            shaderProgram.setVec3("lightPos", lightPos);
+            glm::vec3 sunDir = glm::normalize(lightPos - cameraPos);
+            shaderProgram.setVec3("sunDir", sunDir);
             shaderProgram.setVec3("lightColor", lightColor);
 
             player.defineLookAt(shaderProgram);
