@@ -13,18 +13,18 @@ uniform vec3 lightColor;
 uniform sampler2DArray ourTexture;
 
 void main() {
-    // Face-direction shading: top bright, sides medium, bottom dark
     vec3 norm = normalize(Normal);
+
+    // Face-direction shading: modulates diffuse only
     float faceBright = 0.8;
     if (norm.y > 0.5) faceBright = 1.0;       // top
     else if (norm.y < -0.5) faceBright = 0.5;  // bottom
 
     // Diffuse lighting from sun
     vec3 lightDir = normalize(lightPos - FragPos);
-    float diff = max(dot(norm, lightDir), 0.0);
+    float diff = max(dot(norm, lightDir), 0.0) * faceBright;
 
-    // Combine: ambient + diffuse, modulated by face brightness and AO
-    float light = (0.15 + diff * 1.2) * faceBright * ao;
+    float light = (0.15 + diff * 1.2) * ao;
 
     vec4 texColor = texture(ourTexture, vec3(TexCoord, texLayer));
     FragColor = vec4(texColor.rgb * light * lightColor, texColor.a);
