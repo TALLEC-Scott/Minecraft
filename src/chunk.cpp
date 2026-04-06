@@ -529,9 +529,8 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     int nc[3] = {c[0], c[1], c[2]};
                     nc[fd.d] += fd.d_sign;
                     Cube* nb = getBlockCross(this, nc[0], nc[1], nc[2], nx_neg, nx_pos, nz_neg, nz_pos);
-                    block_type nbType = nb ? nb->getType() : AIR;
-                    // Show face if neighbor is air or liquid next to solid
-                    int val = (!nb || nbType == AIR || (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID))) ? (int)bt : -1;
+                    block_type nbType = nb ? nb->getType() : STONE; // missing neighbor = solid, suppress face
+                    int val = (nbType == AIR || (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID))) ? (int)bt : -1;
                     mask[u][v] = val;
                     if (val != -1) anyFace = true;
                 }
@@ -771,15 +770,16 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* skyLight,
         }
 
     // Helper: get block type from borders (replaces getBlockCross)
+    // Missing neighbors treated as solid — suppresses border faces until neighbor loads
     auto getTypeCross = [&](int i, int j, int k) -> block_type {
         if (j < 0 || j >= CHUNK_HEIGHT) return AIR;
         if (i >= 0 && i < CHUNK_SIZE && k >= 0 && k < CHUNK_SIZE)
             return blocks[i * CHUNK_HEIGHT * CHUNK_SIZE + j * CHUNK_SIZE + k].getType();
-        if (i < 0) return nb.xNeg.valid ? nb.xNeg.types[k][j] : AIR;
-        if (i >= CHUNK_SIZE) return nb.xPos.valid ? nb.xPos.types[k][j] : AIR;
-        if (k < 0) return nb.zNeg.valid ? nb.zNeg.types[i][j] : AIR;
-        if (k >= CHUNK_SIZE) return nb.zPos.valid ? nb.zPos.types[i][j] : AIR;
-        return AIR;
+        if (i < 0) return nb.xNeg.valid ? nb.xNeg.types[k][j] : STONE;
+        if (i >= CHUNK_SIZE) return nb.xPos.valid ? nb.xPos.types[k][j] : STONE;
+        if (k < 0) return nb.zNeg.valid ? nb.zNeg.types[i][j] : STONE;
+        if (k >= CHUNK_SIZE) return nb.zPos.valid ? nb.zPos.types[i][j] : STONE;
+        return STONE;
     };
 
     // --- Same mesh construction as buildMeshData but using getTypeCross ---
