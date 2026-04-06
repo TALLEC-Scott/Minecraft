@@ -114,7 +114,10 @@ void Menu::drawDirtBackground(UIRenderer& ui, int windowW, int windowH) {
 bool Menu::drawButton(UIRenderer& ui, const std::string& label, float x, float y, float w, float h) {
     bool hovered = mouseInRect(x, y, w, h);
     bool clicked = hovered && mouseClicked();
-    if (clicked) playClick();
+    if (clicked) {
+        playClick();
+        mouseIsDown = false; // consume click so next screen doesn't see it
+    }
 
     // Button background
     glm::vec4 bgColor = hovered ? glm::vec4(0.45f, 0.45f, 0.55f, 0.85f) : glm::vec4(0.25f, 0.25f, 0.30f, 0.85f);
@@ -263,7 +266,7 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
 
     // Version text
     float verScale = 1.0f;
-    ui.drawTextShadow("v0.3.1", 4.0f, (float)windowH - 12.0f, verScale, glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
+    ui.drawTextShadow("v0.3.2", 4.0f, (float)windowH - 12.0f, verScale, glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
 
     ui.end();
     return next;
