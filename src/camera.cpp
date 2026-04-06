@@ -1,5 +1,8 @@
 #include "camera.h"
+#include "collision.h"
 #include <cmath>
+
+// PLAYER_TOTAL_HEIGHT and PLAYER_HALF_WIDTH defined in collision.h
 
 Camera::Camera() {
     this->cameraPosition = glm::vec3(15.0f, 90.0f, 15.0f);
@@ -85,19 +88,13 @@ void Camera::update(float groundHeight, BlockCheck isSolid, void* ctx) {
         return;
     }
 
-    // Apply pending horizontal movement with collision
+    // Apply pending horizontal movement with AABB collision (slide along walls)
     if (glm::dot(pendingMove, pendingMove) > 0.000001f) {
-        glm::vec3 newPos = cameraPosition + pendingMove;
-        int nx = (int)std::floor(newPos.x);
-        int nz = (int)std::floor(newPos.z);
-        int feetY = (int)std::floor(cameraPosition.y - PLAYER_HEIGHT);
-        int bodyY = feetY + 1;
-
-        bool blocked = isSolid(nx, feetY, nz, ctx) || isSolid(nx, bodyY, nz, ctx);
-        if (!blocked) {
-            cameraPosition.x = newPos.x;
-            cameraPosition.z = newPos.z;
-        }
+        auto solidCheck = [&](int bx, int by, int bz) { return isSolid(bx, by, bz, ctx); };
+        glm::vec3 feetPos = {cameraPosition.x, cameraPosition.y - PLAYER_HEIGHT, cameraPosition.z};
+        glm::vec3 resolved = resolveMovement(feetPos, pendingMove, solidCheck);
+        cameraPosition.x = resolved.x;
+        cameraPosition.z = resolved.z;
     }
     pendingMove = glm::vec3(0);
 
@@ -116,6 +113,7 @@ void Camera::update(float groundHeight, BlockCheck isSolid, void* ctx) {
     } else {
         onGround = false;
     }
+
 }
 
 void Camera::changeDirection(glm::vec3 direction) {

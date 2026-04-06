@@ -9,7 +9,7 @@
 #define TERMINAL_VELOCITY -0.8f
 #define JUMP_VELOCITY 0.18f
 #define REACH 8.0f
-#define PLAYER_HEIGHT 1.7f
+#define PLAYER_HEIGHT 1.62f
 
 class Camera {
   public:
@@ -54,5 +54,5 @@ class Camera {
     glm::vec3 cameraFront;
     glm::vec3 cameraUp;
     float cameraSpeed;
-    float deltaTime = 1.0f / 60.0f; // seconds since last frame
+    float deltaTime = 1.0f / 60.0f;
 };
