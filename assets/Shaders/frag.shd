@@ -27,9 +27,9 @@ void main() {
     vec3 norm = normalize(Normal);
 
     // Face-direction shading: modulates diffuse only
-    float faceBright = 0.8;
+    float faceBright = 0.85;
     if (norm.y > 0.5) faceBright = 1.0;       // top
-    else if (norm.y < -0.5) faceBright = 0.5;  // bottom
+    else if (norm.y < -0.5) faceBright = 0.6;  // bottom
 
     // Directional sun light
     float diff = max(dot(norm, sunDir), 0.0) * faceBright;
@@ -37,7 +37,7 @@ void main() {
     float sunUp = max(sunDir.y, 0.0);
 
     // Sun contribution: diffuse + sky ambient, colored by sun
-    float sunAmbient = 0.3 * sunUp;
+    float sunAmbient = 0.45 * sunUp;
     float sunContrib = (sunAmbient + diff * 0.8);
     vec3 sunLit = texColor.rgb * sunContrib * lightColor * ao * skyLight;
 
