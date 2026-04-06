@@ -8,7 +8,7 @@
 #include <cstring>
 #include <vector>
 #include <cstdint>
-#include <glad/glad.h>
+#include "gl_header.h"
 #include <glm/glm.hpp>
 #include "cube.h"
 #include "shader.h"

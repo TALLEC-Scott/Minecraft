@@ -1,5 +1,5 @@
 #pragma once
-#include <glad/glad.h>
+#include "gl_header.h"
 #include "cube.h"
 
 class TextureArray {

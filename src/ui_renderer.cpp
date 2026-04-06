@@ -118,6 +118,16 @@ static GLuint compileShader(const char* path, GLenum type) {
     std::stringstream ss;
     ss << file.rdbuf();
     std::string src = ss.str();
+#ifdef __EMSCRIPTEN__
+    {
+        auto pos = src.find("#version 330 core");
+        if (pos != std::string::npos) {
+            std::string header = "#version 300 es\n";
+            if (type == GL_FRAGMENT_SHADER) header += "precision highp float;\n";
+            src.replace(pos, 17, header);
+        }
+    }
+#endif
     const char* srcPtr = src.c_str();
 
     GLuint shader = glCreateShader(type);

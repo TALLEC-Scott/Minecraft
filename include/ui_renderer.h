@@ -1,6 +1,6 @@
 #pragma once
 
-#include <glad/glad.h>
+#include "gl_header.h"
 #include <glm/glm.hpp>
 #include <string>
 #include <vector>

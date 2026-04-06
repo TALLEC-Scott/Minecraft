@@ -1,4 +1,5 @@
 #include "menu.h"
+#include <algorithm>
 #include <cmath>
 #include <sstream>
 #include <iomanip>
@@ -240,7 +241,7 @@ GameState Menu::drawSettings(UIRenderer& ui, int windowW, int windowH, GLFWwindo
     drawSlider(ui, "Render Distance", 0, ctrlX, startY, ctrlW, ctrlH, rd, 4.0f, 32.0f, " chunks");
     settings.renderDistance = (int)rd;
 
-    drawSlider(ui, "FOV", 1, ctrlX, startY + gap, ctrlW, ctrlH, settings.fov, 60.0f, 110.0f);
+    drawSlider(ui, "FOV", 1, ctrlX, startY + gap, ctrlW, ctrlH, settings.fov, 30.0f, 110.0f);
 
     drawSlider(ui, "Sensitivity", 2, ctrlX, startY + gap * 2, ctrlW, ctrlH, settings.mouseSensitivity, 0.1f, 3.0f);
 
