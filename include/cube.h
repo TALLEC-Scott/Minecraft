@@ -66,7 +66,7 @@ inline bool hasFlag(block_type t, uint32_t f) {
     return (getBlockFlags(t) & f) != 0;
 }
 
-enum StepSound { STEP_NONE, STEP_GRASS, STEP_STONE, STEP_SAND, STEP_GRAVEL, STEP_SNOW, STEP_WOOD };
+enum StepSound { STEP_NONE, STEP_GRASS, STEP_STONE, STEP_SAND, STEP_GRAVEL, STEP_SNOW, STEP_WOOD, STEP_WATER };
 
 inline StepSound getStepSound(block_type t) {
     // clang-format off
@@ -77,7 +77,7 @@ inline StepSound getStepSound(block_type t) {
         /* STONE     */ STEP_STONE,
         /* COAL_ORE  */ STEP_STONE,
         /* BEDROCK   */ STEP_STONE,
-        /* WATER     */ STEP_NONE,
+        /* WATER     */ STEP_WATER,
         /* SAND      */ STEP_SAND,
         /* GLOWSTONE */ STEP_STONE,
         /* WOOD      */ STEP_WOOD,
