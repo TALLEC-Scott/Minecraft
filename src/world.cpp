@@ -96,6 +96,7 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
               [](const VisibleChunk& a, const VisibleChunk& b) { return a.distSq < b.distSq; });
 
     // Pass 1: opaque geometry (front-to-back)
+    shaderProgram.setInt("materialType", 0);
     int rendered = 0;
     for (auto& vc : visible) {
         Chunk* nx_neg = chunkManager->getChunk(vc.pos.x - 1, vc.pos.y);
@@ -108,6 +109,7 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
     }
 
     // Pass 2: water back-to-front for correct transparency
+    shaderProgram.setInt("materialType", 1);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     for (int i = (int)visible.size() - 1; i >= 0; i--) {
@@ -119,6 +121,7 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
         vc.chunk->renderWater(shaderProgram, nx_neg, nx_pos, nz_neg, nz_pos);
     }
     glDisable(GL_BLEND);
+    shaderProgram.setInt("materialType", 0);
 
     return rendered;
 }
