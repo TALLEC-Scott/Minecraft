@@ -21,6 +21,7 @@ uniform mat4 model;
 uniform vec3 cameraPos;
 uniform float fogStart;
 uniform float fogEnd;
+uniform float time;
 
 void main() {
     TexCoord = aTexCoord;
@@ -28,9 +29,14 @@ void main() {
     ao = aAO;
     skyLight = aSkyLight;
 
-    vec4 worldPos = model * vec4(aPos, 1.0);
+    vec3 pos = aPos;
+    // Leaf sway: branchless — isLeaf is 0 or 1
+    float isLeaf = step(9.5, aTexLayer) * step(aTexLayer, 10.5);
+    pos.x += isLeaf * sin(time * 2.0) * 0.06;
+    pos.z += isLeaf * cos(time * 1.5) * 0.04;
+    vec4 worldPos = model * vec4(pos, 1.0);
     gl_Position = projection * view * worldPos;
-    gl_PointSize = 2.0;
+    gl_PointSize = 2.0; // for star rendering
     FragPos = vec3(worldPos);
     Normal = aNormal;
 
