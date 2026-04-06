@@ -20,14 +20,14 @@ void Menu::init() {
                                     MA_SOUND_FLAG_DECODE, nullptr, nullptr, &musicSound) == MA_SUCCESS) {
             musicLoaded = true;
             ma_sound_set_looping(&musicSound, MA_TRUE);
-            ma_sound_set_volume(&musicSound, 0.3f);
+            ma_sound_set_volume(&musicSound, 1.0f);
         }
         // Load menu music
         if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/music/menu2.mp3",
                                     MA_SOUND_FLAG_DECODE, nullptr, nullptr, &menuMusicSound) == MA_SUCCESS) {
             menuMusicLoaded = true;
             ma_sound_set_looping(&menuMusicSound, MA_TRUE);
-            ma_sound_set_volume(&menuMusicSound, 0.4f);
+            ma_sound_set_volume(&menuMusicSound, 1.0f);
         }
     }
 }
