@@ -4,23 +4,22 @@ A Minecraft-like voxel terrain renderer built with C++ and OpenGL 3.3 Core Profi
 
 ## Features
 
-- Procedural terrain with multi-octave Perlin noise
-- Biome system (ocean, beach, plains, forest, desert, tundra) driven by continentalness, temperature, humidity
-- Greedy meshing (optional, behind feature flag)
+- Procedural terrain with multi-octave Perlin noise (for heights and biomes)
+- Greedy meshing (optional, behind feature flag due to AO artifacts)
+- Biome system (ocean, beach, plains, forest, desert, tundra) 
 - Per-vertex ambient occlusion
 - Sky light with flood-fill propagation (Minecraft-style shadows)
 - Directional sun with day/night cycle
 - Frustum culling with front-to-back chunk sorting
-- Trees, cactus, sand shores, snow caps
 - Block breaking with raycast targeting
 - First-person arm with punch animation
 - Walk mode with gravity, jump, collision (double-tap SPACE to toggle)
-- Clouds, sun billboard
+- Clouds, sun, moon billboards
 - Frame profiler with GPU timer queries
 
 ## Requirements
 
-- C++23, CMake 3.25+
+- C++20, CMake 3.25+
 - OpenGL 3.3+, GLFW 3.3+, GLM, stb_image (header-only), GLAD
 
 On Debian/Ubuntu:
