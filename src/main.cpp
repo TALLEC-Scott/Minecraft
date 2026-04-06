@@ -909,8 +909,8 @@ int main(int argc, char* argv[]) {
 
             // Light color: warm orange near horizon, white at noon, fades to dark at night
             float sunH = std::max(sunDir.y, 0.0f);
-            glm::vec3 sunsetTint(1.0f, 0.35f, 0.1f); // deep orange
-            glm::vec3 dayColor = glm::mix(sunsetTint, glm::vec3(1.0f), std::min(sunH * 2.0f, 1.0f));
+            glm::vec3 sunsetTint(1.0f, 0.5f, 0.2f);
+            glm::vec3 dayColor = glm::mix(sunsetTint, glm::vec3(1.0f), std::min(sunH * 4.0f, 1.0f));
             glm::vec3 sunColor = dayColor * std::min(sunH * 1.5f, 1.0f);
             shaderProgram.setVec3("lightColor", sunColor);
 
