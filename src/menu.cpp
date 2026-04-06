@@ -16,7 +16,7 @@ void Menu::init() {
             clickLoaded = true;
         }
         // Load background music (streamed from disk, not decoded into memory)
-        if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/music/calm1.mp3",
+        if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/music/calm1.wav",
                                     MA_SOUND_FLAG_STREAM, nullptr, nullptr, &musicSound) == MA_SUCCESS) {
             musicLoaded = true;
             ma_sound_set_looping(&musicSound, MA_TRUE);
