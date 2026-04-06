@@ -33,6 +33,7 @@ void Player::initAudio(ma_engine* engine) {
         {STEP_GRAVEL, "assets/Sounds/step/gravel/gravel", 4},
         {STEP_SNOW,   "assets/Sounds/step/snow/snow",     4},
         {STEP_WOOD,   "assets/Sounds/step/wood/wood",     6},
+        {STEP_WATER,  "assets/Sounds/step/water/swim",    4},
     };
 
     for (auto& def : defs) {
@@ -147,13 +148,13 @@ void Player::update(World* world) {
     // Physics
     findGroundAndUpdate(world);
 
-    // Footstep sounds (walk mode only, on ground)
-    if (camera.isWalkMode() && camera.isOnGround() && stepSoundsLoaded) {
+    // Footstep sounds — reuses groundBlockType/feetBlockType from findGroundAndUpdate
+    bool inWater = feetBlockType == WATER;
+    if (stepSoundsLoaded && (inWater || (camera.isWalkMode() && camera.isOnGround()))) {
         glm::vec3 pos = camera.getPosition();
         float dx = pos.x - lastStepPos.x;
         float dz = pos.z - lastStepPos.z;
         float distSq = dx * dx + dz * dz;
-        // Skip sqrt when not moving or below threshold
         if (distSq > 0.001f) {
             distSinceStep += std::sqrt(distSq);
             lastStepPos = pos;
@@ -161,17 +162,7 @@ void Player::update(World* world) {
 
         if (distSinceStep >= STEP_INTERVAL) {
             distSinceStep = 0.0f;
-            // Find the block under feet
-            int bx = (int)std::floor(pos.x);
-            int bz = (int)std::floor(pos.z);
-            int by = (int)std::floor(pos.y - PLAYER_HEIGHT - 0.1f);
-            int cx = worldToChunk(bx);
-            int cz = worldToChunk(bz);
-            Chunk* chunk = world->chunkManager->getChunk(cx, cz);
-            if (chunk) {
-                Cube* b = chunk->getBlock(worldToLocal(bx, cx), by, worldToLocal(bz, cz));
-                if (b && b->getType() != AIR) playStepSound(b->getType());
-            }
+            playStepSound(inWater ? WATER : groundBlockType);
         }
     }
 
@@ -204,14 +195,21 @@ void Player::findGroundAndUpdate(World* world) {
     int lz = worldToLocal(bz, cz);
     Chunk* chunk = world->chunkManager->getChunk(cx, cz);
     float groundY = 0;
+    groundBlockType = AIR;
+    feetBlockType = AIR;
     if (chunk) {
         for (int y = std::min((int)pos.y + 1, CHUNK_HEIGHT - 1); y >= 0; y--) {
             Cube* b = chunk->getBlock(lx, y, lz);
             if (b && hasFlag(b->getType(), BF_SOLID)) {
                 groundY = (float)(y + 1);
+                groundBlockType = b->getType();
                 break;
             }
         }
+        // Check block at feet level for water
+        int feetY = (int)std::floor(pos.y - PLAYER_HEIGHT);
+        Cube* fb = chunk->getBlock(lx, feetY, lz);
+        if (fb) feetBlockType = fb->getType();
     }
 
     camera.update(groundY, blockCheck, world->chunkManager);

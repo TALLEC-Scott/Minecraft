@@ -77,10 +77,12 @@ class Player {
     struct StepSoundSet {
         std::vector<ma_sound> sounds;
     };
-    StepSoundSet stepSounds[6]; // indexed by StepSound-1 (STEP_GRASS..STEP_WOOD)
+    StepSoundSet stepSounds[7]; // indexed by StepSound-1 (STEP_GRASS..STEP_WATER)
     bool stepSoundsLoaded = false;
     glm::vec3 lastStepPos = glm::vec3(0);
     float distSinceStep = 0.0f;
+    block_type groundBlockType = AIR; // set by findGroundAndUpdate, reused by footstep code
+    block_type feetBlockType = AIR;
     static constexpr float STEP_INTERVAL = 2.5f;
     void playStepSound(block_type groundBlock);
 };

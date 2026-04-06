@@ -283,47 +283,80 @@ void Chunk::computeSkyLight() {
         return static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z;
     };
 
-    // Phase 1: vertical ray — light starts at 15, reduced by 1 per filtering block (leaves)
+    // Pre-compute opacity cache to avoid getType()+hasFlag() in the hot BFS loop
+    // Pack opaque (bit 0) and filtering (bit 1) into one byte per block
+    const int scanH = std::min(maxSolidY + 16, CHUNK_HEIGHT); // only need to scan near terrain
+    std::vector<uint8_t> blockInfo(CHUNK_SIZE * scanH * CHUNK_SIZE);
+    auto biIdx = [&](int x, int y, int z) -> size_t {
+        return static_cast<size_t>(x) * scanH * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z;
+    };
+    for (int x = 0; x < CHUNK_SIZE; x++)
+        for (int y = 0; y < scanH; y++)
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                block_type bt = blocks[slIdx(x, y, z)].getType();
+                blockInfo[biIdx(x, y, z)] = (isBlockOpaque(bt) ? 1 : 0) | (isBlockFiltering(bt) ? 2 : 0);
+            }
+
+    // Phase 1: vertical ray — light starts at 15, reduced by 1 per filtering block
     for (int x = 0; x < CHUNK_SIZE; x++) {
         for (int z = 0; z < CHUNK_SIZE; z++) {
             uint8_t light = 15;
             for (int y = CHUNK_HEIGHT - 1; y >= 0; y--) {
-                block_type bt = blocks[slIdx(x, y, z)].getType();
-                if (isBlockOpaque(bt)) break;
-                if (isBlockFiltering(bt)) light = (light > 1) ? light - 1 : 0;
+                if (y < scanH) {
+                    uint8_t info = blockInfo[biIdx(x, y, z)];
+                    if (info & 1) break; // opaque
+                    if (info & 2) light = (light > 1) ? light - 1 : 0; // filtering
+                }
                 skyLight[slIdx(x, y, z)] = light;
             }
         }
     }
 
-    // Phase 2: BFS flood fill — light spreads sideways through air, -1 per step
-    std::vector<std::tuple<int, int, int>> queue;
-    queue.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 4);
+    // Phase 2: BFS flood fill — only seed from lit blocks at shadow edges
+    // Use packed int32 queue instead of tuple for cache efficiency
+    std::vector<int32_t> queue;
+    queue.reserve(CHUNK_SIZE * CHUNK_SIZE * 2);
+    auto packCoord = [](int x, int y, int z) -> int32_t {
+        return (x << 20) | (y << 8) | z;
+    };
 
-    // Seed BFS with all blocks at light 15 that have a dark neighbor
+    // Only seed blocks that are lit AND have at least one dark/unlit neighbor
+    int seedMaxY = std::min(maxSolidY + 2, CHUNK_HEIGHT);
     for (int x = 0; x < CHUNK_SIZE; x++)
-        for (int y = 0; y <= maxSolidY + 1 && y < CHUNK_HEIGHT; y++)
-            for (int z = 0; z < CHUNK_SIZE; z++)
-                if (skyLight[slIdx(x, y, z)] == 15) queue.emplace_back(x, y, z);
+        for (int y = 0; y < seedMaxY; y++)
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                if (skyLight[slIdx(x, y, z)] <= 1) continue;
+                // Check if any neighbor is darker (worth seeding from)
+                bool hasEdge = (x == 0 || x == CHUNK_SIZE - 1 || z == 0 || z == CHUNK_SIZE - 1);
+                if (!hasEdge) {
+                    uint8_t myLight = skyLight[slIdx(x, y, z)];
+                    hasEdge = (y > 0 && skyLight[slIdx(x, y - 1, z)] < myLight - 1) ||
+                              (skyLight[slIdx(x - 1 < 0 ? 0 : x - 1, y, z)] < myLight - 1) ||
+                              (skyLight[slIdx(x + 1 >= CHUNK_SIZE ? CHUNK_SIZE - 1 : x + 1, y, z)] < myLight - 1) ||
+                              (skyLight[slIdx(x, y, z - 1 < 0 ? 0 : z - 1)] < myLight - 1) ||
+                              (skyLight[slIdx(x, y, z + 1 >= CHUNK_SIZE ? CHUNK_SIZE - 1 : z + 1)] < myLight - 1);
+                }
+                if (hasEdge) queue.push_back(packCoord(x, y, z));
+            }
 
     static const int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
     size_t head = 0;
     while (head < queue.size()) {
-        auto [x, y, z] = queue[head++];
+        int32_t packed = queue[head++];
+        int x = packed >> 20, y = (packed >> 8) & 0xFFF, z = packed & 0xFF;
         uint8_t light = skyLight[slIdx(x, y, z)];
         if (light <= 1) continue;
 
         for (auto& d : DIRS) {
             int nx = x + d[0], ny = y + d[1], nz = z + d[2];
-            if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= CHUNK_HEIGHT || nz < 0 || nz >= CHUNK_SIZE) continue;
+            if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= scanH || nz < 0 || nz >= CHUNK_SIZE) continue;
 
-            block_type bt = blocks[slIdx(nx, ny, nz)].getType();
-            if (isBlockOpaque(bt)) continue;
+            if (blockInfo[biIdx(nx, ny, nz)] & 1) continue; // opaque
 
             uint8_t newLight = light - 1;
             if (skyLight[slIdx(nx, ny, nz)] >= newLight) continue;
             skyLight[slIdx(nx, ny, nz)] = newLight;
-            queue.emplace_back(nx, ny, nz);
+            queue.push_back(packCoord(nx, ny, nz));
         }
     }
 }
