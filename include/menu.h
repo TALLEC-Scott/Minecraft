@@ -45,6 +45,7 @@ class Menu {
     // Mouse state for click detection
     bool mouseWasPressed = false;
     bool mouseIsDown = false;
+    bool clickConsumed = false;
     double mouseX = 0, mouseY = 0;
 
     // ESC edge detection

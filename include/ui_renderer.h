@@ -21,6 +21,8 @@ class UIRenderer {
                           glm::vec4 tint = glm::vec4(1.0f));
     void drawText(const std::string& text, float x, float y, float scale, glm::vec4 color = glm::vec4(1.0f));
     void drawTextShadow(const std::string& text, float x, float y, float scale, glm::vec4 color = glm::vec4(1.0f));
+    void drawTextRotated(const std::string& text, float cx, float cy, float scale, float angleDeg,
+                         glm::vec4 color = glm::vec4(1.0f));
     float textWidth(const std::string& text, float scale) const;
     float textHeight(float scale) const;
 

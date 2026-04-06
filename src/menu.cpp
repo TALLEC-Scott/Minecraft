@@ -84,8 +84,9 @@ void Menu::playClick() {
 void Menu::updateMouse(GLFWwindow* window) {
     glfwGetCursorPos(window, &mouseX, &mouseY);
     bool down = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-    mouseWasPressed = mouseIsDown; // save previous frame's state FIRST
-    mouseIsDown = down;            // then update current
+    if (!down) clickConsumed = false; // reset when mouse released
+    mouseWasPressed = mouseIsDown;
+    mouseIsDown = down && !clickConsumed;
     if (!down) activeSlider = -1;
 }
 
@@ -116,7 +117,7 @@ bool Menu::drawButton(UIRenderer& ui, const std::string& label, float x, float y
     bool clicked = hovered && mouseClicked();
     if (clicked) {
         playClick();
-        mouseIsDown = false; // consume click so next screen doesn't see it
+        clickConsumed = true; // consumed until mouse released
     }
 
     // Button background
@@ -263,6 +264,15 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
     }
 
     if (drawButton(ui, "Quit Game", btnX, startY + gap * 2, btnW, btnH)) glfwSetWindowShouldClose(window, true);
+
+    // Splash text — rotated, pulsing, bottom-right corner
+    {
+        float t = (float)glfwGetTime();
+        float pulse = 2.0f + 0.2f * std::sin(t * 4.0f);
+        float px = (float)windowW - 120.0f;
+        float py = (float)windowH - 80.0f;
+        ui.drawTextRotated("By Sc077y", px, py, pulse, -25.0f, glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
+    }
 
     // Version text
     float verScale = 1.0f;
