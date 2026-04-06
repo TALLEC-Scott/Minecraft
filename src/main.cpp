@@ -804,6 +804,7 @@ int main(int argc, char* argv[]) {
                 if (next == GameState::Playing && currentState != GameState::Playing) {
                     glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_DISABLED);
                     player.resetMouseState();
+                    menu.startMusic();
                 }
                 if (next == GameState::Settings) applySettings();
                 currentState = next;

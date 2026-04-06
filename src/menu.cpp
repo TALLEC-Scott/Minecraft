@@ -15,13 +15,35 @@ void Menu::init() {
                                     MA_SOUND_FLAG_DECODE, nullptr, nullptr, &clickSound) == MA_SUCCESS) {
             clickLoaded = true;
         }
+        // Load background music (streamed from disk, not decoded into memory)
+        if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/music/calm1.mp3",
+                                    MA_SOUND_FLAG_STREAM, nullptr, nullptr, &musicSound) == MA_SUCCESS) {
+            musicLoaded = true;
+            ma_sound_set_looping(&musicSound, MA_TRUE);
+            ma_sound_set_volume(&musicSound, 0.3f);
+        }
     }
 }
 
 void Menu::destroy() {
     if (dirtTexture) glDeleteTextures(1, &dirtTexture);
+    if (musicLoaded) ma_sound_uninit(&musicSound);
     if (clickLoaded) ma_sound_uninit(&clickSound);
     if (audioInitialized) ma_engine_uninit(&audioEngine);
+}
+
+void Menu::startMusic() {
+    if (musicLoaded && !musicPlaying) {
+        ma_sound_start(&musicSound);
+        musicPlaying = true;
+    }
+}
+
+void Menu::stopMusic() {
+    if (musicLoaded && musicPlaying) {
+        ma_sound_stop(&musicSound);
+        musicPlaying = false;
+    }
 }
 
 void Menu::playClick() {
