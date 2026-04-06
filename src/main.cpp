@@ -32,6 +32,13 @@
 #include "ui_renderer.h"
 #include "menu.h"
 
+// WSL2 needs GLFW_CURSOR_NORMAL as the mode param; Emscripten needs GLFW_CURSOR
+#ifdef __EMSCRIPTEN__
+#define CURSOR_MODE GLFW_CURSOR
+#else
+#define CURSOR_MODE GLFW_CURSOR_NORMAL
+#endif
+
 #define WINDOW_WIDTH 1000
 #define WINDOW_HEIGHT 1000
 
@@ -106,7 +113,7 @@ void processInput(GLFWwindow* window) {
     bool escDown = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
     if (escDown && !escKeyPressed) {
         currentState = GameState::Paused;
-        glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_NORMAL);
+        glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
         escKeyPressed = escDown;
         return;
     }
@@ -202,7 +209,7 @@ int main(int argc, char* argv[]) {
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
     // Start with cursor visible for main menu
-    glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_NORMAL);
+    glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
     glfwSetCursorPos(window, static_cast<double>(WINDOW_WIDTH) / 2.0, static_cast<double>(WINDOW_HEIGHT) / 2.0);
 
     glfwSetCursorPosCallback(window, cursorPositionCallback);
@@ -803,7 +810,7 @@ int main(int argc, char* argv[]) {
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                 GameState next = menu.drawMainMenu(uiRenderer, windowWidth, windowHeight, window);
                 if (next == GameState::Playing && currentState != GameState::Playing) {
-                    glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_DISABLED);
+                    glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
                     player.resetMouseState();
                     menu.startMusic();
                 }
@@ -822,7 +829,7 @@ int main(int argc, char* argv[]) {
                     gameSettings.save("settings.txt");
                     applySettings();
                     if (next == GameState::Playing) {
-                        glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_DISABLED);
+                        glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
                         player.resetMouseState();
                     }
                 }
@@ -1186,7 +1193,7 @@ int main(int argc, char* argv[]) {
             if (currentState == GameState::Paused) {
                 GameState next = menu.drawPauseMenu(uiRenderer, windowWidth, windowHeight, window);
                 if (next == GameState::Playing) {
-                    glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_DISABLED);
+                    glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
                     player.resetMouseState();
                 }
                 if (next == GameState::Settings) {
@@ -1194,7 +1201,7 @@ int main(int argc, char* argv[]) {
                     applySettings();
                 }
                 if (next == GameState::MainMenu) {
-                    glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_NORMAL);
+                    glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
                     menu.stopMusic();
                     menu.startMenuMusic();
                 }
