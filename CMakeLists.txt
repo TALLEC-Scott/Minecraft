@@ -103,6 +103,7 @@ else()
         tests/test_coordinates.cpp
         tests/test_biomes.cpp
         tests/test_settings.cpp
+        tests/test_block_properties.cpp
         src/TerrainGenerator.cpp
         src/perlin_noise.cpp
         src/game_state.cpp

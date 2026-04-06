@@ -2,14 +2,7 @@
 #include "cube.h"
 #include <cmath>
 
-// Test the floor-division coordinate conversion used everywhere
-static int worldToChunk(int coord) {
-    return (coord >= 0) ? coord / CHUNK_SIZE : (coord - CHUNK_SIZE + 1) / CHUNK_SIZE;
-}
-
-static int worldToLocal(int coord, int chunkCoord) {
-    return coord - chunkCoord * CHUNK_SIZE;
-}
+// worldToChunk and worldToLocal are now defined in cube.h
 
 TEST(CoordinateTest, PositiveCoordinates) {
     EXPECT_EQ(worldToChunk(0), 0);

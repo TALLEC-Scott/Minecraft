@@ -2,8 +2,63 @@
 #include "world.h"
 #include "ChunkManager.h"
 #include <cmath>
+#include <random>
 
 Player::Player() {}
+
+Player::~Player() = default;
+
+void Player::destroyAudio() {
+    if (stepSoundsLoaded) {
+        for (auto& set : stepSounds)
+            for (auto& s : set.sounds)
+                ma_sound_uninit(&s);
+        stepSoundsLoaded = false;
+    }
+}
+
+void Player::initAudio(ma_engine* engine) {
+    audioEngine = engine;
+    if (!engine) return;
+
+    struct SoundDef {
+        StepSound type;
+        const char* prefix;
+        int count;
+    };
+    SoundDef defs[] = {
+        {STEP_GRASS,  "assets/Sounds/step/grass/grass",   6},
+        {STEP_STONE,  "assets/Sounds/step/stone/stone",   6},
+        {STEP_SAND,   "assets/Sounds/step/sand/sand",     5},
+        {STEP_GRAVEL, "assets/Sounds/step/gravel/gravel", 4},
+        {STEP_SNOW,   "assets/Sounds/step/snow/snow",     4},
+        {STEP_WOOD,   "assets/Sounds/step/wood/wood",     6},
+    };
+
+    for (auto& def : defs) {
+        auto& set = stepSounds[def.type - 1];
+        set.sounds.resize(def.count);
+        for (int i = 0; i < def.count; i++) {
+            std::string path = std::string(def.prefix) + std::to_string(i + 1) + ".wav";
+            ma_sound_init_from_file(engine, path.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, &set.sounds[i]);
+        }
+    }
+    stepSoundsLoaded = true;
+    lastStepPos = camera.getPosition();
+}
+
+void Player::playStepSound(block_type groundBlock) {
+    StepSound ss = getStepSound(groundBlock);
+    if (ss == STEP_NONE || !stepSoundsLoaded) return;
+
+    auto& set = stepSounds[ss - 1];
+    if (set.sounds.empty()) return;
+
+    static std::mt19937 rng(42);
+    int idx = std::uniform_int_distribution<int>(0, (int)set.sounds.size() - 1)(rng);
+    ma_sound_seek_to_pcm_frame(&set.sounds[idx], 0);
+    ma_sound_start(&set.sounds[idx]);
+}
 
 void Player::handleInput(GLFWwindow* window, World* world) {
     // Movement
@@ -92,6 +147,34 @@ void Player::update(World* world) {
     // Physics
     findGroundAndUpdate(world);
 
+    // Footstep sounds (walk mode only, on ground)
+    if (camera.isWalkMode() && camera.isOnGround() && stepSoundsLoaded) {
+        glm::vec3 pos = camera.getPosition();
+        float dx = pos.x - lastStepPos.x;
+        float dz = pos.z - lastStepPos.z;
+        float distSq = dx * dx + dz * dz;
+        // Skip sqrt when not moving or below threshold
+        if (distSq > 0.001f) {
+            distSinceStep += std::sqrt(distSq);
+            lastStepPos = pos;
+        }
+
+        if (distSinceStep >= STEP_INTERVAL) {
+            distSinceStep = 0.0f;
+            // Find the block under feet
+            int bx = (int)std::floor(pos.x);
+            int bz = (int)std::floor(pos.z);
+            int by = (int)std::floor(pos.y - PLAYER_HEIGHT - 0.1f);
+            int cx = worldToChunk(bx);
+            int cz = worldToChunk(bz);
+            Chunk* chunk = world->chunkManager->getChunk(cx, cz);
+            if (chunk) {
+                Cube* b = chunk->getBlock(worldToLocal(bx, cx), by, worldToLocal(bz, cz));
+                if (b && b->getType() != AIR) playStepSound(b->getType());
+            }
+        }
+    }
+
     // Block targeting
     updateTargetedBlock(world);
 }
@@ -106,25 +189,25 @@ void Player::findGroundAndUpdate(World* world) {
     // Block check callback
     auto blockCheck = [](int bx, int by, int bz, void* ctx) -> bool {
         auto* cm = static_cast<ChunkManager*>(ctx);
-        int cx = (bx >= 0) ? bx / CHUNK_SIZE : (bx - CHUNK_SIZE + 1) / CHUNK_SIZE;
-        int cz = (bz >= 0) ? bz / CHUNK_SIZE : (bz - CHUNK_SIZE + 1) / CHUNK_SIZE;
+        int cx = worldToChunk(bx);
+        int cz = worldToChunk(bz);
         Chunk* chunk = cm->getChunk(cx, cz);
         if (!chunk || by < 0 || by >= CHUNK_HEIGHT) return false;
-        Cube* b = chunk->getBlock(bx - cx * CHUNK_SIZE, by, bz - cz * CHUNK_SIZE);
-        return b && b->getType() != AIR && b->getType() != WATER;
+        Cube* b = chunk->getBlock(worldToLocal(bx, cx), by, worldToLocal(bz, cz));
+        return b && hasFlag(b->getType(), BF_SOLID);
     };
 
     // Find ground: pre-compute chunk, scan column
-    int cx = (bx >= 0) ? bx / CHUNK_SIZE : (bx - CHUNK_SIZE + 1) / CHUNK_SIZE;
-    int cz = (bz >= 0) ? bz / CHUNK_SIZE : (bz - CHUNK_SIZE + 1) / CHUNK_SIZE;
-    int lx = bx - cx * CHUNK_SIZE;
-    int lz = bz - cz * CHUNK_SIZE;
+    int cx = worldToChunk(bx);
+    int cz = worldToChunk(bz);
+    int lx = worldToLocal(bx, cx);
+    int lz = worldToLocal(bz, cz);
     Chunk* chunk = world->chunkManager->getChunk(cx, cz);
     float groundY = 0;
     if (chunk) {
         for (int y = std::min((int)pos.y + 1, CHUNK_HEIGHT - 1); y >= 0; y--) {
             Cube* b = chunk->getBlock(lx, y, lz);
-            if (b && b->getType() != AIR && b->getType() != WATER) {
+            if (b && hasFlag(b->getType(), BF_SOLID)) {
                 groundY = (float)(y + 1);
                 break;
             }

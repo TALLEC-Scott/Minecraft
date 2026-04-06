@@ -19,6 +19,8 @@ class Menu {
     // Track where Settings was opened from
     GameState settingsReturnState = GameState::MainMenu;
 
+    ma_engine* getAudioEngine() { return audioInitialized ? &audioEngine : nullptr; }
+
   private:
     GLuint dirtTexture = 0;
 

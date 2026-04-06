@@ -258,6 +258,9 @@ int main(int argc, char* argv[]) {
     menuObj.init();
     g_menu = &menuObj;
 
+    // Share audio engine with player for footstep sounds
+    player.initAudio(menuObj.getAudioEngine());
+
     {
 #ifdef __EMSCRIPTEN__
         static
@@ -1212,6 +1215,7 @@ int main(int argc, char* argv[]) {
 
         shaderProgram.destroy();
     } // world and shaderProgram destroyed here, while GL context is still valid
+    player.destroyAudio(); // before menu destroys the audio engine
     g_menu->destroy();
     g_uiRenderer->destroy();
 cleanup:
