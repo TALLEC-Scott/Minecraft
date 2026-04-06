@@ -102,13 +102,13 @@ void Menu::drawDirtBackground(UIRenderer& ui, int windowW, int windowH) {
         ui.drawRect(0, 0, (float)windowW, (float)windowH, glm::vec4(0.3f, 0.2f, 0.15f, 1.0f));
         return;
     }
-    // Tile dirt texture across screen (each tile = 64px)
     constexpr float TILE_SIZE = 64.0f;
     float tilesX = (float)windowW / TILE_SIZE;
     float tilesY = (float)windowH / TILE_SIZE;
-    // Draw as one quad with UV repeat
-    ui.drawTexturedRect(0, 0, (float)windowW, (float)windowH, dirtTexture, 0, 0, tilesX, tilesY,
-                        glm::vec4(0.4f, 0.4f, 0.4f, 1.0f));
+    // Diagonal scroll offset
+    float scroll = (float)glfwGetTime() * 0.15f;
+    ui.drawTexturedRect(0, 0, (float)windowW, (float)windowH, dirtTexture, scroll, scroll,
+                        tilesX + scroll, tilesY + scroll, glm::vec4(0.4f, 0.4f, 0.4f, 1.0f));
 }
 
 bool Menu::drawButton(UIRenderer& ui, const std::string& label, float x, float y, float w, float h) {
