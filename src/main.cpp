@@ -861,7 +861,7 @@ int main(int argc, char* argv[]) {
             }
 
             // --- Game rendering (used by both Playing and Paused) ---
-            float speed = 0.05;
+            float speed = 0.025;
             float timeValue = 0.0f;
             if (doDaylightCycle) {
                 timeValue = glfwGetTime() * speed;
@@ -1197,7 +1197,7 @@ int main(int argc, char* argv[]) {
             {
                 glm::mat4 armModel = player.getArmModelMatrix();
 
-                // Sample sky light at player's feet for arm brightness
+                // Arm brightness: sky light * sun intensity (matches world lighting)
                 float armBrightness = 1.0f;
                 {
                     int bx = (int)std::floor(cameraPos.x);
@@ -1206,10 +1206,14 @@ int main(int argc, char* argv[]) {
                     int cx = worldToChunk(bx);
                     int cz = worldToChunk(bz);
                     Chunk* chunk = w->chunkManager->getChunk(cx, cz);
+                    float skyFactor = 1.0f;
                     if (chunk) {
                         uint8_t sl = chunk->getSkyLight(worldToLocal(bx, cx), by, worldToLocal(bz, cz));
-                        armBrightness = 0.15f + 0.85f * (sl / 15.0f);
+                        skyFactor = 0.15f + 0.85f * (sl / 15.0f);
                     }
+                    // Blend with sun intensity so arm dims at night
+                    float sunIntensity = std::max(0.2f, std::min(sunH * 1.5f, 1.0f));
+                    armBrightness = skyFactor * sunIntensity;
                 }
 
                 glClear(GL_DEPTH_BUFFER_BIT);
