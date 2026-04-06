@@ -212,7 +212,11 @@ bool Menu::drawToggle(UIRenderer& ui, const std::string& label, float x, float y
 }
 
 bool Menu::escPressed(GLFWwindow* window) {
+#ifdef __EMSCRIPTEN__
+    bool down = glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS;
+#else
     bool down = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+#endif
     bool pressed = down && !escWasPressed;
     escWasPressed = down;
     return pressed;

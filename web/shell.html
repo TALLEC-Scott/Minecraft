@@ -2,6 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
+    <link rel="icon" type="image/png" href="favicon.png">
     <title>Minecraft Clone — WebGL</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -47,7 +48,7 @@
 <body>
     <div id="status"><span class="spinner"></span>Loading world...</div>
     <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
-    <div id="info">Click to capture mouse — ESC to pause</div>
+    <div id="info">Click to capture mouse — TAB to pause</div>
     <script>
         var Module = {
             canvas: (function() {
@@ -56,12 +57,6 @@
                     alert('WebGL context lost!');
                     e.preventDefault();
                 }, false);
-                // Click to capture mouse (browsers require user gesture for pointer lock)
-                c.addEventListener('click', function() {
-                    if (!document.pointerLockElement) {
-                        c.requestPointerLock();
-                    }
-                });
                 return c;
             })(),
             onRuntimeInitialized: function() {
