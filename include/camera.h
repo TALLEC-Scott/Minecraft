@@ -4,7 +4,7 @@
 
 #include "shader.h"
 
-#define SPEED 0.05f
+#define SPEED 0.1f
 #define GRAVITY 0.008f
 #define TERMINAL_VELOCITY -0.8f
 #define JUMP_VELOCITY 0.18f
@@ -14,6 +14,8 @@
 class Camera {
   public:
     Camera();
+
+    void setDeltaTime(float dt) { deltaTime = dt; }
 
     void forward();
     void back();
@@ -52,4 +54,5 @@ class Camera {
     glm::vec3 cameraFront;
     glm::vec3 cameraUp;
     float cameraSpeed;
+    float deltaTime = 1.0f / 60.0f; // seconds since last frame
 };

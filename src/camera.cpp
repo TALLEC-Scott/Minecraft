@@ -9,32 +9,34 @@ Camera::Camera() {
 }
 
 void Camera::forward() {
+    float s = cameraSpeed * deltaTime * 60.0f;
     if (walkMode) {
         glm::vec3 flatFront = glm::normalize(glm::vec3(cameraFront.x, 0, cameraFront.z));
-        pendingMove += cameraSpeed * flatFront;
+        pendingMove += s * flatFront;
     } else {
-        cameraPosition += cameraSpeed * cameraFront;
+        cameraPosition += s * cameraFront;
     }
 }
 
 void Camera::back() {
+    float s = cameraSpeed * deltaTime * 60.0f;
     if (walkMode) {
         glm::vec3 flatFront = glm::normalize(glm::vec3(cameraFront.x, 0, cameraFront.z));
-        pendingMove -= cameraSpeed * flatFront;
+        pendingMove -= s * flatFront;
     } else {
-        cameraPosition -= cameraSpeed * cameraFront;
+        cameraPosition -= s * cameraFront;
     }
 }
 
 void Camera::up() {
     if (!walkMode) {
-        cameraPosition += cameraSpeed * cameraUp;
+        cameraPosition += cameraSpeed * deltaTime * 60.0f * cameraUp;
     }
 }
 
 void Camera::down() {
     if (!walkMode) {
-        cameraPosition -= cameraSpeed * cameraUp;
+        cameraPosition -= cameraSpeed * deltaTime * 60.0f * cameraUp;
     }
 }
 
@@ -46,25 +48,27 @@ void Camera::jump() {
 }
 
 void Camera::left() {
+    float s = cameraSpeed * deltaTime * 60.0f;
     if (walkMode)
-        pendingMove -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+        pendingMove -= glm::normalize(glm::cross(cameraFront, cameraUp)) * s;
     else
-        cameraPosition -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+        cameraPosition -= glm::normalize(glm::cross(cameraFront, cameraUp)) * s;
 }
 
 void Camera::right() {
+    float s = cameraSpeed * deltaTime * 60.0f;
     if (walkMode)
-        pendingMove += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+        pendingMove += glm::normalize(glm::cross(cameraFront, cameraUp)) * s;
     else
-        cameraPosition += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+        cameraPosition += glm::normalize(glm::cross(cameraFront, cameraUp)) * s;
 }
 
 void Camera::speedUp() {
-    cameraSpeed = walkMode ? 1.5f * SPEED : 6 * SPEED;
+    cameraSpeed = walkMode ? 1.5f * SPEED : 9 * SPEED;
 }
 
 void Camera::resetSpeed() {
-    cameraSpeed = walkMode ? SPEED : 3 * SPEED;
+    cameraSpeed = walkMode ? SPEED : 4.5f * SPEED;
 }
 
 void Camera::toggleWalkMode() {
@@ -89,7 +93,6 @@ void Camera::update(float groundHeight, BlockCheck isSolid, void* ctx) {
         int feetY = (int)std::floor(cameraPosition.y - PLAYER_HEIGHT);
         int bodyY = feetY + 1;
 
-        // Check if destination has solid blocks at feet or body level
         bool blocked = isSolid(nx, feetY, nz, ctx) || isSolid(nx, bodyY, nz, ctx);
         if (!blocked) {
             cameraPosition.x = newPos.x;
@@ -98,10 +101,11 @@ void Camera::update(float groundHeight, BlockCheck isSolid, void* ctx) {
     }
     pendingMove = glm::vec3(0);
 
-    // Apply gravity with terminal velocity
-    velocityY -= GRAVITY;
+    // Apply gravity with terminal velocity (also delta-time scaled)
+    float dtScale = deltaTime * 60.0f;
+    velocityY -= GRAVITY * dtScale;
     if (velocityY < TERMINAL_VELOCITY) velocityY = TERMINAL_VELOCITY;
-    cameraPosition.y += velocityY;
+    cameraPosition.y += velocityY * dtScale;
 
     // Ground collision
     float feetY = groundHeight + PLAYER_HEIGHT;

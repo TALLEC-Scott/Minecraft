@@ -126,15 +126,19 @@ glm::vec3 getSkyColor(float angle) {
 }
 
 void processInput(GLFWwindow* window) {
-    // ESC: open pause menu (edge-triggered)
-    bool escDown = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
-    if (escDown && !escKeyPressed) {
+    // Pause: ESC on desktop, TAB on web
+#ifdef __EMSCRIPTEN__
+    bool pauseDown = glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS;
+#else
+    bool pauseDown = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+#endif
+    if (pauseDown && !escKeyPressed) {
         currentState = GameState::Paused;
         glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
-        escKeyPressed = escDown;
+        escKeyPressed = pauseDown;
         return;
     }
-    escKeyPressed = escDown;
+    escKeyPressed = pauseDown;
 
 #ifndef __EMSCRIPTEN__
     // Enable/Disable wireframe mode
@@ -868,14 +872,17 @@ int main(int argc, char* argv[]) {
             glClearColor(skyColor.r, skyColor.g, skyColor.b, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            // Only update player/world when actually playing
+            // Delta time — computed before player update so movement is frame-rate independent
+            double currentTime = glfwGetTime();
+            float dt = (float)(currentTime - lastFrameTime);
+            if (dt > 0.1f) dt = 0.1f;
+            player.getCamera().setDeltaTime(dt);
+            double frameTime = dt * 1000.0;
+            lastFrameTime = currentTime;
+
             if (currentState == GameState::Playing) {
                 player.update(w);
             }
-
-            double currentTime = glfwGetTime();
-            double frameTime = (currentTime - lastFrameTime) * 1000.0; // ms
-            lastFrameTime = currentTime;
             nbFrames++;
             if (currentTime - lastTime >= 1.0) {
                 int totalChunks = (int)w->chunkManager->chunks.size();
