@@ -19,8 +19,7 @@ ChunkManager::ChunkManager(int renderDist, int /*chunkSize*/, TerrainGenerator& 
 
 #ifndef __EMSCRIPTEN__
     int numWorkers = std::min(4u, std::max(1u, std::thread::hardware_concurrency() - 1));
-    for (int i = 0; i < numWorkers; i++)
-        workers.emplace_back(&ChunkManager::workerLoop, this);
+    for (int i = 0; i < numWorkers; i++) workers.emplace_back(&ChunkManager::workerLoop, this);
 #endif
 }
 
@@ -31,8 +30,7 @@ ChunkManager::~ChunkManager() {
         shutdownFlag = true;
     }
     requestCV.notify_all();
-    for (auto& w : workers)
-        w.join();
+    for (auto& w : workers) w.join();
 #endif
 }
 
@@ -130,9 +128,8 @@ void ChunkManager::workerLoop() {
         MeshRequest meshReq;
         {
             std::unique_lock<std::mutex> lock(requestMutex);
-            requestCV.wait(lock, [&] {
-                return !requestQueue.empty() || !meshRequestQueue.empty() || shutdownFlag.load();
-            });
+            requestCV.wait(lock,
+                           [&] { return !requestQueue.empty() || !meshRequestQueue.empty() || shutdownFlag.load(); });
             if (shutdownFlag.load() && requestQueue.empty() && meshRequestQueue.empty()) return;
 
             // Prioritize mesh builds (faster, reduces visible pop-in)
@@ -152,10 +149,8 @@ void ChunkManager::workerLoop() {
             std::lock_guard<std::mutex> lock(resultMutex);
             resultQueue.push(std::move(data));
         } else if (isMeshBuild) {
-            Chunk::MeshData mesh = buildMeshFromData(
-                meshReq.blocks.get(), meshReq.skyLight.get(),
-                meshReq.maxSolidY, meshReq.chunkX, meshReq.chunkZ,
-                meshReq.borders);
+            Chunk::MeshData mesh = buildMeshFromData(meshReq.blocks.get(), meshReq.skyLight.get(), meshReq.maxSolidY,
+                                                     meshReq.chunkX, meshReq.chunkZ, meshReq.borders);
             std::lock_guard<std::mutex> lock(resultMutex);
             meshResultQueue.push({meshReq.pos, std::move(mesh)});
         }
@@ -169,14 +164,13 @@ void ChunkManager::queueMeshBuild(glm::ivec2 pos) {
     if (chunk.meshBuildInFlight) return;
 
     // Snapshot neighbor borders
-    Chunk::NeighborBorders borders = Chunk::snapshotBorders(
-        getChunk(pos.x - 1, pos.y), getChunk(pos.x + 1, pos.y),
-        getChunk(pos.x, pos.y - 1), getChunk(pos.x, pos.y + 1));
+    Chunk::NeighborBorders borders = Chunk::snapshotBorders(getChunk(pos.x - 1, pos.y), getChunk(pos.x + 1, pos.y),
+                                                            getChunk(pos.x, pos.y - 1), getChunk(pos.x, pos.y + 1));
 
     MeshRequest req;
     req.pos = pos;
     req.blocks = chunk.blocks;     // shared_ptr copy — keeps data alive
-    req.skyLight = chunk.skyLight;  // shared_ptr copy
+    req.skyLight = chunk.skyLight; // shared_ptr copy
     req.maxSolidY = chunk.maxSolidY;
     req.chunkX = chunk.chunkX;
     req.chunkZ = chunk.chunkY; // chunkY is actually Z coordinate

@@ -11,11 +11,9 @@ Player::~Player() = default;
 void Player::destroyAudio() {
     if (stepSoundsLoaded) {
         for (auto& set : stepSounds)
-            for (auto& s : set.sounds)
-                ma_sound_uninit(&s);
+            for (auto& s : set.sounds) ma_sound_uninit(&s);
         for (auto& set : breakSounds)
-            for (auto& s : set.sounds)
-                ma_sound_uninit(&s);
+            for (auto& s : set.sounds) ma_sound_uninit(&s);
 
         stepSoundsLoaded = false;
     }
@@ -31,14 +29,10 @@ void Player::initAudio(ma_engine* engine) {
         int count;
     };
     SoundDef defs[] = {
-        {STEP_GRASS,  "assets/Sounds/step/grass/grass",   6},
-        {STEP_STONE,  "assets/Sounds/step/stone/stone",   6},
-        {STEP_SAND,   "assets/Sounds/step/sand/sand",     5},
-        {STEP_GRAVEL, "assets/Sounds/step/gravel/gravel", 4},
-        {STEP_SNOW,   "assets/Sounds/step/snow/snow",     4},
-        {STEP_WOOD,   "assets/Sounds/step/wood/wood",     6},
-        {STEP_WATER,  "assets/Sounds/step/water/swim",    4},
-        {STEP_CLOTH,  "assets/Sounds/dig/cloth/cloth",    4},
+        {STEP_GRASS, "assets/Sounds/step/grass/grass", 6}, {STEP_STONE, "assets/Sounds/step/stone/stone", 6},
+        {STEP_SAND, "assets/Sounds/step/sand/sand", 5},    {STEP_GRAVEL, "assets/Sounds/step/gravel/gravel", 4},
+        {STEP_SNOW, "assets/Sounds/step/snow/snow", 4},    {STEP_WOOD, "assets/Sounds/step/wood/wood", 6},
+        {STEP_WATER, "assets/Sounds/step/water/swim", 4},  {STEP_CLOTH, "assets/Sounds/dig/cloth/cloth", 4},
     };
 
     for (auto& def : defs) {
@@ -51,13 +45,10 @@ void Player::initAudio(ma_engine* engine) {
     }
     // Load break/dig sounds (same categories, different files)
     SoundDef breakDefs[] = {
-        {STEP_GRASS,  "assets/Sounds/dig/grass/grass",   4},
-        {STEP_STONE,  "assets/Sounds/dig/stone/stone",   4},
-        {STEP_SAND,   "assets/Sounds/dig/sand/sand",     4},
-        {STEP_GRAVEL, "assets/Sounds/dig/gravel/gravel", 4},
-        {STEP_SNOW,   "assets/Sounds/dig/snow/snow",     4},
-        {STEP_WOOD,   "assets/Sounds/dig/wood/wood",     4},
-        {STEP_CLOTH,  "assets/Sounds/dig/cloth/cloth",    4},
+        {STEP_GRASS, "assets/Sounds/dig/grass/grass", 4}, {STEP_STONE, "assets/Sounds/dig/stone/stone", 4},
+        {STEP_SAND, "assets/Sounds/dig/sand/sand", 4},    {STEP_GRAVEL, "assets/Sounds/dig/gravel/gravel", 4},
+        {STEP_SNOW, "assets/Sounds/dig/snow/snow", 4},    {STEP_WOOD, "assets/Sounds/dig/wood/wood", 4},
+        {STEP_CLOTH, "assets/Sounds/dig/cloth/cloth", 4},
     };
     for (auto& def : breakDefs) {
         auto& set = breakSounds[def.type - 1];

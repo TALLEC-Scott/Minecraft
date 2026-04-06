@@ -86,8 +86,12 @@ class Profiler {
         frameStart = now();
     }
 
-    void beginUpdate() { updateStart = now(); }
-    void endUpdate() { cur.updateMs = ms(updateStart); }
+    void beginUpdate() {
+        updateStart = now();
+    }
+    void endUpdate() {
+        cur.updateMs = ms(updateStart);
+    }
 
     void beginRender() {
         renderStart = now();
@@ -102,8 +106,12 @@ class Profiler {
         cur.renderMs = ms(renderStart);
     }
 
-    void beginSwap() { swapStart = now(); }
-    void endSwap() { cur.swapMs = ms(swapStart); }
+    void beginSwap() {
+        swapStart = now();
+    }
+    void endSwap() {
+        cur.swapMs = ms(swapStart);
+    }
 
     void endFrame(int chunksTotal) {
         cur.totalMs = ms(frameStart);
@@ -134,7 +142,9 @@ class Profiler {
     }
 
     // Also collect the old-style frame time (render+swap only) for backward compat
-    void recordLegacyFrameTime(double ms) { legacyFrameTimes.push_back(ms); }
+    void recordLegacyFrameTime(double ms) {
+        legacyFrameTimes.push_back(ms);
+    }
 
     void report(const std::string& label) const {
         if (frames.empty()) return;
@@ -266,8 +276,12 @@ class Profiler {
     }
 
   private:
-    double now() { return glfwGetTime(); }
-    double ms(double start) { return (glfwGetTime() - start) * 1000.0; }
+    double now() {
+        return glfwGetTime();
+    }
+    double ms(double start) {
+        return (glfwGetTime() - start) * 1000.0;
+    }
 
     GLuint gpuQueries[2] = {};
     int queryIdx = 0;

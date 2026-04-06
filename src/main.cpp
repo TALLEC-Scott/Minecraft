@@ -87,8 +87,7 @@ static void applySettings() {
         // Rebuild all chunk meshes if greedy meshing toggle changed
         if (g_greedyMeshing != gameSettings.greedyMeshing) {
             g_greedyMeshing = gameSettings.greedyMeshing;
-            for (auto& [pos, chunk] : w->chunkManager->chunks)
-                chunk.markDirty();
+            for (auto& [pos, chunk] : w->chunkManager->chunks) chunk.markDirty();
         }
     }
 }
@@ -272,13 +271,13 @@ int main(int argc, char* argv[]) {
 #ifdef __EMSCRIPTEN__
     static
 #endif
-    UIRenderer uiRendererObj;
+        UIRenderer uiRendererObj;
     uiRendererObj.init();
     g_uiRenderer = &uiRendererObj;
 #ifdef __EMSCRIPTEN__
     static
 #endif
-    Menu menuObj;
+        Menu menuObj;
     menuObj.init();
     g_menu = &menuObj;
 
@@ -290,12 +289,12 @@ int main(int argc, char* argv[]) {
 #ifdef __EMSCRIPTEN__
         static
 #endif
-        Shader shaderProgram("assets/Shaders/vert.shd", "assets/Shaders/frag.shd");
+            Shader shaderProgram("assets/Shaders/vert.shd", "assets/Shaders/frag.shd");
         g_shader = &shaderProgram;
 #ifdef __EMSCRIPTEN__
         static
 #endif
-        World world(worldSeed);
+            World world(worldSeed);
         std::cout << "World seed: " << worldSeed << std::endl;
         w = &world;
 
@@ -335,7 +334,7 @@ int main(int argc, char* argv[]) {
 #ifdef __EMSCRIPTEN__
         static
 #endif
-        Shader cloudShader("assets/Shaders/cloud_vert.shd", "assets/Shaders/cloud_frag.shd");
+            Shader cloudShader("assets/Shaders/cloud_vert.shd", "assets/Shaders/cloud_frag.shd");
         {
             // Generate cloud pattern texture from noise
             std::vector<uint8_t> pixels(CLOUD_GRID * CLOUD_GRID * 4);
@@ -351,7 +350,8 @@ int main(int argc, char* argv[]) {
             }
             glGenTextures(1, &cloudPatternTex);
             glBindTexture(GL_TEXTURE_2D, cloudPatternTex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, CLOUD_GRID, CLOUD_GRID, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, CLOUD_GRID, CLOUD_GRID, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                         pixels.data());
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -359,10 +359,8 @@ int main(int argc, char* argv[]) {
 
             // Cloud quad VAO: just 4 vertices, reused for all 6 faces
             float quadVerts[] = {
-                -CLOUD_EXTENT, 0, -CLOUD_EXTENT,
-                -CLOUD_EXTENT, 0,  CLOUD_EXTENT,
-                 CLOUD_EXTENT, 0,  CLOUD_EXTENT,
-                 CLOUD_EXTENT, 0, -CLOUD_EXTENT,
+                -CLOUD_EXTENT, 0, -CLOUD_EXTENT, -CLOUD_EXTENT, 0, CLOUD_EXTENT,
+                CLOUD_EXTENT,  0, CLOUD_EXTENT,  CLOUD_EXTENT,  0, -CLOUD_EXTENT,
             };
             unsigned int quadIdx[] = {0, 1, 2, 2, 3, 0};
             glGenVertexArrays(1, &cloudVAO);
@@ -379,10 +377,7 @@ int main(int argc, char* argv[]) {
 
             // Wall quad: vertical, in XY plane at Z=0
             float wallVerts[] = {
-                -CLOUD_EXTENT, 0,           0,
-                 CLOUD_EXTENT, 0,           0,
-                 CLOUD_EXTENT, CLOUD_DEPTH, 0,
-                -CLOUD_EXTENT, CLOUD_DEPTH, 0,
+                -CLOUD_EXTENT, 0, 0, CLOUD_EXTENT, 0, 0, CLOUD_EXTENT, CLOUD_DEPTH, 0, -CLOUD_EXTENT, CLOUD_DEPTH, 0,
             };
             glGenVertexArrays(1, &cloudWallVAO);
             glGenBuffers(1, &cloudWallVBO);
@@ -976,6 +971,7 @@ int main(int argc, char* argv[]) {
             shaderProgram.setFloat("fogStart", fogStart);
             shaderProgram.setFloat("fogEnd", fogEnd);
             shaderProgram.setVec3("fogColor", skyColor);
+            shaderProgram.setFloat("time", (float)glfwGetTime());
 
             // Targeting handled by player.update()
 
@@ -1087,7 +1083,7 @@ int main(int argc, char* argv[]) {
             }
 
             // Render moon billboard (opposite side of sun)
-            if (lightPos.y < 200.0f) { // moon rises before sun fully sets
+            if (lightPos.y < 200.0f) {                                            // moon rises before sun fully sets
                 glm::vec3 moonDir = glm::normalize(-lightPos + 2.0f * cameraPos); // opposite of sun
                 glm::vec3 moonCenter = cameraPos + moonDir * SUN_DISTANCE;
                 constexpr float MOON_SIZE = 45.0f;
@@ -1338,7 +1334,7 @@ int main(int argc, char* argv[]) {
         }
 
         shaderProgram.destroy();
-    } // world and shaderProgram destroyed here, while GL context is still valid
+    }                      // world and shaderProgram destroyed here, while GL context is still valid
     player.destroyAudio(); // before menu destroys the audio engine
     g_menu->destroy();
     g_uiRenderer->destroy();

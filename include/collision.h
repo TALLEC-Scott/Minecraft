@@ -7,8 +7,7 @@ static constexpr float PLAYER_HALF_WIDTH = 0.3f;
 static constexpr float PLAYER_TOTAL_HEIGHT = 1.8f;
 
 // Check if a player hitbox at feetPos overlaps any solid block
-template <typename SolidCheck>
-bool collides(glm::vec3 feetPos, SolidCheck isSolid) {
+template <typename SolidCheck> bool collides(glm::vec3 feetPos, SolidCheck isSolid) {
     float hw = PLAYER_HALF_WIDTH;
     int minX = (int)std::floor(feetPos.x - hw);
     int maxX = (int)std::floor(feetPos.x + hw - 0.001f);
@@ -25,8 +24,7 @@ bool collides(glm::vec3 feetPos, SolidCheck isSolid) {
 }
 
 // Resolve horizontal movement with wall sliding
-template <typename SolidCheck>
-glm::vec3 resolveMovement(glm::vec3 feetPos, glm::vec3 move, SolidCheck isSolid) {
+template <typename SolidCheck> glm::vec3 resolveMovement(glm::vec3 feetPos, glm::vec3 move, SolidCheck isSolid) {
     // Try both axes
     glm::vec3 both = {feetPos.x + move.x, feetPos.y, feetPos.z + move.z};
     if (!collides(both, isSolid)) return both;

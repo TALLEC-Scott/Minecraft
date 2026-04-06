@@ -11,20 +11,20 @@ void Menu::init() {
     ma_engine_config config = ma_engine_config_init();
     if (ma_engine_init(&config, &audioEngine) == MA_SUCCESS) {
         audioInitialized = true;
-        if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/click.wav",
-                                    MA_SOUND_FLAG_DECODE, nullptr, nullptr, &clickSound) == MA_SUCCESS) {
+        if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/click.wav", MA_SOUND_FLAG_DECODE, nullptr, nullptr,
+                                    &clickSound) == MA_SUCCESS) {
             clickLoaded = true;
         }
         // Load background music (decoded into memory for smooth playback)
-        if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/music/calm1.mp3",
-                                    MA_SOUND_FLAG_DECODE, nullptr, nullptr, &musicSound) == MA_SUCCESS) {
+        if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/music/calm1.mp3", MA_SOUND_FLAG_DECODE, nullptr,
+                                    nullptr, &musicSound) == MA_SUCCESS) {
             musicLoaded = true;
             ma_sound_set_looping(&musicSound, MA_TRUE);
             ma_sound_set_volume(&musicSound, 1.0f);
         }
         // Load menu music
-        if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/music/menu2.mp3",
-                                    MA_SOUND_FLAG_DECODE, nullptr, nullptr, &menuMusicSound) == MA_SUCCESS) {
+        if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/music/menu2.mp3", MA_SOUND_FLAG_DECODE, nullptr,
+                                    nullptr, &menuMusicSound) == MA_SUCCESS) {
             menuMusicLoaded = true;
             ma_sound_set_looping(&menuMusicSound, MA_TRUE);
             ma_sound_set_volume(&menuMusicSound, 1.0f);
@@ -108,8 +108,8 @@ void Menu::drawDirtBackground(UIRenderer& ui, int windowW, int windowH) {
     float tilesY = (float)windowH / TILE_SIZE;
     // Diagonal scroll offset
     float scroll = (float)glfwGetTime() * 0.15f;
-    ui.drawTexturedRect(0, 0, (float)windowW, (float)windowH, dirtTexture, scroll, scroll,
-                        tilesX + scroll, tilesY + scroll, glm::vec4(0.4f, 0.4f, 0.4f, 1.0f));
+    ui.drawTexturedRect(0, 0, (float)windowW, (float)windowH, dirtTexture, scroll, scroll, tilesX + scroll,
+                        tilesY + scroll, glm::vec4(0.4f, 0.4f, 0.4f, 1.0f));
 }
 
 bool Menu::drawButton(UIRenderer& ui, const std::string& label, float x, float y, float w, float h) {

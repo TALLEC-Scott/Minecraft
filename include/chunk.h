@@ -55,7 +55,8 @@ class Chunk {
   public:
     Chunk() {
         blocks = std::shared_ptr<Cube[]>(new Cube[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]);
-        skyLight = std::shared_ptr<uint8_t[]>(new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]());
+        skyLight =
+            std::shared_ptr<uint8_t[]>(new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]());
         chunkX = -1;
         chunkY = -1;
     }
@@ -173,6 +174,5 @@ class Chunk {
 };
 
 // Build mesh from raw data — fully thread-safe, no GL calls
-Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* skyLight,
-                                  int maxSolidY, int chunkX, int chunkZ,
+Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* skyLight, int maxSolidY, int chunkX, int chunkZ,
                                   const Chunk::NeighborBorders& borders);
