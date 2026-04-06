@@ -8,6 +8,7 @@
 
 // Runtime greedy meshing toggle (default off due to AO interpolation artifacts)
 inline bool g_greedyMeshing = false;
+inline bool g_fancyLeaves = true;
 
 enum block_type {
     AIR,
@@ -33,7 +34,7 @@ enum BlockFlag : uint32_t {
     BF_SOLID = 1u << 0,       // blocks movement / collision
     BF_OPAQUE = 1u << 1,      // fully blocks light
     BF_TRANSPARENT = 1u << 2, // can see through (skip face between same type)
-    BF_FILTERING = 1u << 3,   // reduces sky light by 1 per block (like leaves)
+    BF_TRANSLUCENT = 1u << 3,  // partially see-through: reduces sky light, don't cull faces (leaves)
     BF_LIQUID = 1u << 4,      // renders with blending, no collision
 };
 
@@ -50,7 +51,7 @@ inline uint32_t getBlockFlags(block_type t) {
         /* SAND      */ BF_SOLID | BF_OPAQUE,
         /* GLOWSTONE */ BF_SOLID | BF_OPAQUE,
         /* WOOD      */ BF_SOLID | BF_OPAQUE,
-        /* LEAVES    */ BF_SOLID | BF_FILTERING,
+        /* LEAVES    */ BF_SOLID | BF_TRANSLUCENT,
         /* SNOW      */ BF_SOLID | BF_OPAQUE,
         /* GRAVEL    */ BF_SOLID | BF_OPAQUE,
         /* CACTUS    */ BF_SOLID | BF_OPAQUE,

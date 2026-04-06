@@ -292,7 +292,7 @@ static bool isBlockOpaque(block_type t) {
 }
 
 static bool isBlockFiltering(block_type t) {
-    return hasFlag(t, BF_FILTERING);
+    return hasFlag(t, BF_TRANSLUCENT);
 }
 
 // Free function: compute sky light on raw arrays (safe for worker threads)
@@ -526,8 +526,13 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     int nc[3] = {c[0], c[1], c[2]};
                     nc[fd.d] += fd.d_sign;
                     Cube* nb = getBlockCross(this, nc[0], nc[1], nc[2], nx_neg, nx_pos, nz_neg, nz_pos);
-                    block_type nbType = nb ? nb->getType() : STONE; // missing neighbor = solid, suppress face
-                    int val = (nbType == AIR || (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID))) ? (int)bt : -1;
+                    block_type nbType = nb ? nb->getType() : STONE;
+                    // Show face if neighbor is air/liquid, or if current is translucent
+                    // and neighbor is a different block type (not leaf-to-leaf)
+                    bool show = (nbType == AIR) ||
+                                (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
+                                (g_fancyLeaves && (hasFlag(bt, BF_TRANSLUCENT) || hasFlag(nbType, BF_TRANSLUCENT)));
+                    int val = show ? (int)bt : -1;
                     mask[u][v] = val;
                     if (val != -1) anyFace = true;
                 }
@@ -832,7 +837,10 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* skyLight, int maxSolidY
                     int nc[3] = {c[0], c[1], c[2]};
                     nc[fd.d] += fd.d_sign;
                     block_type nbType = getTypeCross(nc[0], nc[1], nc[2]);
-                    int val = (nbType == AIR || (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID))) ? (int)bt : -1;
+                    bool show = (nbType == AIR) ||
+                                (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
+                                (g_fancyLeaves && (hasFlag(bt, BF_TRANSLUCENT) || hasFlag(nbType, BF_TRANSLUCENT)));
+                    int val = show ? (int)bt : -1;
                     mask[u][v] = val;
                     if (val != -1) anyFace = true;
                 }

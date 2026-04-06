@@ -108,7 +108,7 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
         g_frame.chunksRendered++;
     }
 
-    // Pass 2: water back-to-front for correct transparency
+    // Pass 2: transparent geometry (water + leaves) back-to-front
     shaderProgram.setInt("materialType", 1);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

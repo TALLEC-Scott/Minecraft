@@ -60,13 +60,13 @@ run_mutant "WATER: add BF_SOLID" \
     "/* WATER     */ BF_TRANSPARENT | BF_LIQUID," \
     "/* WATER     */ BF_TRANSPARENT | BF_LIQUID | BF_SOLID,"
 
-run_mutant "LEAVES: remove BF_FILTERING" \
-    "/* LEAVES    */ BF_SOLID | BF_FILTERING," \
+run_mutant "LEAVES: remove BF_TRANSLUCENT" \
+    "/* LEAVES    */ BF_SOLID | BF_TRANSLUCENT," \
     "/* LEAVES    */ BF_SOLID,"
 
 run_mutant "LEAVES: add BF_OPAQUE" \
-    "/* LEAVES    */ BF_SOLID | BF_FILTERING," \
-    "/* LEAVES    */ BF_SOLID | BF_FILTERING | BF_OPAQUE,"
+    "/* LEAVES    */ BF_SOLID | BF_TRANSLUCENT," \
+    "/* LEAVES    */ BF_SOLID | BF_TRANSLUCENT | BF_OPAQUE,"
 
 run_mutant "DIRT: remove BF_SOLID" \
     "/* DIRT      */ BF_SOLID | BF_OPAQUE," \

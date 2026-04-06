@@ -10,6 +10,7 @@ struct GameSettings {
     bool vsync = false;
     float mouseSensitivity = 1.0f;
     bool greedyMeshing = false;
+    bool fancyLeaves = true;
     float musicVolume = 1.0f;
 
     void load(const std::string& path);

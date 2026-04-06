@@ -18,9 +18,12 @@ uniform vec3 fogColor;
 uniform float time;
 uniform vec3 cameraPos;
 uniform int materialType; // 0 = solid, 1 = water
+uniform int fancyLeaves;
 
 void main() {
     bool isWater = (materialType == 1);
+    // Leaves: texture layer 10 = LEAVES
+    bool isLeaves = (texLayer > 9.5 && texLayer < 10.5);
     vec2 uv = TexCoord;
     if (isWater) {
         // Animated water UVs
@@ -28,6 +31,12 @@ void main() {
         uv += 0.02 * vec2(sin(FragPos.x * 2.0 + time * 1.5), cos(FragPos.z * 2.0 + time * 1.2));
     }
     vec4 texColor = texture(ourTexture, vec3(uv, texLayer));
+
+    // Leaves: fancy = cutout (discard), fast = dark green fill
+    if (isLeaves && texColor.a < 0.5) {
+        if (fancyLeaves == 1) discard;
+        texColor = vec4(0.12, 0.25, 0.08, 1.0);
+    }
 
     if (emissive > 0.01) {
         FragColor = vec4(texColor.rgb * emissive, texColor.a);
@@ -76,7 +85,7 @@ void main() {
     vec3 finalColor = mix(fogColor, litColor, fogFactor);
 
     float alpha = texColor.a;
-    if (isWater) alpha = 0.6; // semi-transparent water
+    if (isWater) alpha = 0.6;
 
     FragColor = vec4(finalColor, alpha);
 }

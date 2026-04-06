@@ -30,7 +30,7 @@ TEST(BlockFlagTest, WaterIsLiquid) {
 }
 
 TEST(BlockFlagTest, LeavesAreFiltering) {
-    EXPECT_TRUE(hasFlag(LEAVES, BF_FILTERING));
+    EXPECT_TRUE(hasFlag(LEAVES, BF_TRANSLUCENT));
     EXPECT_TRUE(hasFlag(LEAVES, BF_SOLID));
     EXPECT_FALSE(hasFlag(LEAVES, BF_OPAQUE));
     EXPECT_FALSE(hasFlag(LEAVES, BF_LIQUID));

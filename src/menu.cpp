@@ -316,12 +316,14 @@ GameState Menu::drawSettings(UIRenderer& ui, int windowW, int windowH, GLFWwindo
 
     drawToggle(ui, "Greedy Meshing", ctrlX, startY + gap * 4, ctrlW, ctrlH, settings.greedyMeshing);
 
-    drawSlider(ui, "Music", 3, ctrlX, startY + gap * 5, ctrlW, ctrlH, settings.musicVolume, 0.0f, 1.0f);
+    drawToggle(ui, "Fancy Leaves", ctrlX, startY + gap * 5, ctrlW, ctrlH, settings.fancyLeaves);
+
+    drawSlider(ui, "Music", 3, ctrlX, startY + gap * 6, ctrlW, ctrlH, settings.musicVolume, 0.0f, 1.0f);
 
     // Done button
     float btnW = 400.0f, btnH = 44.0f;
     float btnX = cx - btnW / 2.0f;
-    if (drawButton(ui, "Done", btnX, startY + gap * 6.5f, btnW, btnH)) next = settingsReturnState;
+    if (drawButton(ui, "Done", btnX, startY + gap * 7.5f, btnW, btnH)) next = settingsReturnState;
 
     if (escPressed(window)) next = settingsReturnState;
 
