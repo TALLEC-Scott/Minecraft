@@ -16,6 +16,7 @@
 #include <fstream>
 #include <algorithm>
 #include <cmath>
+#include <random>
 
 #include "profiler.h"
 
@@ -68,6 +69,8 @@ static UIRenderer* g_uiRenderer = nullptr;
 static Menu* g_menu = nullptr;
 static GLuint sunVAO, sunVBO, sunEBO;
 static GLuint cloudVAO, cloudVBO, cloudEBO;
+static GLuint starVAO, starVBO;
+static int starCount = 0;
 static GLuint cloudWallVAO, cloudWallVBO, cloudWallEBO;
 static int cloudIndexCount = 0;
 static GLuint highlightVAO, highlightVBO;
@@ -104,24 +107,17 @@ void cursorPositionCallback(GLFWwindow* /*window*/, double xPos, double yPos) {
 
 glm::vec3 getSkyColor(float angle) {
     glm::vec3 noonColor(0.2f, 0.6f, 1.0f);
-    glm::vec3 sunsetColor(0.9f, 0.4f, 0.15f);
     glm::vec3 duskColor(0.05f, 0.05f, 0.15f);
     glm::vec3 nightColor(0.01f, 0.01f, 0.05f);
 
-    float sunHeight = std::sin(angle); // -1 (midnight) to 1 (noon)
+    float sunHeight = std::sin(angle);
 
-    if (sunHeight > 0.2f) {
-        // Day: blue sky
-        float t = (sunHeight - 0.2f) / 0.8f;
-        return glm::mix(sunsetColor, noonColor, t);
-    } else if (sunHeight > -0.1f) {
-        // Sunset/sunrise: orange → dusk
-        float t = (sunHeight + 0.1f) / 0.3f;
-        return glm::mix(duskColor, sunsetColor, t);
+    if (sunHeight > 0.0f) {
+        float t = std::min(sunHeight * 2.0f, 1.0f);
+        return glm::mix(duskColor, noonColor, t);
     } else {
-        // Night: dark
-        float t = (sunHeight + 0.1f) / -0.9f;
-        return glm::mix(duskColor, nightColor, std::min(t, 1.0f));
+        float t = std::min(-sunHeight, 1.0f);
+        return glm::mix(duskColor, nightColor, t);
     }
 }
 
@@ -709,6 +705,55 @@ int main(int argc, char* argv[]) {
             glBindVertexArray(0);
         }
 
+        // Stars: random points on a sphere, rendered as GL_POINTS at night
+        {
+            constexpr int NUM_STARS = 800;
+            constexpr float STAR_DIST = 900.0f;
+            starCount = NUM_STARS;
+            std::mt19937 starRng(12345);
+            std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+            std::uniform_real_distribution<float> bright(0.5f, 1.0f);
+
+            // Each star: pos(3) + uv(2) + normal(3) + layer(1) + ao(1) = 10 floats
+            std::vector<float> starVerts;
+            starVerts.reserve(NUM_STARS * 10);
+            for (int i = 0; i < NUM_STARS; i++) {
+                // Random point on upper hemisphere
+                float x, y, z;
+                do {
+                    x = dist(starRng);
+                    y = std::abs(dist(starRng)); // upper hemisphere only
+                    z = dist(starRng);
+                } while (x * x + y * y + z * z > 1.0f || x * x + y * y + z * z < 0.01f);
+                float len = std::sqrt(x * x + y * y + z * z);
+                x = x / len * STAR_DIST;
+                y = y / len * STAR_DIST;
+                z = z / len * STAR_DIST;
+
+                float b = bright(starRng);
+                float cl = (float)TextureArray::CLOUD_LAYER; // white texture
+                starVerts.insert(starVerts.end(), {x, y, z, 0, 0, 0, 0, 0, cl, b});
+            }
+
+            glGenVertexArrays(1, &starVAO);
+            glGenBuffers(1, &starVBO);
+            glBindVertexArray(starVAO);
+            glBindBuffer(GL_ARRAY_BUFFER, starVBO);
+            glBufferData(GL_ARRAY_BUFFER, starVerts.size() * sizeof(float), starVerts.data(), GL_STATIC_DRAW);
+            constexpr int STAR_STRIDE = 10 * sizeof(float);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, STAR_STRIDE, nullptr);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, STAR_STRIDE, (void*)(3 * sizeof(float)));
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, STAR_STRIDE, (void*)(5 * sizeof(float)));
+            glEnableVertexAttribArray(2);
+            glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, STAR_STRIDE, (void*)(8 * sizeof(float)));
+            glEnableVertexAttribArray(3);
+            glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, STAR_STRIDE, (void*)(9 * sizeof(float)));
+            glEnableVertexAttribArray(4);
+            glBindVertexArray(0);
+        }
+
         lastTime = glfwGetTime();
         lastFrameTime = lastTime;
         nbFrames = 0;
@@ -909,9 +954,7 @@ int main(int argc, char* argv[]) {
 
             // Light color: warm orange near horizon, white at noon, fades to dark at night
             float sunH = std::max(sunDir.y, 0.0f);
-            glm::vec3 sunsetTint(1.0f, 0.5f, 0.2f);
-            glm::vec3 dayColor = glm::mix(sunsetTint, glm::vec3(1.0f), std::min(sunH * 4.0f, 1.0f));
-            glm::vec3 sunColor = dayColor * std::min(sunH * 1.5f, 1.0f);
+            glm::vec3 sunColor = glm::vec3(1.0f) * std::min(sunH * 1.5f, 1.0f);
             shaderProgram.setVec3("lightColor", sunColor);
 
             player.defineLookAt(shaderProgram);
@@ -941,6 +984,32 @@ int main(int argc, char* argv[]) {
                 w->update(player.getPosition());
             }
             glm::mat4 viewProjection = projection * player.getViewMatrix();
+
+            // Stars: render at night, rotate slowly on their own cycle
+            if (sunH < 0.1f) {
+                float starAlpha = 1.0f - sunH / 0.1f;
+                float starRotation = timeValue * 0.3f; // slower rotation than sun
+
+                glm::mat4 starModel = glm::translate(glm::mat4(1.0f), cameraPos);
+                starModel = glm::rotate(starModel, starRotation, glm::vec3(0.3f, 1.0f, 0.1f));
+
+                shaderProgram.setFloat("emissive", starAlpha);
+                shaderProgram.setMat4("model", starModel);
+                glDepthMask(GL_FALSE);
+                glDisable(GL_CULL_FACE);
+#ifndef __EMSCRIPTEN__
+                glPointSize(2.0f);
+#endif
+
+                glBindVertexArray(starVAO);
+                glDrawArrays(GL_POINTS, 0, starCount);
+                glBindVertexArray(0);
+
+                glDepthMask(GL_TRUE);
+                glEnable(GL_CULL_FACE);
+                shaderProgram.setFloat("emissive", 0.0f);
+                shaderProgram.setMat4("model", glm::mat4(1.0f));
+            }
 
             // Render sun billboard (before terrain, no depth write)
             constexpr float SUN_DISTANCE = 800.0f;
