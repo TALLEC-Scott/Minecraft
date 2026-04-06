@@ -61,6 +61,7 @@ static UIRenderer* g_uiRenderer = nullptr;
 static Menu* g_menu = nullptr;
 static GLuint sunVAO, sunVBO, sunEBO;
 static GLuint cloudVAO, cloudVBO, cloudEBO;
+static GLuint cloudWallVAO, cloudWallVBO, cloudWallEBO;
 static int cloudIndexCount = 0;
 static GLuint highlightVAO, highlightVBO;
 static GLuint armVAO, armVBO, armEBO;
@@ -93,17 +94,11 @@ void cursorPositionCallback(GLFWwindow* /*window*/, double xPos, double yPos) {
     if (currentState == GameState::Playing) player.updateMouseLook(xPos, yPos, windowWidth, windowHeight);
 }
 
-void setSkyColor(float angle) {
+glm::vec3 getSkyColor(float angle) {
     glm::vec3 noonColor(0.2f, 0.6f, 1.0f);
     glm::vec3 duskColor(0.15f, 0.15f, 0.25f);
-
-    // Factor in range [0, 1]
     float t = (std::cos(angle) + 1.0f) * 0.5f;
-
-    // Interpolate between the colors based on the cosine of the angle
-    glm::vec3 skyColor = duskColor * (1.0f - t) + noonColor * t;
-
-    glClearColor(skyColor.r, skyColor.g, skyColor.b, 1.0f);
+    return duskColor * (1.0f - t) + noonColor * t;
 }
 
 void processInput(GLFWwindow* window) {
@@ -303,90 +298,74 @@ int main(int argc, char* argv[]) {
         glEnableVertexAttribArray(4);
         glBindVertexArray(0);
 
-        // Cloud mesh: precomputed large tiling grid, shifted by model matrix each frame
+        // Cloud system: texture-based infinite tiling clouds with 3D volume
+        constexpr int CLOUD_GRID = 128;
+        constexpr int CLOUD_BLOCK = 12;
+        constexpr float CLOUD_DEPTH = 4.0f;
+        constexpr float CLOUD_EXTENT = 2000.0f; // half-size of cloud quad
+        GLuint cloudPatternTex = 0;
+#ifdef __EMSCRIPTEN__
+        static
+#endif
+        Shader cloudShader("assets/Shaders/cloud_vert.shd", "assets/Shaders/cloud_frag.shd");
         {
-            constexpr int CLOUD_GRID = 128; // tiling pattern (wraps infinitely)
-            constexpr int CLOUD_BLOCK = 12; // larger cloud pieces
-            float cl = (float)TextureArray::CLOUD_LAYER;
-
-            // Precompute cloud pattern: 3D cloud slabs with depth
-            constexpr float CLOUD_DEPTH = 3.0f;
-            constexpr int CLOUD_HALF = CLOUD_GRID / 2;
-            std::vector<float> cverts;
-            std::vector<unsigned int> cidx;
-            unsigned int cbase = 0;
-
-            // Precompute cloud grid for neighbor checks
-            std::vector<bool> cloudGrid(static_cast<size_t>(CLOUD_GRID) * CLOUD_GRID, false);
-            for (int gx = 0; gx < CLOUD_GRID; gx++)
-                for (int gz = 0; gz < CLOUD_GRID; gz++)
-                    if (world.terrainGenerator->getNoise(gx, gz) >= 0.65) cloudGrid[gx * CLOUD_GRID + gz] = true;
-
-            auto isCloud = [&](int gx, int gz) -> bool {
-                // Wrap for seamless tiling
-                gx = ((gx % CLOUD_GRID) + CLOUD_GRID) % CLOUD_GRID;
-                gz = ((gz % CLOUD_GRID) + CLOUD_GRID) % CLOUD_GRID;
-                return cloudGrid[gx * CLOUD_GRID + gz];
-            };
-
-            auto addQuad = [&](float x0, float y0, float z0, float x1, float y1, float z1, float x2, float y2, float z2,
-                               float x3, float y3, float z3, float nx, float ny, float nz) {
-                float verts[] = {
-                    x0, y0, z0, 0, 0, nx, ny, nz, cl, 1, x1, y1, z1, 0, 1, nx, ny, nz, cl, 1,
-                    x2, y2, z2, 1, 1, nx, ny, nz, cl, 1, x3, y3, z3, 1, 0, nx, ny, nz, cl, 1,
-                };
-                for (float f : verts) cverts.push_back(f);
-                cidx.push_back(cbase);
-                cidx.push_back(cbase + 1);
-                cidx.push_back(cbase + 2);
-                cidx.push_back(cbase + 2);
-                cidx.push_back(cbase + 3);
-                cidx.push_back(cbase);
-                cbase += 4;
-            };
-
+            // Generate cloud pattern texture from noise
+            std::vector<uint8_t> pixels(CLOUD_GRID * CLOUD_GRID * 4);
             for (int gx = 0; gx < CLOUD_GRID; gx++) {
                 for (int gz = 0; gz < CLOUD_GRID; gz++) {
-                    if (!isCloud(gx, gz)) continue;
-
-                    float x0 = static_cast<float>(gx - CLOUD_HALF) * CLOUD_BLOCK;
-                    float x1 = x0 + CLOUD_BLOCK;
-                    float z0 = static_cast<float>(gz - CLOUD_HALF) * CLOUD_BLOCK;
-                    float z1 = z0 + CLOUD_BLOCK;
-                    float y0 = 0, y1 = CLOUD_DEPTH;
-
-                    // Top face (always visible)
-                    addQuad(x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0, 0, 1, 0);
-                    // Bottom face (always visible)
-                    addQuad(x0, y0, z1, x0, y0, z0, x1, y0, z0, x1, y0, z1, 0, -1, 0);
-                    // Side faces: only at cloud edges
-                    if (!isCloud(gx - 1, gz)) addQuad(x0, y0, z1, x0, y1, z1, x0, y1, z0, x0, y0, z0, -1, 0, 0);
-                    if (!isCloud(gx + 1, gz)) addQuad(x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1, 1, 0, 0);
-                    if (!isCloud(gx, gz - 1)) addQuad(x0, y0, z0, x0, y1, z0, x1, y1, z0, x1, y0, z0, 0, 0, -1);
-                    if (!isCloud(gx, gz + 1)) addQuad(x1, y0, z1, x1, y1, z1, x0, y1, z1, x0, y0, z1, 0, 0, 1);
+                    int idx = (gz * CLOUD_GRID + gx) * 4;
+                    bool isCloud = world.terrainGenerator->getNoise(gx, gz) >= 0.65f;
+                    pixels[idx + 0] = 255;
+                    pixels[idx + 1] = 255;
+                    pixels[idx + 2] = 255;
+                    pixels[idx + 3] = isCloud ? 255 : 0;
                 }
             }
-            cloudIndexCount = (int)cidx.size();
+            glGenTextures(1, &cloudPatternTex);
+            glBindTexture(GL_TEXTURE_2D, cloudPatternTex);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, CLOUD_GRID, CLOUD_GRID, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
+            // Cloud quad VAO: just 4 vertices, reused for all 6 faces
+            float quadVerts[] = {
+                -CLOUD_EXTENT, 0, -CLOUD_EXTENT,
+                -CLOUD_EXTENT, 0,  CLOUD_EXTENT,
+                 CLOUD_EXTENT, 0,  CLOUD_EXTENT,
+                 CLOUD_EXTENT, 0, -CLOUD_EXTENT,
+            };
+            unsigned int quadIdx[] = {0, 1, 2, 2, 3, 0};
             glGenVertexArrays(1, &cloudVAO);
             glGenBuffers(1, &cloudVBO);
             glGenBuffers(1, &cloudEBO);
             glBindVertexArray(cloudVAO);
             glBindBuffer(GL_ARRAY_BUFFER, cloudVBO);
-            glBufferData(GL_ARRAY_BUFFER, cverts.size() * sizeof(float), cverts.data(), GL_STATIC_DRAW);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cloudEBO);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, cidx.size() * sizeof(unsigned int), cidx.data(), GL_STATIC_DRAW);
-            constexpr int CL_STRIDE = 10 * sizeof(float);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, CL_STRIDE, nullptr);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quadIdx), quadIdx, GL_STATIC_DRAW);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
             glEnableVertexAttribArray(0);
-            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, CL_STRIDE, (void*)(3 * sizeof(float)));
-            glEnableVertexAttribArray(1);
-            glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, CL_STRIDE, (void*)(5 * sizeof(float)));
-            glEnableVertexAttribArray(2);
-            glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, CL_STRIDE, (void*)(8 * sizeof(float)));
-            glEnableVertexAttribArray(3);
-            glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, CL_STRIDE, (void*)(9 * sizeof(float)));
-            glEnableVertexAttribArray(4);
+            glBindVertexArray(0);
+
+            // Wall quad: vertical, in XY plane at Z=0
+            float wallVerts[] = {
+                -CLOUD_EXTENT, 0,           0,
+                 CLOUD_EXTENT, 0,           0,
+                 CLOUD_EXTENT, CLOUD_DEPTH, 0,
+                -CLOUD_EXTENT, CLOUD_DEPTH, 0,
+            };
+            glGenVertexArrays(1, &cloudWallVAO);
+            glGenBuffers(1, &cloudWallVBO);
+            glGenBuffers(1, &cloudWallEBO);
+            glBindVertexArray(cloudWallVAO);
+            glBindBuffer(GL_ARRAY_BUFFER, cloudWallVBO);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(wallVerts), wallVerts, GL_STATIC_DRAW);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cloudWallEBO);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quadIdx), quadIdx, GL_STATIC_DRAW);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+            glEnableVertexAttribArray(0);
             glBindVertexArray(0);
         }
 
@@ -742,7 +721,8 @@ int main(int argc, char* argv[]) {
                     player.getCamera().forward();
                 }
 
-                setSkyColor(0.0f);
+                glm::vec3 benchSky = getSkyColor(0.0f);
+                glClearColor(benchSky.r, benchSky.g, benchSky.b, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                 shaderProgram.use();
 
@@ -753,6 +733,13 @@ int main(int argc, char* argv[]) {
                 shaderProgram.setMat4("projection", projection);
                 shaderProgram.setMat4("model", glm::mat4(1.0f));
                 player.defineLookAt(shaderProgram);
+
+                // Fog uniforms for benchmark
+                float bFogEnd = (float)(gameSettings.renderDistance * CHUNK_SIZE);
+                shaderProgram.setVec3("cameraPos", player.getPosition());
+                shaderProgram.setFloat("fogStart", bFogEnd * 0.6f);
+                shaderProgram.setFloat("fogEnd", bFogEnd);
+                shaderProgram.setVec3("fogColor", benchSky);
 
                 TextureArray::bind();
 
@@ -848,7 +835,8 @@ int main(int argc, char* argv[]) {
             }
             float radius = 1000.0f;
 
-            setSkyColor(timeValue);
+            glm::vec3 skyColor = getSkyColor(timeValue);
+            glClearColor(skyColor.r, skyColor.g, skyColor.b, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             // Only update player/world when actually playing
@@ -900,6 +888,14 @@ int main(int argc, char* argv[]) {
 
             glm::vec2 windowSize = glm::vec2(windowWidth, windowHeight);
             shaderProgram.setVec2("windowSize", windowSize);
+
+            // Fog: blend to sky color at render distance edges
+            float fogEnd = (float)(gameSettings.renderDistance * CHUNK_SIZE);
+            float fogStart = fogEnd * 0.6f;
+            shaderProgram.setVec3("cameraPos", cameraPos);
+            shaderProgram.setFloat("fogStart", fogStart);
+            shaderProgram.setFloat("fogEnd", fogEnd);
+            shaderProgram.setVec3("fogColor", skyColor);
 
             // Targeting handled by player.update()
 
@@ -1058,29 +1054,55 @@ int main(int argc, char* argv[]) {
 
             chunksRendered = w->render(shaderProgram, viewProjection, player.getPosition());
 
-            // Clouds: precomputed grid translated to follow camera + drift
-            if (cloudIndexCount > 0) {
-                constexpr float CLOUD_Y = (float)(CHUNK_HEIGHT + 30);
-                constexpr int CLOUD_BLOCK_SIZE = 12;
-                constexpr int CLOUD_GRID_SIZE = 128;
-                constexpr float CLOUD_TILE = CLOUD_GRID_SIZE * CLOUD_BLOCK_SIZE; // 1024 blocks
+            // Clouds: texture-based infinite tiling with 3D volume
+            {
+                constexpr float CLOUD_Y_TOP = (float)(CHUNK_HEIGHT + 30) + CLOUD_DEPTH;
+                constexpr float CLOUD_Y_BOT = (float)(CHUNK_HEIGHT + 30);
                 float drift = (float)glfwGetTime() * 1.5f;
+                float cloudTileSize = (float)(CLOUD_GRID * CLOUD_BLOCK);
 
-                // Single cloud tile centered on camera (grid is large enough to cover view)
-                shaderProgram.setFloat("emissive", 1.0f);
+                cloudShader.use();
+                cloudShader.setMat4("projection", projection);
+                cloudShader.setMat4("view", player.getViewMatrix());
+                cloudShader.setFloat("cloudScale", 1.0f / cloudTileSize);
+                cloudShader.setFloat("drift", drift);
+                cloudShader.setVec3("fogColor", skyColor);
+                cloudShader.setVec3("cameraPos", cameraPos);
+                cloudShader.setFloat("fogStart", fogStart);
+                cloudShader.setFloat("fogEnd", fogEnd);
+
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, cloudPatternTex);
+                cloudShader.setInt("cloudPattern", 0);
+
                 glEnable(GL_BLEND);
                 glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
                 glDisable(GL_CULL_FACE);
+                glDepthMask(GL_FALSE);
 
-                glm::mat4 cloudModel = glm::translate(glm::mat4(1.0f), glm::vec3(drift, CLOUD_Y, 0.0f));
-                shaderProgram.setMat4("model", cloudModel);
                 glBindVertexArray(cloudVAO);
-                glDrawElements(GL_TRIANGLES, cloudIndexCount, GL_UNSIGNED_INT, nullptr);
+
+                // Top face
+                glm::mat4 topModel = glm::translate(glm::mat4(1.0f), glm::vec3(cameraPos.x, CLOUD_Y_TOP, cameraPos.z));
+                cloudShader.setMat4("model", topModel);
+                cloudShader.setInt("faceType", 0);
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
+                // Bottom face
+                glm::mat4 botModel = glm::translate(glm::mat4(1.0f), glm::vec3(cameraPos.x, CLOUD_Y_BOT, cameraPos.z));
+                cloudShader.setMat4("model", botModel);
+                cloudShader.setInt("faceType", 1);
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
                 glBindVertexArray(0);
+
+                glBindVertexArray(0);
+                glDepthMask(GL_TRUE);
                 glEnable(GL_CULL_FACE);
                 glDisable(GL_BLEND);
-                shaderProgram.setFloat("emissive", 0.0f);
-                shaderProgram.setMat4("model", glm::mat4(1.0f));
+
+                // Restore world shader
+                shaderProgram.use();
             }
 
             // Wireframe block highlight

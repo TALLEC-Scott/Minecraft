@@ -13,10 +13,14 @@ out vec3 FragPos;
 out float texLayer;
 out float ao;
 out float skyLight;
+out float fogFactor;
 
 uniform mat4 projection;
 uniform mat4 view;
 uniform mat4 model;
+uniform vec3 cameraPos;
+uniform float fogStart;
+uniform float fogEnd;
 
 void main() {
     TexCoord = aTexCoord;
@@ -24,7 +28,12 @@ void main() {
     ao = aAO;
     skyLight = aSkyLight;
 
-    gl_Position = projection * view * model * vec4(aPos, 1.0);
-    FragPos = vec3(model * vec4(aPos, 1.0));
+    vec4 worldPos = model * vec4(aPos, 1.0);
+    gl_Position = projection * view * worldPos;
+    FragPos = vec3(worldPos);
     Normal = aNormal;
+
+    // Distance fog: ramp from fogStart to fogEnd
+    float dist = length(FragPos.xz - cameraPos.xz);
+    fogFactor = clamp((fogEnd - dist) / (fogEnd - fogStart), 0.0, 1.0);
 }
