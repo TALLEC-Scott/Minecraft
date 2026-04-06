@@ -70,7 +70,15 @@ static int nbFrames = 0, chunksRendered = 0;
 static void applySettings() {
     glfwSwapInterval(gameSettings.vsync ? 1 : 0);
     player.setMouseSensitivity(gameSettings.mouseSensitivity);
-    if (w) w->chunkManager->setRenderDistance(gameSettings.renderDistance);
+    if (w) {
+        w->chunkManager->setRenderDistance(gameSettings.renderDistance);
+        // Rebuild all chunk meshes if greedy meshing toggle changed
+        if (g_greedyMeshing != gameSettings.greedyMeshing) {
+            g_greedyMeshing = gameSettings.greedyMeshing;
+            for (auto& [pos, chunk] : w->chunkManager->chunks)
+                chunk.markDirty();
+        }
+    }
 }
 
 void framebuffer_size_callback(GLFWwindow* /*window*/, int width, int height) {
@@ -122,16 +130,6 @@ void processInput(GLFWwindow* window) {
     }
     xKeyPressed = xKeyDown;
 #endif
-
-    // Enable/Disable daylight cycle
-    if (glfwGetKey(window, GLFW_KEY_J) == GLFW_PRESS) {
-        if (!previousDaylight) {
-            doDaylightCycle = !doDaylightCycle;
-        }
-        previousDaylight = true;
-    } else if (glfwGetKey(window, GLFW_KEY_J) == GLFW_RELEASE) {
-        previousDaylight = false;
-    }
 
     // Player input
     player.handleInput(window, w);
@@ -251,17 +249,30 @@ int main(int argc, char* argv[]) {
     TextureArray::initialize();
 
     // Initialize UI
-    static UIRenderer uiRendererObj;
+    // static storage on Emscripten (main never returns), auto on desktop
+#ifdef __EMSCRIPTEN__
+    static
+#endif
+    UIRenderer uiRendererObj;
     uiRendererObj.init();
     g_uiRenderer = &uiRendererObj;
-    static Menu menuObj;
+#ifdef __EMSCRIPTEN__
+    static
+#endif
+    Menu menuObj;
     menuObj.init();
     g_menu = &menuObj;
 
     {
-        static Shader shaderProgram("assets/Shaders/vert.shd", "assets/Shaders/frag.shd");
+#ifdef __EMSCRIPTEN__
+        static
+#endif
+        Shader shaderProgram("assets/Shaders/vert.shd", "assets/Shaders/frag.shd");
         g_shader = &shaderProgram;
-        static World world(worldSeed);
+#ifdef __EMSCRIPTEN__
+        static
+#endif
+        World world(worldSeed);
         std::cout << "World seed: " << worldSeed << std::endl;
         w = &world;
 
@@ -787,9 +798,6 @@ int main(int argc, char* argv[]) {
         // Apply initial settings
         player.setMouseSensitivity(gameSettings.mouseSensitivity);
         w->chunkManager->setRenderDistance(gameSettings.renderDistance);
-
-        bool sceneChanged = true;
-        GameState prevState = GameState::MainMenu;
 
         // Extract loop body into a lambda for Emscripten compatibility
         auto mainLoopBody = [&]() {

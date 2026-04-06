@@ -13,6 +13,7 @@ struct GameSettings {
     float fov = 70.0f;
     bool vsync = false;
     float mouseSensitivity = 1.0f;
+    bool greedyMeshing = false;
 
     void load(const std::string& path);
     void save(const std::string& path) const;

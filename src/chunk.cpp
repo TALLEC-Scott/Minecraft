@@ -462,19 +462,17 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
                         continue;
                     }
 
-#if GREEDY_MESHING
-                    int h = 1;
-                    while (v + h < v_dim && mask[u][v + h] == bt) h++;
-                    int w = 1;
-                    while (u + w < u_dim) {
-                        bool ok = true;
-                        for (int dv = 0; dv < h && ok; dv++) ok = (mask[u + w][v + dv] == bt);
-                        if (!ok) break;
-                        w++;
-                    }
-#else
                     int h = 1, w = 1;
-#endif
+                    if (g_greedyMeshing) {
+                        while (v + h < v_dim && mask[u][v + h] == bt) h++;
+                        w = 1;
+                        while (u + w < u_dim) {
+                            bool ok = true;
+                            for (int dv = 0; dv < h && ok; dv++) ok = (mask[u + w][v + dv] == bt);
+                            if (!ok) break;
+                            w++;
+                        }
+                    }
 
                     float layer = (float)TextureArray::layerForFace((block_type)bt, f);
                     float d_val = (float)d + fd.d_sign * 0.5f;
@@ -587,10 +585,10 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
                     }
                     base += 4;
 
-#if GREEDY_MESHING
-                    for (int du = 0; du < w; du++)
-                        for (int dv = 0; dv < h; dv++) mask[u + du][v + dv] = -1;
-#endif
+                    if (g_greedyMeshing) {
+                        for (int du = 0; du < w; du++)
+                            for (int dv = 0; dv < h; dv++) mask[u + du][v + dv] = -1;
+                    }
                     v += h;
                 }
             }

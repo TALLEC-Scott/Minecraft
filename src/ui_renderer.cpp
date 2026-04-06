@@ -1,4 +1,5 @@
 #include "ui_renderer.h"
+#include "shader_patch.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <stb/stb_image.h>
@@ -119,14 +120,7 @@ static GLuint compileShader(const char* path, GLenum type) {
     ss << file.rdbuf();
     std::string src = ss.str();
 #ifdef __EMSCRIPTEN__
-    {
-        auto pos = src.find("#version 330 core");
-        if (pos != std::string::npos) {
-            std::string header = "#version 300 es\n";
-            if (type == GL_FRAGMENT_SHADER) header += "precision highp float;\n";
-            src.replace(pos, 17, header);
-        }
-    }
+    src = patchShaderForES(src, type == GL_FRAGMENT_SHADER);
 #endif
     const char* srcPtr = src.c_str();
 
