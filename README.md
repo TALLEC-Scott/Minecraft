@@ -11,6 +11,9 @@ A Minecraft-like voxel terrain renderer built with C++ and OpenGL 3.3 Core Profi
 ### v0.2
 ![Screenshot 3](Minecraft_Screenshot_3.png)
 
+### v0.3
+![Screenshot 4](Minecraft_Screenshot_4.png)
+
 ## Features
 
 - Procedural terrain with multi-octave Perlin noise (for heights and biomes)
