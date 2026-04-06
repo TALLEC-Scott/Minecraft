@@ -12,8 +12,7 @@ static const char* TEXTURE_PATHS[] = {
     "assets/Textures/wood.png",   "assets/Textures/leaves.png",   "assets/Textures/grass_side.png",
     "assets/Textures/sun.png",    "assets/Textures/snow.png",     "assets/Textures/gravel.png",
     "assets/Textures/cactus.png", "assets/Textures/cloud.png",    "assets/Textures/skin.png",
-    "assets/Textures/moon.png",
-    "assets/Textures/wood_top.png",
+    "assets/Textures/moon.png",   "assets/Textures/wood_top.png",
 };
 static constexpr int NUM_LAYERS = 20;
 

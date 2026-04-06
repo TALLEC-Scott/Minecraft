@@ -17,7 +17,7 @@ class TextureArray {
         }
         if (t == WOOD) {
             if (face == 4 || face == 5) return WOOD_TOP_LAYER; // top and bottom
-            return static_cast<int>(WOOD); // sides = bark
+            return static_cast<int>(WOOD);                     // sides = bark
         }
         if (t == SNOW) return SNOW_LAYER;
         if (t == GRAVEL) return GRAVEL_LAYER;

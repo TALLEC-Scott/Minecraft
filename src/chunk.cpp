@@ -273,8 +273,7 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
 }
 
 // Existing constructor now delegates to generateChunkData
-Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain)
-    : Chunk(generateChunkData(chunkX, chunkY, terrain)) {}
+Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) : Chunk(generateChunkData(chunkX, chunkY, terrain)) {}
 
 // Construct from pre-generated data (no computation, main thread only)
 Chunk::Chunk(ChunkData&& data) {
@@ -326,7 +325,7 @@ static void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY) 
             for (int y = CHUNK_HEIGHT - 1; y >= 0; y--) {
                 if (y < scanH) {
                     uint8_t info = blockInfo[biIdx(x, y, z)];
-                    if (info & 1) break; // opaque
+                    if (info & 1) break;                               // opaque
                     if (info & 2) light = (light > 1) ? light - 1 : 0; // filtering
                 }
                 skyLight[slIdx(x, y, z)] = light;
@@ -338,9 +337,7 @@ static void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY) 
     // Use packed int32 queue instead of tuple for cache efficiency
     std::vector<int32_t> queue;
     queue.reserve(CHUNK_SIZE * CHUNK_SIZE * 2);
-    auto packCoord = [](int x, int y, int z) -> int32_t {
-        return (x << 20) | (y << 8) | z;
-    };
+    auto packCoord = [](int x, int y, int z) -> int32_t { return (x << 20) | (y << 8) | z; };
 
     // Only seed blocks that are lit AND have at least one dark/unlit neighbor
     int seedMaxY = std::min(maxSolidY + 2, CHUNK_HEIGHT);
@@ -490,9 +487,9 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
     // Pre-cache sky light values in a flat array for fast access (avoids getSkyLight bounds checks)
     uint8_t* slPtr = skyLight.get();
     auto slDirect = [slPtr](int x, int y, int z) -> float {
-        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE)
-            return 0.15f + 0.85f;
-        uint8_t sl = slPtr[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z];
+        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 0.15f + 0.85f;
+        uint8_t sl =
+            slPtr[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z];
         return 0.15f + 0.85f * (sl / 15.0f);
     };
 
@@ -711,8 +708,7 @@ Chunk::NeighborBorders Chunk::snapshotBorders(Chunk* nx_neg, Chunk* nx_pos, Chun
     if (nx_pos) {
         nb.xPos.valid = true;
         for (int z = 0; z < CHUNK_SIZE; z++)
-            for (int y = 0; y < CHUNK_HEIGHT; y++)
-                nb.xPos.types[z][y] = nx_pos->getBlock(0, y, z)->getType();
+            for (int y = 0; y < CHUNK_HEIGHT; y++) nb.xPos.types[z][y] = nx_pos->getBlock(0, y, z)->getType();
     }
     if (nz_neg) {
         nb.zNeg.valid = true;
@@ -723,15 +719,13 @@ Chunk::NeighborBorders Chunk::snapshotBorders(Chunk* nx_neg, Chunk* nx_pos, Chun
     if (nz_pos) {
         nb.zPos.valid = true;
         for (int x = 0; x < CHUNK_SIZE; x++)
-            for (int y = 0; y < CHUNK_HEIGHT; y++)
-                nb.zPos.types[x][y] = nz_pos->getBlock(x, y, 0)->getType();
+            for (int y = 0; y < CHUNK_HEIGHT; y++) nb.zPos.types[x][y] = nz_pos->getBlock(x, y, 0)->getType();
     }
     return nb;
 }
 
 // Free function: build mesh from raw data — fully thread-safe, no GL calls
-Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* skyLight,
-                                  int maxSolidY, int chunkX, int chunkZ,
+Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* skyLight, int maxSolidY, int chunkX, int chunkZ,
                                   const Chunk::NeighborBorders& nb) {
 
     int opaqueH = std::min(maxSolidY + 2, (int)CHUNK_HEIGHT);
@@ -789,9 +783,8 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* skyLight,
         int d_sign, u_sign, v_sign;
     };
     static constexpr FaceDef FACE_DEFS[6] = {
-        {2, 0, 1, 1, 1, 1},   {2, 0, 1, -1, -1, 1},
-        {0, 2, 1, -1, 1, 1},  {0, 2, 1, 1, -1, 1},
-        {1, 0, 2, 1, 1, -1},  {1, 0, 2, -1, 1, 1},
+        {2, 0, 1, 1, 1, 1},  {2, 0, 1, -1, -1, 1}, {0, 2, 1, -1, 1, 1},
+        {0, 2, 1, 1, -1, 1}, {1, 0, 2, 1, 1, -1},  {1, 0, 2, -1, 1, 1},
     };
     static constexpr int DIM[3] = {CHUNK_SIZE, CHUNK_HEIGHT, CHUNK_SIZE};
     static constexpr int MAX_DIM = CHUNK_HEIGHT > CHUNK_SIZE ? CHUNK_HEIGHT : CHUNK_SIZE;
@@ -806,9 +799,9 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* skyLight,
     unsigned int opaqueBase = 0, waterBase = 0;
 
     auto slDirect = [skyLight](int x, int y, int z) -> float {
-        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE)
-            return 0.15f + 0.85f;
-        uint8_t sl = skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z];
+        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 0.15f + 0.85f;
+        uint8_t sl =
+            skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z];
         return 0.15f + 0.85f * (sl / 15.0f);
     };
 
@@ -827,10 +820,14 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* skyLight,
             bool anyFace = false;
             for (int u = 0; u < u_dim; u++) {
                 for (int v = 0; v < v_dim; v++) {
-                    int c[3]; c[fd.d] = d; c[fd.u] = u; c[fd.v] = v;
+                    int c[3];
+                    c[fd.d] = d;
+                    c[fd.u] = u;
+                    c[fd.v] = v;
                     block_type bt = blocks[c[0] * CHUNK_HEIGHT * CHUNK_SIZE + c[1] * CHUNK_SIZE + c[2]].getType();
                     if (bt == AIR || (hasFlag(bt, BF_LIQUID) && f != 4)) {
-                        mask[u][v] = -1; continue;
+                        mask[u][v] = -1;
+                        continue;
                     }
                     int nc[3] = {c[0], c[1], c[2]};
                     nc[fd.d] += fd.d_sign;
@@ -845,7 +842,10 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* skyLight,
             for (int u = 0; u < u_dim; u++) {
                 for (int v = 0; v < v_dim;) {
                     int bt = mask[u][v];
-                    if (bt == -1) { v++; continue; }
+                    if (bt == -1) {
+                        v++;
+                        continue;
+                    }
 
                     int h = 1, w = 1;
                     if (g_greedyMeshing) {
@@ -854,7 +854,8 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* skyLight,
                         while (u + w < u_dim) {
                             bool ok = true;
                             for (int dv = 0; dv < h && ok; dv++) ok = (mask[u + w][v + dv] == bt);
-                            if (!ok) break; w++;
+                            if (!ok) break;
+                            w++;
                         }
                     }
 
@@ -868,10 +869,18 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* skyLight,
                     float v1 = fd.v_sign > 0 ? v_hi : v_lo;
 
                     float vp[4][3];
-                    vp[0][fd.d] = d_val; vp[0][fd.u] = u0; vp[0][fd.v] = v0;
-                    vp[1][fd.d] = d_val; vp[1][fd.u] = u0; vp[1][fd.v] = v1;
-                    vp[2][fd.d] = d_val; vp[2][fd.u] = u1; vp[2][fd.v] = v1;
-                    vp[3][fd.d] = d_val; vp[3][fd.u] = u1; vp[3][fd.v] = v0;
+                    vp[0][fd.d] = d_val;
+                    vp[0][fd.u] = u0;
+                    vp[0][fd.v] = v0;
+                    vp[1][fd.d] = d_val;
+                    vp[1][fd.u] = u0;
+                    vp[1][fd.v] = v1;
+                    vp[2][fd.d] = d_val;
+                    vp[2][fd.u] = u1;
+                    vp[2][fd.v] = v1;
+                    vp[3][fd.d] = d_val;
+                    vp[3][fd.u] = u1;
+                    vp[3][fd.v] = v0;
 
                     const float uvs[4][2] = {{0.f, 0.f}, {0.f, (float)h}, {(float)w, (float)h}, {(float)w, 0.f}};
 
@@ -882,23 +891,34 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* skyLight,
                     bu[2] = bu[3] = (fd.u_sign > 0) ? u + w - 1 : u;
                     bv[0] = bv[3] = (fd.v_sign > 0) ? v : v + h - 1;
                     bv[1] = bv[2] = (fd.v_sign > 0) ? v + h - 1 : v;
-                    cu[0] = cu[1] = -fd.u_sign; cu[2] = cu[3] = fd.u_sign;
-                    cv[0] = cv[3] = -fd.v_sign; cv[1] = cv[2] = fd.v_sign;
+                    cu[0] = cu[1] = -fd.u_sign;
+                    cu[2] = cu[3] = fd.u_sign;
+                    cv[0] = cv[3] = -fd.v_sign;
+                    cv[1] = cv[2] = fd.v_sign;
 
                     float ao[4];
                     for (int vi = 0; vi < 4; vi++) {
-                        int bc[3]; bc[fd.d] = d; bc[fd.u] = bu[vi]; bc[fd.v] = bv[vi];
-                        int n[3] = {0, 0, 0}; n[fd.d] = fd.d_sign;
-                        int su[3] = {0, 0, 0}; su[fd.u] = cu[vi];
-                        int sv[3] = {0, 0, 0}; sv[fd.v] = cv[vi];
+                        int bc[3];
+                        bc[fd.d] = d;
+                        bc[fd.u] = bu[vi];
+                        bc[fd.v] = bv[vi];
+                        int n[3] = {0, 0, 0};
+                        n[fd.d] = fd.d_sign;
+                        int su[3] = {0, 0, 0};
+                        su[fd.u] = cu[vi];
+                        int sv[3] = {0, 0, 0};
+                        sv[fd.v] = cv[vi];
 
                         int px = bc[0] + n[0], py = bc[1] + n[1], pz = bc[2] + n[2];
                         int s1 = (py + su[1] >= 0 && py + su[1] < opaqueH)
-                                     ? opaq[oIdx(px + su[0], py + su[1], pz + su[2])] : 0;
+                                     ? opaq[oIdx(px + su[0], py + su[1], pz + su[2])]
+                                     : 0;
                         int s2 = (py + sv[1] >= 0 && py + sv[1] < opaqueH)
-                                     ? opaq[oIdx(px + sv[0], py + sv[1], pz + sv[2])] : 0;
+                                     ? opaq[oIdx(px + sv[0], py + sv[1], pz + sv[2])]
+                                     : 0;
                         int cr = (py + su[1] + sv[1] >= 0 && py + su[1] + sv[1] < opaqueH)
-                                     ? opaq[oIdx(px + su[0] + sv[0], py + su[1] + sv[1], pz + su[2] + sv[2])] : 0;
+                                     ? opaq[oIdx(px + su[0] + sv[0], py + su[1] + sv[1], pz + su[2] + sv[2])]
+                                     : 0;
                         int aoVal = (s1 && s2) ? 0 : 3 - (s1 + s2 + cr);
                         ao[vi] = AO_CURVE[aoVal];
                         skyLightVals[vi] = slDirect(bc[0] + n[0], bc[1] + n[1], bc[2] + n[2]);
@@ -913,19 +933,34 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* skyLight,
                     verts.resize(off + 4 * FLOATS_PER_VERT);
                     float* dst = &verts[off];
                     for (int vi = 0; vi < 4; vi++) {
-                        dst[0] = vp[vi][0] + worldOff[0]; dst[1] = vp[vi][1] + worldOff[1];
-                        dst[2] = vp[vi][2] + worldOff[2]; dst[3] = uvs[vi][0]; dst[4] = uvs[vi][1];
-                        dst[5] = norm.x; dst[6] = norm.y; dst[7] = norm.z;
-                        dst[8] = layer; dst[9] = ao[vi]; dst[10] = skyLightVals[vi];
+                        dst[0] = vp[vi][0] + worldOff[0];
+                        dst[1] = vp[vi][1] + worldOff[1];
+                        dst[2] = vp[vi][2] + worldOff[2];
+                        dst[3] = uvs[vi][0];
+                        dst[4] = uvs[vi][1];
+                        dst[5] = norm.x;
+                        dst[6] = norm.y;
+                        dst[7] = norm.z;
+                        dst[8] = layer;
+                        dst[9] = ao[vi];
+                        dst[10] = skyLightVals[vi];
                         dst += FLOATS_PER_VERT;
                     }
 
                     if (ao[0] + ao[2] > ao[1] + ao[3]) {
-                        idx.push_back(base); idx.push_back(base + 1); idx.push_back(base + 2);
-                        idx.push_back(base + 2); idx.push_back(base + 3); idx.push_back(base);
+                        idx.push_back(base);
+                        idx.push_back(base + 1);
+                        idx.push_back(base + 2);
+                        idx.push_back(base + 2);
+                        idx.push_back(base + 3);
+                        idx.push_back(base);
                     } else {
-                        idx.push_back(base + 1); idx.push_back(base + 2); idx.push_back(base + 3);
-                        idx.push_back(base + 3); idx.push_back(base); idx.push_back(base + 1);
+                        idx.push_back(base + 1);
+                        idx.push_back(base + 2);
+                        idx.push_back(base + 3);
+                        idx.push_back(base + 3);
+                        idx.push_back(base);
+                        idx.push_back(base + 1);
                     }
                     base += 4;
 
@@ -1046,7 +1081,7 @@ static void updateSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, i
     auto idx = [](int bx, int by, int bz) -> size_t {
         return static_cast<size_t>(bx) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(by) * CHUNK_SIZE + bz;
     };
-    static const int DIRS[6][3] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+    static const int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
 
     // Determine light at this position from neighbors
     uint8_t maxLight = 0;
@@ -1060,12 +1095,14 @@ static void updateSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, i
     if (y + 1 >= CHUNK_HEIGHT) maxLight = 15;
 
     // Inherit full sky light if directly below a sky-lit column
-    uint8_t newLight = (y + 1 < CHUNK_HEIGHT && skyLight[idx(x, y + 1, z)] == 15) ? 15
-                       : (maxLight > 0 ? maxLight - 1 : 0);
+    uint8_t newLight =
+        (y + 1 < CHUNK_HEIGHT && skyLight[idx(x, y + 1, z)] == 15) ? 15 : (maxLight > 0 ? maxLight - 1 : 0);
     skyLight[idx(x, y, z)] = newLight;
 
     // BFS outward
-    struct Node { int x, y, z; };
+    struct Node {
+        int x, y, z;
+    };
     std::vector<Node> queue;
     queue.reserve(256);
     queue.push_back({x, y, z});

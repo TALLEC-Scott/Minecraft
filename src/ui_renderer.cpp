@@ -412,12 +412,9 @@ void UIRenderer::drawTextRotated(const std::string& text, float pivotX, float pi
         auto [x3, y3] = rot(lx + gw, ly);
 
         float verts[] = {
-            x0, y0, u0, v1, color.r, color.g, color.b, color.a,
-            x2, y2, u1, v0, color.r, color.g, color.b, color.a,
-            x3, y3, u1, v1, color.r, color.g, color.b, color.a,
-            x0, y0, u0, v1, color.r, color.g, color.b, color.a,
-            x1, y1, u0, v0, color.r, color.g, color.b, color.a,
-            x2, y2, u1, v0, color.r, color.g, color.b, color.a,
+            x0, y0, u0, v1, color.r, color.g, color.b, color.a, x2, y2, u1, v0, color.r, color.g, color.b, color.a,
+            x3, y3, u1, v1, color.r, color.g, color.b, color.a, x0, y0, u0, v1, color.r, color.g, color.b, color.a,
+            x1, y1, u0, v0, color.r, color.g, color.b, color.a, x2, y2, u1, v0, color.r, color.g, color.b, color.a,
         };
         vertices.insert(vertices.end(), std::begin(verts), std::end(verts));
     }

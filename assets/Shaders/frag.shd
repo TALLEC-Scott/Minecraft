@@ -13,11 +13,21 @@ out vec4 FragColor;
 uniform vec3 sunDir;     // normalized direction TO the sun
 uniform vec3 lightColor;
 uniform sampler2DArray ourTexture;
-uniform float emissive; // 1.0 = self-lit (sun), 0.0 = normal lighting
+uniform float emissive;
 uniform vec3 fogColor;
+uniform float time;
+uniform vec3 cameraPos;
 
 void main() {
-    vec4 texColor = texture(ourTexture, vec3(TexCoord, texLayer));
+    // Water detection: layer 6 = WATER texture
+    bool isWater = (texLayer > 5.5 && texLayer < 6.5);
+    vec2 uv = TexCoord;
+    if (isWater) {
+        // Animated water UVs
+        uv += vec2(time * 0.03, time * 0.02);
+        uv += 0.02 * vec2(sin(FragPos.x * 2.0 + time * 1.5), cos(FragPos.z * 2.0 + time * 1.2));
+    }
+    vec4 texColor = texture(ourTexture, vec3(uv, texLayer));
 
     if (emissive > 0.01) {
         FragColor = vec4(texColor.rgb * emissive, texColor.a);
@@ -50,8 +60,23 @@ void main() {
 
     vec3 litColor = sunLit + moonLit + baseAmbient;
 
+    if (isWater) {
+        // Blue-green tint
+        litColor *= vec3(0.6, 0.8, 1.0);
+        // Sun specular reflection on water surface
+        if (norm.y > 0.5 && sunUp > 0.0) {
+            vec3 viewDir = normalize(cameraPos - FragPos);
+            vec3 reflectDir = reflect(-sunDir, norm);
+            float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
+            litColor += lightColor * spec * 0.5 * sunUp;
+        }
+    }
+
     // Blend with fog at render distance edges
     vec3 finalColor = mix(fogColor, litColor, fogFactor);
 
-    FragColor = vec4(finalColor, texColor.a);
+    float alpha = texColor.a;
+    if (isWater) alpha = 0.6; // semi-transparent water
+
+    FragColor = vec4(finalColor, alpha);
 }

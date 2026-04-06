@@ -113,7 +113,6 @@ void Camera::update(float groundHeight, BlockCheck isSolid, void* ctx) {
     } else {
         onGround = false;
     }
-
 }
 
 void Camera::changeDirection(glm::vec3 direction) {

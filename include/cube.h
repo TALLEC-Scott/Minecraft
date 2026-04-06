@@ -29,12 +29,12 @@ enum block_type {
 enum Biome { BIOME_OCEAN, BIOME_BEACH, BIOME_PLAINS, BIOME_FOREST, BIOME_DESERT, BIOME_TUNDRA, BIOME_COUNT };
 
 enum BlockFlag : uint32_t {
-    BF_NONE        = 0,
-    BF_SOLID       = 1u << 0, // blocks movement / collision
-    BF_OPAQUE      = 1u << 1, // fully blocks light
+    BF_NONE = 0,
+    BF_SOLID = 1u << 0,       // blocks movement / collision
+    BF_OPAQUE = 1u << 1,      // fully blocks light
     BF_TRANSPARENT = 1u << 2, // can see through (skip face between same type)
-    BF_FILTERING   = 1u << 3, // reduces sky light by 1 per block (like leaves)
-    BF_LIQUID      = 1u << 4, // renders with blending, no collision
+    BF_FILTERING = 1u << 3,   // reduces sky light by 1 per block (like leaves)
+    BF_LIQUID = 1u << 4,      // renders with blending, no collision
 };
 
 inline uint32_t getBlockFlags(block_type t) {
@@ -57,8 +57,7 @@ inline uint32_t getBlockFlags(block_type t) {
     };
     // clang-format on
     int idx = static_cast<int>(t);
-    if (idx < 0 || idx >= static_cast<int>(sizeof(flags) / sizeof(flags[0])))
-        return BF_NONE;
+    if (idx < 0 || idx >= static_cast<int>(sizeof(flags) / sizeof(flags[0]))) return BF_NONE;
     return flags[idx];
 }
 
@@ -66,7 +65,17 @@ inline bool hasFlag(block_type t, uint32_t f) {
     return (getBlockFlags(t) & f) != 0;
 }
 
-enum StepSound { STEP_NONE, STEP_GRASS, STEP_STONE, STEP_SAND, STEP_GRAVEL, STEP_SNOW, STEP_WOOD, STEP_WATER, STEP_CLOTH };
+enum StepSound {
+    STEP_NONE,
+    STEP_GRASS,
+    STEP_STONE,
+    STEP_SAND,
+    STEP_GRAVEL,
+    STEP_SNOW,
+    STEP_WOOD,
+    STEP_WATER,
+    STEP_CLOTH
+};
 
 inline StepSound getStepSound(block_type t) {
     // clang-format off
@@ -88,8 +97,7 @@ inline StepSound getStepSound(block_type t) {
     };
     // clang-format on
     int idx = static_cast<int>(t);
-    if (idx < 0 || idx >= static_cast<int>(sizeof(sounds) / sizeof(sounds[0])))
-        return STEP_NONE;
+    if (idx < 0 || idx >= static_cast<int>(sizeof(sounds) / sizeof(sounds[0]))) return STEP_NONE;
     return sounds[idx];
 }
 
