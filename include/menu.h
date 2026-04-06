@@ -24,6 +24,7 @@ class Menu {
     void stopMusic();
     void startMenuMusic();
     void stopMenuMusic();
+    void setMusicVolume(float vol);
 
   private:
     GLuint dirtTexture = 0;

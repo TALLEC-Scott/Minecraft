@@ -1041,11 +1041,57 @@ void Chunk::renderWater(const Shader& /*shaderProgram*/, Chunk* /*nx_neg*/, Chun
     }
 }
 
+// Local sky light update: BFS from a single position, propagates to nearby air blocks
+static void updateSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, int z) {
+    auto idx = [](int bx, int by, int bz) -> size_t {
+        return static_cast<size_t>(bx) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(by) * CHUNK_SIZE + bz;
+    };
+    static const int DIRS[6][3] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+
+    // Determine light at this position from neighbors
+    uint8_t maxLight = 0;
+    for (auto& d : DIRS) {
+        int nx = x + d[0], ny = y + d[1], nz = z + d[2];
+        if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_HEIGHT && nz >= 0 && nz < CHUNK_SIZE) {
+            uint8_t nl = skyLight[idx(nx, ny, nz)];
+            if (nl > maxLight) maxLight = nl;
+        }
+    }
+    if (y + 1 >= CHUNK_HEIGHT) maxLight = 15;
+
+    // Inherit full sky light if directly below a sky-lit column
+    uint8_t newLight = (y + 1 < CHUNK_HEIGHT && skyLight[idx(x, y + 1, z)] == 15) ? 15
+                       : (maxLight > 0 ? maxLight - 1 : 0);
+    skyLight[idx(x, y, z)] = newLight;
+
+    // BFS outward
+    struct Node { int x, y, z; };
+    std::vector<Node> queue;
+    queue.reserve(256);
+    queue.push_back({x, y, z});
+
+    size_t head = 0;
+    while (head < queue.size()) {
+        auto [cx, cy, cz] = queue[head++];
+        uint8_t light = skyLight[idx(cx, cy, cz)];
+        if (light <= 1) continue;
+
+        for (auto& d : DIRS) {
+            int nx = cx + d[0], ny = cy + d[1], nz = cz + d[2];
+            if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= CHUNK_HEIGHT || nz < 0 || nz >= CHUNK_SIZE) continue;
+            if (hasFlag(blocks[idx(nx, ny, nz)].getType(), BF_OPAQUE)) continue;
+
+            uint8_t propagated = light - 1;
+            if (skyLight[idx(nx, ny, nz)] >= propagated) continue;
+            skyLight[idx(nx, ny, nz)] = propagated;
+            queue.push_back({nx, ny, nz});
+        }
+    }
+}
+
 void Chunk::destroyBlock(int x, int y, int z) {
-    size_t i = static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z;
-    blocks[i].setType(AIR);
-    // Inherit light from above — async mesh rebuild will correct nearby lighting
-    skyLight[i] = (y + 1 < CHUNK_HEIGHT) ? skyLight[i + CHUNK_SIZE] : 15;
+    blocks[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].setType(AIR);
+    updateSkyLightLocal(blocks.get(), skyLight.get(), x, y, z);
     meshDirty = true;
 }
 
