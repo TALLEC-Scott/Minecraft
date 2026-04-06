@@ -23,6 +23,8 @@ void GameSettings::load(const std::string& path) {
             mouseSensitivity = std::clamp(std::stof(val), 0.1f, 3.0f);
         else if (key == "greedyMeshing")
             greedyMeshing = (val == "1");
+        else if (key == "fancyLeaves")
+            fancyLeaves = (val == "1");
         else if (key == "musicVolume")
             musicVolume = std::clamp(std::stof(val), 0.0f, 1.0f);
     }
@@ -36,5 +38,6 @@ void GameSettings::save(const std::string& path) const {
     file << "vsync=" << (vsync ? 1 : 0) << "\n";
     file << "mouseSensitivity=" << mouseSensitivity << "\n";
     file << "greedyMeshing=" << (greedyMeshing ? 1 : 0) << "\n";
+    file << "fancyLeaves=" << (fancyLeaves ? 1 : 0) << "\n";
     file << "musicVolume=" << musicVolume << "\n";
 }

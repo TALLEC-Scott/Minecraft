@@ -85,8 +85,10 @@ static void applySettings() {
     if (w) {
         w->chunkManager->setRenderDistance(gameSettings.renderDistance);
         // Rebuild all chunk meshes if greedy meshing toggle changed
-        if (g_greedyMeshing != gameSettings.greedyMeshing) {
+        if (g_greedyMeshing != gameSettings.greedyMeshing ||
+            g_fancyLeaves != gameSettings.fancyLeaves) {
             g_greedyMeshing = gameSettings.greedyMeshing;
+            g_fancyLeaves = gameSettings.fancyLeaves;
             for (auto& [pos, chunk] : w->chunkManager->chunks) chunk.markDirty();
         }
     }
@@ -972,6 +974,7 @@ int main(int argc, char* argv[]) {
             shaderProgram.setFloat("fogEnd", fogEnd);
             shaderProgram.setVec3("fogColor", skyColor);
             shaderProgram.setFloat("time", (float)glfwGetTime());
+            shaderProgram.setInt("fancyLeaves", g_fancyLeaves ? 1 : 0);
 
             // Targeting handled by player.update()
 
@@ -1228,7 +1231,7 @@ int main(int argc, char* argv[]) {
                     hlVerts[vi++] = 0;
                     hlVerts[vi++] = 0;
                     hlVerts[vi++] = 0; // normal
-                    hlVerts[vi++] = 0; // layer
+                    hlVerts[vi++] = (float)TextureArray::CLOUD_LAYER; // white
                     hlVerts[vi++] = 1; // ao
                 };
                 // 8 corners
@@ -1246,7 +1249,7 @@ int main(int argc, char* argv[]) {
                 glBindBuffer(GL_ARRAY_BUFFER, highlightVBO);
                 glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(hlVerts), hlVerts);
 
-                shaderProgram.setFloat("emissive", 1.0f);
+                shaderProgram.setFloat("emissive", 0.02f);
                 glDisable(GL_CULL_FACE);
                 glLineWidth(2.0f);
 
