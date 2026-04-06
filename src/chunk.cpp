@@ -47,29 +47,40 @@ static const int FACE_NEIGHBORS[6][3] = {
     {0, -1, 0}, // Bottom
 };
 
-Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
-    blocks = new Cube[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE];
-    skyLight = new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]();
-    this->chunkX = chunkX;
-    this->chunkY = chunkY;
+static bool isBlockOpaque(block_type t);
+static bool isBlockFiltering(block_type t);
+static void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY);
 
-    constexpr int WATER_LEVEL = CHUNK_HEIGHT / 2; // 32, matches terrain gen sea level
+// Helper for block access in ChunkData (same layout as Chunk::getBlock)
+static Cube* getBlockFromData(ChunkData& d, int i, int j, int k) {
+    if (i < 0 || i >= CHUNK_SIZE || j < 0 || j >= CHUNK_HEIGHT || k < 0 || k >= CHUNK_SIZE) return nullptr;
+    return &d.blocks[i * CHUNK_HEIGHT * CHUNK_SIZE + j * CHUNK_SIZE + k];
+}
+
+ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
+    ChunkData d;
+    d.blocks = new Cube[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE];
+    d.skyLight = new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]();
+    d.chunkX = chunkX;
+    d.chunkZ = chunkZ;
+
+    constexpr int WATER_LEVEL = CHUNK_HEIGHT / 2;
 
     for (int i = 0; i < CHUNK_SIZE; i++) {
         for (int k = 0; k < CHUNK_SIZE; k++) {
             int globalX = chunkX * CHUNK_SIZE + i;
-            int globalZ = chunkY * CHUNK_SIZE + k;
+            int globalZ = chunkZ * CHUNK_SIZE + k;
 
             Biome biome;
             int height = terrain.getHeightAndBiome(globalX, globalZ, biome);
-            this->heights[i][k] = height;
-            this->biomes[i][k] = biome;
+            d.heights[i][k] = height;
+            d.biomes[i][k] = biome;
             const BiomeParams& bp = terrain.getBiomeParams(biome);
 
             int limit_stone = std::max(1, (int)(0.7 * height));
 
             for (int j = 0; j < CHUNK_HEIGHT; j++) {
-                Cube* block = &blocks[i * CHUNK_HEIGHT * CHUNK_SIZE + j * CHUNK_SIZE + k];
+                Cube* block = &d.blocks[i * CHUNK_HEIGHT * CHUNK_SIZE + j * CHUNK_SIZE + k];
                 double detailNoise = terrain.getNoise(globalX, globalZ, j);
 
                 if (j > height) {
@@ -97,32 +108,29 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
     }
 
     // --- Shore post-pass: convert blocks adjacent to water ---
-    // Water only exists at j <= WATER_LEVEL, so only check blocks up to WATER_LEVEL+1
     for (int i = 0; i < CHUNK_SIZE; i++) {
-        block_type shoreBlock = (biomes[i][0] == BIOME_TUNDRA) ? GRAVEL : SAND; // approx per-row
+        block_type shoreBlock = (d.biomes[i][0] == BIOME_TUNDRA) ? GRAVEL : SAND;
         for (int k = 0; k < CHUNK_SIZE; k++) {
-            if (biomes[i][k] == BIOME_TUNDRA)
+            if (d.biomes[i][k] == BIOME_TUNDRA)
                 shoreBlock = GRAVEL;
             else
                 shoreBlock = SAND;
 
             for (int j = 0; j <= WATER_LEVEL + 1 && j < CHUNK_HEIGHT; j++) {
-                Cube* block = getBlock(i, j, k);
+                Cube* block = getBlockFromData(d, i, j, k);
                 block_type bt = block->getType();
                 if (bt != DIRT && bt != GRASS && bt != STONE && bt != GRAVEL) continue;
 
-                // Check if underwater (any water block above in this column)
                 if (j < WATER_LEVEL) {
-                    Cube* above = getBlock(i, j + 1, k);
+                    Cube* above = getBlockFromData(d, i, j + 1, k);
                     if (above && above->getType() == WATER) {
                         block->setType(shoreBlock);
                         continue;
                     }
                 }
-                // Check 6 neighbors for water adjacency
                 static const int dirs[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
-                for (auto& d : dirs) {
-                    Cube* nb = getBlock(i + d[0], j + d[1], k + d[2]);
+                for (auto& dir : dirs) {
+                    Cube* nb = getBlockFromData(d, i + dir[0], j + dir[1], k + dir[2]);
                     if (nb && nb->getType() == WATER) {
                         block->setType(shoreBlock);
                         break;
@@ -134,7 +142,7 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
 
     // --- Tree placement ---
     // Deterministic per-chunk PRNG seeded from chunk coordinates
-    uint64_t treeSeed = static_cast<uint64_t>(chunkX) * 73856093ULL ^ static_cast<uint64_t>(chunkY) * 19349663ULL;
+    uint64_t treeSeed = static_cast<uint64_t>(chunkX) * 73856093ULL ^ static_cast<uint64_t>(chunkZ) * 19349663ULL;
     std::mt19937 rng(static_cast<unsigned int>(treeSeed));
     std::uniform_int_distribution<int> posDist(3, CHUNK_SIZE - 4);
     std::uniform_int_distribution<int> chanceDist(0, 99);
@@ -153,7 +161,7 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
 
         // Check biome at this tree position for density/chance
         int treeGlobalX = chunkX * CHUNK_SIZE + tx;
-        int treeGlobalZ = chunkY * CHUNK_SIZE + tz;
+        int treeGlobalZ = chunkZ * CHUNK_SIZE + tz;
         Biome treeBiome = terrain.getBiome(treeGlobalX, treeGlobalZ);
         const BiomeParams& tbp = terrain.getBiomeParams(treeBiome);
         if (tbp.treeDensity <= 0.0f) continue;
@@ -168,13 +176,13 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
         int layers = layersDist(rng);
         int totalH = trunkH + layers + 1;
 
-        int surface = heights[tx][tz];
+        int surface = d.heights[tx][tz];
         if (surface <= TREE_WATER_LEVEL) continue;
         if (surface + totalH >= CHUNK_HEIGHT) continue;
         if (tx - radius < 1 || tx + radius >= CHUNK_SIZE - 1) continue;
         if (tz - radius < 1 || tz + radius >= CHUNK_SIZE - 1) continue;
 
-        Cube* surfaceBlock = getBlock(tx, surface, tz);
+        Cube* surfaceBlock = getBlockFromData(d, tx, surface, tz);
         if (!surfaceBlock || surfaceBlock->getType() != tbp.surfaceBlock) continue;
         if (tbp.surfaceBlock != GRASS) continue; // only plant trees on grass
 
@@ -185,7 +193,7 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
                 if (dx == 0 && dz == 0) continue;
                 int nx = tx + dx, nz = tz + dz;
                 if (nx >= 0 && nx < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
-                    if (std::abs(heights[nx][nz] - surface) > 2) tooSteep = true;
+                    if (std::abs(d.heights[nx][nz] - surface) > 2) tooSteep = true;
                 }
             }
         }
@@ -193,78 +201,93 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
 
         // Trunk
         for (int y = surface + 1; y <= surface + trunkH; y++) {
-            Cube* b = getBlock(tx, y, tz);
+            Cube* b = getBlockFromData(d, tx, y, tz);
             if (b) b->setType(WOOD);
         }
 
-        // Canopy: tapered — full radius at bottom, shrinks toward top
         int canopyBase = surface + trunkH;
         for (int ly = 0; ly < layers; ly++) {
-            // Taper: radius shrinks as we go up
             int layerR = std::max(1, radius - ly / 2);
             for (int dx = -layerR; dx <= layerR; dx++) {
                 for (int dz = -layerR; dz <= layerR; dz++) {
-                    // Skip corners for rounder look
                     if (abs(dx) == layerR && abs(dz) == layerR && layerR > 1) continue;
-                    if (dx == 0 && dz == 0 && ly == 0) continue; // trunk top
+                    if (dx == 0 && dz == 0 && ly == 0) continue;
                     int bx = tx + dx, by = canopyBase + ly, bz = tz + dz;
                     if (bx < 0 || bx >= CHUNK_SIZE || bz < 0 || bz >= CHUNK_SIZE) continue;
-                    Cube* b = getBlock(bx, by, bz);
+                    Cube* b = getBlockFromData(d, bx, by, bz);
                     if (b && b->getType() == AIR) b->setType(LEAVES);
                 }
             }
         }
 
-        // Crown: small cross on top
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
-                if (abs(dx) == 1 && abs(dz) == 1) continue; // skip diagonals
+                if (abs(dx) == 1 && abs(dz) == 1) continue;
                 int bx = tx + dx, bz = tz + dz;
                 if (bx < 0 || bx >= CHUNK_SIZE || bz < 0 || bz >= CHUNK_SIZE) continue;
-                Cube* crown = getBlock(bx, canopyBase + layers, bz);
+                Cube* crown = getBlockFromData(d, bx, canopyBase + layers, bz);
                 if (crown && crown->getType() == AIR) crown->setType(LEAVES);
             }
         }
     }
 
-    // --- Cactus placement in desert biomes ---
-    std::uniform_int_distribution<int> cactusDist(2, 4); // height 2-4
+    // --- Cactus placement ---
+    std::uniform_int_distribution<int> cactusDist(2, 4);
     for (int t = 0; t < 3; t++) {
         int cx = posDist(rng);
         int cz = posDist(rng);
         int roll = chanceDist(rng);
-        if (roll >= 30) continue; // 30% chance
+        if (roll >= 30) continue;
 
-        if (biomes[cx][cz] != BIOME_DESERT) continue;
+        if (d.biomes[cx][cz] != BIOME_DESERT) continue;
 
-        int surface = heights[cx][cz];
+        int surface = d.heights[cx][cz];
         if (surface <= WATER_LEVEL) continue;
         int cactusH = cactusDist(rng);
         if (surface + cactusH >= CHUNK_HEIGHT) continue;
 
-        Cube* surfBlock = getBlock(cx, surface, cz);
+        Cube* surfBlock = getBlockFromData(d, cx, surface, cz);
         if (!surfBlock || surfBlock->getType() != SAND) continue;
 
         for (int y = surface + 1; y <= surface + cactusH; y++) {
-            Cube* b = getBlock(cx, y, cz);
+            Cube* b = getBlockFromData(d, cx, y, cz);
             if (b && b->getType() == AIR) b->setType(CACTUS);
         }
     }
 
-    // Compute maxSolidY: highest non-AIR block (scan top-down for speed)
-    maxSolidY = 0;
+    // Compute maxSolidY
+    d.maxSolidY = 0;
     for (int j = CHUNK_HEIGHT - 1; j >= 0; j--) {
         bool found = false;
         for (int i = 0; i < CHUNK_SIZE && !found; i++)
             for (int k = 0; k < CHUNK_SIZE && !found; k++)
-                if (getBlock(i, j, k)->getType() != AIR) {
-                    maxSolidY = j;
+                if (getBlockFromData(d, i, j, k)->getType() != AIR) {
+                    d.maxSolidY = j;
                     found = true;
                 }
         if (found) break;
     }
 
-    computeSkyLight();
+    computeSkyLightData(d.blocks, d.skyLight, d.maxSolidY);
+    return d;
+}
+
+// Existing constructor now delegates to generateChunkData
+Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain)
+    : Chunk(generateChunkData(chunkX, chunkY, terrain)) {}
+
+// Construct from pre-generated data (no computation, main thread only)
+Chunk::Chunk(ChunkData&& data) {
+    blocks = data.blocks;
+    data.blocks = nullptr;
+    skyLight = data.skyLight;
+    data.skyLight = nullptr;
+    this->chunkX = data.chunkX;
+    this->chunkY = data.chunkZ;
+    maxSolidY = data.maxSolidY;
+    std::memcpy(heights, data.heights, sizeof(heights));
+    std::memcpy(biomes, data.biomes, sizeof(biomes));
+    meshDirty = true;
 }
 
 static bool isBlockOpaque(block_type t) {
@@ -275,7 +298,8 @@ static bool isBlockFiltering(block_type t) {
     return hasFlag(t, BF_FILTERING);
 }
 
-void Chunk::computeSkyLight() {
+// Free function: compute sky light on raw arrays (safe for worker threads)
+static void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY) {
     const size_t total = static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE;
     std::memset(skyLight, 0, total);
 
@@ -361,6 +385,10 @@ void Chunk::computeSkyLight() {
     }
 }
 
+void Chunk::computeSkyLight() {
+    computeSkyLightData(blocks, skyLight, maxSolidY);
+}
+
 uint8_t Chunk::getSkyLight(int x, int y, int z) const {
     if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 15;
     return skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z];
@@ -391,7 +419,7 @@ static bool isOpaqueCross(Chunk* self, int i, int j, int k, Chunk* nx_neg, Chunk
     return t != AIR && t != WATER;
 }
 
-void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
+void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
     double _buildStart = glfwGetTime();
 
     // Precompute opacity cache with 1-block padding for fast AO lookups.
@@ -650,10 +678,25 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
     allVerts.insert(allVerts.end(), opaqueVerts.begin(), opaqueVerts.end());
     allVerts.insert(allVerts.end(), waterVerts.begin(), waterVerts.end());
 
-    // Water indices need to be offset by the opaque vertex base
-    std::vector<unsigned int> allIdx;
-    allIdx.insert(allIdx.end(), opaqueIdx.begin(), opaqueIdx.end());
-    for (auto idx_val : waterIdx) allIdx.push_back(idx_val + opaqueBase); // offset water indices past opaque verts
+    // Store CPU-side mesh data for later GL upload
+    pendingMesh.verts = std::move(allVerts);
+    pendingMesh.opaqueIdx = std::move(opaqueIdx);
+    pendingMesh.waterIdx.clear();
+    for (auto idx_val : waterIdx) pendingMesh.waterIdx.push_back(idx_val + opaqueBase);
+    pendingMesh.opaqueIdx.insert(pendingMesh.opaqueIdx.end(), pendingMesh.waterIdx.begin(), pendingMesh.waterIdx.end());
+    // opaqueIdx now contains all indices (opaque + water), waterIdx count is separate
+    pendingMesh.ready = true;
+
+    g_frame.meshBuildMs += (glfwGetTime() - _buildStart) * 1000.0;
+    g_frame.meshBuilds++;
+}
+
+void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
+    buildMeshData(nx_neg, nx_pos, nz_neg, nz_pos);
+}
+
+void Chunk::uploadMesh() {
+    if (!pendingMesh.ready) return;
 
     if (chunkVAO == 0) {
         glGenVertexArrays(1, &chunkVAO);
@@ -664,10 +707,11 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
     glBindVertexArray(chunkVAO);
 
     glBindBuffer(GL_ARRAY_BUFFER, chunkVBO);
-    glBufferData(GL_ARRAY_BUFFER, allVerts.size() * sizeof(float), allVerts.data(), GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, pendingMesh.verts.size() * sizeof(float), pendingMesh.verts.data(), GL_DYNAMIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, chunkEBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, allIdx.size() * sizeof(unsigned int), allIdx.data(), GL_DYNAMIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, pendingMesh.opaqueIdx.size() * sizeof(unsigned int),
+                 pendingMesh.opaqueIdx.data(), GL_DYNAMIC_DRAW);
 
     constexpr int STRIDE = 11 * sizeof(float);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, STRIDE, nullptr);
@@ -680,25 +724,35 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
     glEnableVertexAttribArray(3);
     glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(9 * sizeof(float)));
     glEnableVertexAttribArray(4);
-    // layout 5: sky light
     glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(10 * sizeof(float)));
     glEnableVertexAttribArray(5);
 
     glBindVertexArray(0);
 
-    opaqueIndexCount = static_cast<int>(opaqueIdx.size());
-    waterIndexCount = static_cast<int>(waterIdx.size());
-    waterIndexOffset = opaqueIdx.size() * sizeof(unsigned int);
+    // Track counts before clearing
+    int totalOpaqueIdx = (int)pendingMesh.opaqueIdx.size() - (int)pendingMesh.waterIdx.size();
+    opaqueIndexCount = totalOpaqueIdx;
+    waterIndexCount = (int)pendingMesh.waterIdx.size();
+    waterIndexOffset = totalOpaqueIdx * sizeof(unsigned int);
     meshDirty = false;
 
-    g_frame.meshBuildMs += (glfwGetTime() - _buildStart) * 1000.0;
-    g_frame.meshBuilds++;
+    // Free CPU-side data
+    pendingMesh.verts.clear();
+    pendingMesh.verts.shrink_to_fit();
+    pendingMesh.opaqueIdx.clear();
+    pendingMesh.opaqueIdx.shrink_to_fit();
+    pendingMesh.waterIdx.clear();
+    pendingMesh.waterIdx.shrink_to_fit();
+    pendingMesh.ready = false;
 }
 
 std::vector<Cube*> Chunk::render(const Shader& /*shaderProgram*/, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg,
                                  Chunk* nz_pos) {
-    if (meshDirty && g_frame.meshBuildBudget > 0) {
+    if (pendingMesh.ready) {
+        uploadMesh();
+    } else if (meshDirty && g_frame.meshBuildBudget > 0) {
         buildMesh(nx_neg, nx_pos, nz_neg, nz_pos);
+        uploadMesh();
         g_frame.meshBuildBudget--;
     }
 
