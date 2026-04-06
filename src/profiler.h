@@ -9,7 +9,7 @@
 #include <iomanip>
 #include <sstream>
 #include <fstream>
-#include <glad/glad.h>
+#include "gl_header.h"
 #include <GLFW/glfw3.h>
 
 // Per-frame accumulators — set by render/buildMesh, read by profiler at end of frame.
@@ -60,13 +60,14 @@ class Profiler {
     bool gpuTimerSupported = false;
 
     void init() {
-        // Check if GL_TIME_ELAPSED is supported (should be in GL 3.3 core)
+#ifndef __EMSCRIPTEN__
         GLint bits = 0;
         glGetQueryiv(GL_TIME_ELAPSED, GL_QUERY_COUNTER_BITS, &bits);
         gpuTimerSupported = (bits > 0);
         if (gpuTimerSupported) {
             glGenQueries(2, gpuQueries);
         }
+#endif
 
         // Log renderer info
         renderer = (const char*)glGetString(GL_RENDERER);
@@ -75,7 +76,9 @@ class Profiler {
     }
 
     void destroy() {
+#ifndef __EMSCRIPTEN__
         if (gpuTimerSupported) glDeleteQueries(2, gpuQueries);
+#endif
     }
 
     void beginFrame() {
@@ -88,10 +91,14 @@ class Profiler {
 
     void beginRender() {
         renderStart = now();
+#ifndef __EMSCRIPTEN__
         if (gpuTimerSupported) glBeginQuery(GL_TIME_ELAPSED, gpuQueries[queryIdx]);
+#endif
     }
     void endRender() {
+#ifndef __EMSCRIPTEN__
         if (gpuTimerSupported) glEndQuery(GL_TIME_ELAPSED);
+#endif
         cur.renderMs = ms(renderStart);
     }
 
@@ -101,6 +108,7 @@ class Profiler {
     void endFrame(int chunksTotal) {
         cur.totalMs = ms(frameStart);
 
+#ifndef __EMSCRIPTEN__
         // Read GPU timer (blocks until result ready — fine for profiling)
         if (gpuTimerSupported) {
             GLuint64 gpuNs = 0;
@@ -108,6 +116,7 @@ class Profiler {
             cur.gpuMs = gpuNs / 1e6;
             queryIdx = 1 - queryIdx; // alternate queries
         }
+#endif
 
         // Copy accumulators
         cur.meshBuildMs = g_frame.meshBuildMs;

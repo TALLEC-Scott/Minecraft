@@ -1,6 +1,9 @@
 #include <iostream>
-#include <glad/glad.h>
+#include "gl_header.h"
 #include <GLFW/glfw3.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #include <glm/glm.hpp>
 #include <glm/geometric.hpp>
@@ -51,6 +54,25 @@ GameState currentState = GameState::MainMenu;
 GameSettings gameSettings;
 bool escKeyPressed = false;
 
+// Frame state (moved to file scope for Emscripten main loop compatibility)
+static GLFWwindow* g_window = nullptr;
+static Shader* g_shader = nullptr;
+static UIRenderer* g_uiRenderer = nullptr;
+static Menu* g_menu = nullptr;
+static GLuint sunVAO, sunVBO, sunEBO;
+static GLuint cloudVAO, cloudVBO, cloudEBO;
+static int cloudIndexCount = 0;
+static GLuint highlightVAO, highlightVBO;
+static GLuint armVAO, armVBO, armEBO;
+static double lastTime = 0, lastFrameTime = 0;
+static int nbFrames = 0, chunksRendered = 0;
+
+static void applySettings() {
+    glfwSwapInterval(gameSettings.vsync ? 1 : 0);
+    player.setMouseSensitivity(gameSettings.mouseSensitivity);
+    if (w) w->chunkManager->setRenderDistance(gameSettings.renderDistance);
+}
+
 void framebuffer_size_callback(GLFWwindow* /*window*/, int width, int height) {
     // make sure the viewport matches the new window dimensions; note that width axnd
     // height will be significantly larger than specified on retina displays.
@@ -87,19 +109,19 @@ void processInput(GLFWwindow* window) {
     }
     escKeyPressed = escDown;
 
+#ifndef __EMSCRIPTEN__
     // Enable/Disable wireframe mode
     bool xKeyDown = glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS;
     if (xKeyDown && !xKeyPressed) {
         wireframeMode = !wireframeMode;
         if (wireframeMode) {
-            // Enable wireframe mode
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         } else {
-            // Disable wireframe mode
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         }
     }
     xKeyPressed = xKeyDown;
+#endif
 
     // Enable/Disable daylight cycle
     if (glfwGetKey(window, GLFW_KEY_J) == GLFW_PRESS) {
@@ -114,6 +136,7 @@ void processInput(GLFWwindow* window) {
     // Player input
     player.handleInput(window, w);
 
+#ifndef __EMSCRIPTEN__
     // Enable/Disable fullscreen mode
     bool f12KeyDown = glfwGetKey(window, GLFW_KEY_F12) == GLFW_PRESS;
     if (f12KeyDown && !f12KeyPressed) {
@@ -121,14 +144,13 @@ void processInput(GLFWwindow* window) {
         const GLFWvidmode* videoMode = glfwGetVideoMode(monitor);
         fullscreenMode = !fullscreenMode;
         if (fullscreenMode && glfwGetWindowMonitor(window) == nullptr) {
-            // Enable fullscreen mode
             glfwSetWindowMonitor(window, monitor, 0, 0, videoMode->width, videoMode->height, videoMode->refreshRate);
         } else {
-            // Disable fullscreen mode
             glfwSetWindowMonitor(window, nullptr, 100, 100, 800, 600, GLFW_DONT_CARE);
         }
     }
     f12KeyPressed = f12KeyDown;
+#endif
 }
 
 int main(int argc, char* argv[]) {
@@ -150,17 +172,23 @@ int main(int argc, char* argv[]) {
     }
     std::cout << "GLFW successfully initialized" << std::endl;
 
+#ifdef __EMSCRIPTEN__
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
+    std::cout << "Using WebGL 2.0 (OpenGL ES 3.0)" << std::endl;
+#else
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
-
     std::cout << "Using OpenGL 3.3 Core Profile" << std::endl;
+#endif
 
-    GLFWwindow* window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "POGL", nullptr, nullptr);
+    g_window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "POGL", nullptr, nullptr);
+    GLFWwindow* window = g_window;
     if (window == nullptr) {
         std::cout << "Failed to create window" << std::endl;
         glfwTerminate();
@@ -169,12 +197,14 @@ int main(int argc, char* argv[]) {
     std::cout << "Window successfully created" << std::endl;
     glfwMakeContextCurrent(window);
 
+#ifndef __EMSCRIPTEN__
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cout << "Failed to initialize GLAD" << std::endl;
         glfwTerminate();
         return -1;
     }
     std::cout << "Glad successfully loaded" << std::endl;
+#endif
 
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
@@ -188,6 +218,7 @@ int main(int argc, char* argv[]) {
     gameSettings.load("settings.txt");
     glfwSwapInterval(gameSettings.vsync ? 1 : 0);
 
+#ifndef __EMSCRIPTEN__
     // Headless mode: create an FBO so rendering goes to an offscreen buffer
     // instead of through the WSL2/D3D12 presentation pipeline.
     GLuint headlessFBO = 0, headlessColor = 0, headlessDepth = 0;
@@ -209,6 +240,7 @@ int main(int argc, char* argv[]) {
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
             std::cout << "WARNING: Headless FBO incomplete!" << std::endl;
     }
+#endif
 
     glEnable(GL_DEPTH_TEST);
 
@@ -219,14 +251,17 @@ int main(int argc, char* argv[]) {
     TextureArray::initialize();
 
     // Initialize UI
-    UIRenderer uiRenderer;
-    uiRenderer.init();
-    Menu menu;
-    menu.init();
+    static UIRenderer uiRendererObj;
+    uiRendererObj.init();
+    g_uiRenderer = &uiRendererObj;
+    static Menu menuObj;
+    menuObj.init();
+    g_menu = &menuObj;
 
     {
-        Shader shaderProgram("assets/Shaders/vert.shd", "assets/Shaders/frag.shd");
-        World world(worldSeed);
+        static Shader shaderProgram("assets/Shaders/vert.shd", "assets/Shaders/frag.shd");
+        g_shader = &shaderProgram;
+        static World world(worldSeed);
         std::cout << "World seed: " << worldSeed << std::endl;
         w = &world;
 
@@ -235,7 +270,6 @@ int main(int argc, char* argv[]) {
         glFrontFace(GL_CW);
 
         // Sun billboard quad
-        GLuint sunVAO, sunVBO, sunEBO;
         glGenVertexArrays(1, &sunVAO);
         glGenBuffers(1, &sunVBO);
         glGenBuffers(1, &sunEBO);
@@ -259,8 +293,6 @@ int main(int argc, char* argv[]) {
         glBindVertexArray(0);
 
         // Cloud mesh: precomputed large tiling grid, shifted by model matrix each frame
-        GLuint cloudVAO, cloudVBO, cloudEBO;
-        int cloudIndexCount = 0;
         {
             constexpr int CLOUD_GRID = 128; // tiling pattern (wraps infinitely)
             constexpr int CLOUD_BLOCK = 12; // larger cloud pieces
@@ -348,7 +380,6 @@ int main(int argc, char* argv[]) {
         }
 
         // Wireframe highlight cube (12 edges = 24 line vertices)
-        GLuint highlightVAO, highlightVBO;
         glGenVertexArrays(1, &highlightVAO);
         glGenBuffers(1, &highlightVBO);
         glBindVertexArray(highlightVAO);
@@ -368,7 +399,6 @@ int main(int argc, char* argv[]) {
         glBindVertexArray(0);
 
         // First-person arm mesh (a simple box)
-        GLuint armVAO, armVBO, armEBO;
         {
             glGenVertexArrays(1, &armVAO);
             glGenBuffers(1, &armVBO);
@@ -657,14 +687,12 @@ int main(int argc, char* argv[]) {
             glBindVertexArray(0);
         }
 
-        double lastTime = glfwGetTime();
-        double lastFrameTime = lastTime;
-        int nbFrames = 0;
-        int chunksRendered = 0;
-        glm::vec3 lightColor(1.0f, 1.0f, 1.0f); // white light
+        lastTime = glfwGetTime();
+        lastFrameTime = lastTime;
+        nbFrames = 0;
+        chunksRendered = 0;
 
-        // ChunkManager chunkManager(1, 16, *w->terrainGenerator); // renderDistance=5, chunkSize=16
-
+#ifndef __EMSCRIPTEN__
         // Benchmark mode: fixed camera, warm-up + measured frames, write results to file
         if (benchmarkMode) {
             constexpr int WARMUP_FRAMES = 600;
@@ -754,21 +782,21 @@ int main(int argc, char* argv[]) {
             shaderProgram.destroy();
             goto cleanup;
         }
+#endif // !__EMSCRIPTEN__
 
         // Apply initial settings
         player.setMouseSensitivity(gameSettings.mouseSensitivity);
         w->chunkManager->setRenderDistance(gameSettings.renderDistance);
 
-        // Helper lambda to apply settings changes at runtime
-        auto applySettings = [&]() {
-            glfwSwapInterval(gameSettings.vsync ? 1 : 0);
-            player.setMouseSensitivity(gameSettings.mouseSensitivity);
-            w->chunkManager->setRenderDistance(gameSettings.renderDistance);
-        };
-
-        bool sceneChanged = true; // Initially set to true to render the scene
+        bool sceneChanged = true;
         GameState prevState = GameState::MainMenu;
-        while (!glfwWindowShouldClose(window)) {
+
+        // Extract loop body into a lambda for Emscripten compatibility
+        auto mainLoopBody = [&]() {
+            GLFWwindow* window = g_window;
+            Shader& shaderProgram = *g_shader;
+            UIRenderer& uiRenderer = *g_uiRenderer;
+            Menu& menu = *g_menu;
 
             // --- Menu states ---
             if (currentState == GameState::MainMenu) {
@@ -783,7 +811,7 @@ int main(int argc, char* argv[]) {
                 currentState = next;
                 glfwSwapBuffers(window);
                 glfwPollEvents();
-                continue;
+                return;
             }
 
             if (currentState == GameState::Settings) {
@@ -801,7 +829,7 @@ int main(int argc, char* argv[]) {
                 currentState = next;
                 glfwSwapBuffers(window);
                 glfwPollEvents();
-                continue;
+                return;
             }
 
             // --- Game rendering (used by both Playing and Paused) ---
@@ -1138,12 +1166,24 @@ int main(int argc, char* argv[]) {
 
             glfwSwapBuffers(window);
             glfwPollEvents();
+        }; // end mainLoopBody lambda
+
+#ifdef __EMSCRIPTEN__
+        // Wrap the lambda for emscripten_set_main_loop_arg
+        static auto loopRef = mainLoopBody;
+        emscripten_set_main_loop_arg([](void*) { loopRef(); }, nullptr, 0, true);
+    } // close scope block (emscripten_set_main_loop_arg never returns)
+    return 0;
+}
+#else
+        while (!glfwWindowShouldClose(window)) {
+            mainLoopBody();
         }
 
         shaderProgram.destroy();
     } // world and shaderProgram destroyed here, while GL context is still valid
-    menu.destroy();
-    uiRenderer.destroy();
+    g_menu->destroy();
+    g_uiRenderer->destroy();
 cleanup:
     if (headlessFBO) {
         glDeleteFramebuffers(1, &headlessFBO);
@@ -1158,3 +1198,4 @@ cleanup:
     std::cout << "GLFW terminated" << std::endl;
     return 0;
 }
+#endif

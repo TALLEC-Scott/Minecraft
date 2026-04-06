@@ -1,4 +1,5 @@
 #include "game_state.h"
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 
@@ -15,7 +16,7 @@ void GameSettings::load(const std::string& path) {
         if (key == "renderDistance")
             renderDistance = std::clamp(std::stoi(val), 4, 32);
         else if (key == "fov")
-            fov = std::clamp(std::stof(val), 60.0f, 110.0f);
+            fov = std::clamp(std::stof(val), 30.0f, 110.0f);
         else if (key == "vsync")
             vsync = (val == "1");
         else if (key == "mouseSensitivity")

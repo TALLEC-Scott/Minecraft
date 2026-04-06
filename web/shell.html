@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Minecraft Clone — WebGL</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: 'Courier New', monospace;
+            color: #ccc;
+            overflow: hidden;
+        }
+        #status {
+            padding: 20px;
+            font-size: 18px;
+        }
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #555;
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        canvas {
+            display: block;
+            border: 1px solid #333;
+            cursor: pointer;
+        }
+        #info {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div id="status"><span class="spinner"></span>Loading world...</div>
+    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    <div id="info">Click to capture mouse — ESC to pause</div>
+    <script>
+        var Module = {
+            canvas: (function() {
+                var c = document.getElementById('canvas');
+                c.addEventListener('webglcontextlost', function(e) {
+                    alert('WebGL context lost!');
+                    e.preventDefault();
+                }, false);
+                return c;
+            })(),
+            onRuntimeInitialized: function() {
+                document.getElementById('status').style.display = 'none';
+            },
+            print: function(text) { console.log(text); },
+            printErr: function(text) { console.warn(text); }
+        };
+    </script>
+    {{{ SCRIPT }}}
+</body>
+</html>

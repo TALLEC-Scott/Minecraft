@@ -5,7 +5,7 @@
 #include "chunk.h"
 #include "texture_array.h"
 #include "profiler.h"
-#include <glad/glad.h>
+#include "gl_header.h"
 #include <random>
 #include <algorithm>
 

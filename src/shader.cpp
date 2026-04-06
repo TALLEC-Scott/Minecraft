@@ -1,5 +1,18 @@
 #include "shader.h"
 
+#ifdef __EMSCRIPTEN__
+static std::string patchShaderForES(const std::string& src, bool isFragment) {
+    std::string patched = src;
+    auto pos = patched.find("#version 330 core");
+    if (pos != std::string::npos) {
+        std::string header = "#version 300 es\n";
+        if (isFragment) header += "precision highp float;\nprecision highp sampler2DArray;\n";
+        patched.replace(pos, 17, header);
+    }
+    return patched;
+}
+#endif
+
 Shader::Shader(const char* vertexPath, const char* fragmentPath) {
     // 1. retrieve the vertex/fragment source code from filePath
     std::string vertexCode;
@@ -26,6 +39,10 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath) {
     } catch (std::ifstream::failure e) {
         std::cout << "ERROR::SHADER::FILE_NOT_SUCCESFULLY_READ" << std::endl;
     }
+#ifdef __EMSCRIPTEN__
+    vertexCode = patchShaderForES(vertexCode, false);
+    fragmentCode = patchShaderForES(fragmentCode, true);
+#endif
     const char* vShaderCode = vertexCode.c_str();
     const char* fShaderCode = fragmentCode.c_str();
 
