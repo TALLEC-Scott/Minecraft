@@ -85,7 +85,7 @@ class Player {
     float distSinceStep = 0.0f;
     block_type groundBlockType = AIR; // set by findGroundAndUpdate, reused by footstep code
     block_type feetBlockType = AIR;
-    static constexpr float STEP_INTERVAL = 1.0f;
+    static constexpr float STEP_INTERVAL = 2.0f;
     void playStepSound(block_type groundBlock);
     void playBreakSound(block_type brokenBlock);
 };
