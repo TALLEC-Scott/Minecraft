@@ -3,50 +3,63 @@ in vec3 WorldPos;
 out vec4 FragColor;
 
 uniform sampler2D cloudPattern;
-uniform float cloudScale;  // 1.0 / (CLOUD_GRID * CLOUD_BLOCK)
+uniform float cloudScale;
 uniform float drift;
 uniform vec3 fogColor;
 uniform vec3 cameraPos;
 uniform float fogStart;
 uniform float fogEnd;
-
-// Face type: 0=top, 1=bottom, 2=+X, 3=-X, 4=+Z, 5=-Z
-uniform int faceType;
+uniform float cloudBottom;
+uniform float cloudTop;
 
 void main() {
-    vec2 uv = vec2(WorldPos.x - drift, WorldPos.z) * cloudScale;
-    float a = texture(cloudPattern, uv).a;
+    // Ray from camera through this fragment
+    vec3 rayDir = normalize(WorldPos - cameraPos);
 
-    if (faceType >= 2) {
-        // Side face: only draw at cloud edges
-        // One pixel in the texture = one cloud tile
-        // cloudScale = 1/(GRID*BLOCK), one tile = BLOCK pixels
-        // So one tile in UV = BLOCK * cloudScale
-        float tileUV = cloudScale * 12.0; // CLOUD_BLOCK = 12
-        vec2 offset;
-        if (faceType == 2)      offset = vec2(tileUV, 0.0);
-        else if (faceType == 3) offset = vec2(-tileUV, 0.0);
-        else if (faceType == 4) offset = vec2(0.0, tileUV);
-        else                    offset = vec2(0.0, -tileUV);
-        float na = texture(cloudPattern, uv + offset).a;
-        // Draw only where current pixel is cloud but neighbor is air
-        if (a < 0.5 || na > 0.5) discard;
-    } else {
-        if (a < 0.5) discard;
+    // Find entry/exit of ray through cloud slab
+    float tBot = (cloudBottom - cameraPos.y) / rayDir.y;
+    float tTop = (cloudTop - cameraPos.y) / rayDir.y;
+    float tEnter = min(tBot, tTop);
+    float tExit = max(tBot, tTop);
+
+    // Skip if ray doesn't hit slab or is behind camera
+    if (tExit < 0.0 || tEnter > tExit) discard;
+    tEnter = max(tEnter, 0.0);
+
+    // March through cloud slab in 4 steps
+    vec3 color = vec3(0.0);
+    float alpha = 0.0;
+
+    for (int i = 0; i < 4; i++) {
+        float t = mix(tEnter, tExit, (float(i) + 0.5) / 4.0);
+        vec3 samplePos = cameraPos + rayDir * t;
+
+        // Sample cloud pattern with slight Y-based offset for volume
+        float yOffset = (samplePos.y - cloudBottom) / (cloudTop - cloudBottom);
+        vec2 uv = vec2(samplePos.x - drift, samplePos.z) * cloudScale;
+        uv += yOffset * 0.03; // slight shift per layer
+
+        float density = texture(cloudPattern, uv).a;
+        if (density < 0.5) continue;
+
+        // Top-lit shading: brighter at top of slab
+        float brightness = mix(0.7, 1.0, yOffset);
+        vec3 stepColor = vec3(brightness);
+
+        // Front-to-back compositing
+        float stepAlpha = 0.3;
+        color += stepColor * stepAlpha * (1.0 - alpha);
+        alpha += stepAlpha * (1.0 - alpha);
+
+        if (alpha > 0.95) break; // early exit when opaque enough
     }
 
-    // Shading: top brighter, bottom darker, sides in between
-    float brightness;
-    if (faceType == 0) brightness = 1.0;
-    else if (faceType == 1) brightness = 0.7;
-    else brightness = 0.85;
-
-    vec3 cloudColor = vec3(brightness);
+    if (alpha < 0.01) discard;
 
     // Distance fog
     float dist = length(WorldPos.xz - cameraPos.xz);
     float fogFactor = clamp((fogEnd - dist) / (fogEnd - fogStart), 0.0, 1.0);
-    vec3 finalColor = mix(fogColor, cloudColor, fogFactor);
+    vec3 finalColor = mix(fogColor, color, fogFactor);
 
-    FragColor = vec4(finalColor, 0.4);
+    FragColor = vec4(finalColor, alpha * 0.6);
 }

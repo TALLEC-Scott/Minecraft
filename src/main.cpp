@@ -296,6 +296,10 @@ int main(int argc, char* argv[]) {
 #ifdef __EMSCRIPTEN__
         static
 #endif
+        Shader billboardShader("assets/Shaders/billboard_vert.shd", "assets/Shaders/billboard_frag.shd");
+#ifdef __EMSCRIPTEN__
+        static
+#endif
             World world(worldSeed);
         std::cout << "World seed: " << worldSeed << std::endl;
         w = &world;
@@ -699,6 +703,8 @@ int main(int argc, char* argv[]) {
             glEnableVertexAttribArray(3);
             glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, ARM_STRIDE, (void*)(9 * sizeof(float)));
             glEnableVertexAttribArray(4);
+            glDisableVertexAttribArray(5);
+            glVertexAttrib1f(5, 1.0f);
             glBindVertexArray(0);
         }
 
@@ -748,6 +754,8 @@ int main(int argc, char* argv[]) {
             glEnableVertexAttribArray(3);
             glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, STAR_STRIDE, (void*)(9 * sizeof(float)));
             glEnableVertexAttribArray(4);
+            glDisableVertexAttribArray(5);
+            glVertexAttrib1f(5, 1.0f);
             glBindVertexArray(0);
         }
 
@@ -984,16 +992,22 @@ int main(int argc, char* argv[]) {
             }
             glm::mat4 viewProjection = projection * player.getViewMatrix();
 
-            // Stars: render at night, rotate slowly on their own cycle
+            // --- Billboard rendering (separate shader, no terrain features) ---
+            billboardShader.use();
+            billboardShader.setMat4("projection", projection);
+            billboardShader.setMat4("view", player.getViewMatrix());
+            TextureArray::bind();
+
+            // Stars
             if (sunH < 0.1f) {
                 float starAlpha = 1.0f - sunH / 0.1f;
-                float starRotation = timeValue * 0.3f; // slower rotation than sun
+                float starRotation = timeValue * 0.3f;
 
                 glm::mat4 starModel = glm::translate(glm::mat4(1.0f), cameraPos);
                 starModel = glm::rotate(starModel, starRotation, glm::vec3(0.3f, 1.0f, 0.1f));
 
-                shaderProgram.setFloat("emissive", starAlpha);
-                shaderProgram.setMat4("model", starModel);
+                billboardShader.setFloat("brightness", starAlpha);
+                billboardShader.setMat4("model", starModel);
                 glDepthMask(GL_FALSE);
                 glDisable(GL_CULL_FACE);
 #ifndef __EMSCRIPTEN__
@@ -1006,8 +1020,6 @@ int main(int argc, char* argv[]) {
 
                 glDepthMask(GL_TRUE);
                 glEnable(GL_CULL_FACE);
-                shaderProgram.setFloat("emissive", 0.0f);
-                shaderProgram.setMat4("model", glm::mat4(1.0f));
             }
 
             // Render sun billboard (before terrain, no depth write)
@@ -1069,9 +1081,10 @@ int main(int argc, char* argv[]) {
                 glBindBuffer(GL_ARRAY_BUFFER, sunVBO);
                 glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(sunVerts), sunVerts);
 
-                shaderProgram.setFloat("emissive", 1.0f);
-                glDepthMask(GL_FALSE);   // don't write to depth (sun is behind everything)
-                glDisable(GL_CULL_FACE); // billboard visible from both sides
+                billboardShader.setFloat("brightness", 1.0f);
+                billboardShader.setMat4("model", glm::mat4(1.0f));
+                glDepthMask(GL_FALSE);
+                glDisable(GL_CULL_FACE);
                 glEnable(GL_BLEND);
                 glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -1082,7 +1095,6 @@ int main(int argc, char* argv[]) {
                 glDepthMask(GL_TRUE);
                 glEnable(GL_CULL_FACE);
                 glDisable(GL_BLEND);
-                shaderProgram.setFloat("emissive", 0.0f);
             }
 
             // Render moon billboard (opposite side of sun)
@@ -1141,7 +1153,8 @@ int main(int argc, char* argv[]) {
                 glBindBuffer(GL_ARRAY_BUFFER, sunVBO);
                 glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(moonVerts), moonVerts);
 
-                shaderProgram.setFloat("emissive", 1.0f);
+                billboardShader.setFloat("brightness", 1.0f);
+                billboardShader.setMat4("model", glm::mat4(1.0f));
                 glDepthMask(GL_FALSE);
                 glDisable(GL_CULL_FACE);
                 glEnable(GL_BLEND);
@@ -1154,9 +1167,11 @@ int main(int argc, char* argv[]) {
                 glDepthMask(GL_TRUE);
                 glEnable(GL_CULL_FACE);
                 glDisable(GL_BLEND);
-                shaderProgram.setFloat("emissive", 0.0f);
             }
 
+            // Restore world shader after billboards
+            shaderProgram.use();
+            TextureArray::bind();
             chunksRendered = w->render(shaderProgram, viewProjection, player.getPosition());
 
             // Clouds: texture-based infinite tiling with 3D volume
@@ -1185,18 +1200,15 @@ int main(int argc, char* argv[]) {
                 glDisable(GL_CULL_FACE);
                 glDepthMask(GL_FALSE);
 
+                // Pass cloud slab bounds for raymarching
+                cloudShader.setFloat("cloudBottom", CLOUD_Y_BOT);
+                cloudShader.setFloat("cloudTop", CLOUD_Y_TOP);
+
                 glBindVertexArray(cloudVAO);
 
-                // Top face
-                glm::mat4 topModel = glm::translate(glm::mat4(1.0f), glm::vec3(cameraPos.x, CLOUD_Y_TOP, cameraPos.z));
-                cloudShader.setMat4("model", topModel);
-                cloudShader.setInt("faceType", 0);
-                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-
-                // Bottom face
-                glm::mat4 botModel = glm::translate(glm::mat4(1.0f), glm::vec3(cameraPos.x, CLOUD_Y_BOT, cameraPos.z));
-                cloudShader.setMat4("model", botModel);
-                cloudShader.setInt("faceType", 1);
+                // Single quad at cloud level — fragment shader raymarches through slab
+                glm::mat4 cloudModel = glm::translate(glm::mat4(1.0f), glm::vec3(cameraPos.x, CLOUD_Y_TOP, cameraPos.z));
+                cloudShader.setMat4("model", cloudModel);
                 glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 
                 glBindVertexArray(0);
@@ -1249,7 +1261,11 @@ int main(int argc, char* argv[]) {
                 glBindBuffer(GL_ARRAY_BUFFER, highlightVBO);
                 glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(hlVerts), hlVerts);
 
-                shaderProgram.setFloat("emissive", 0.02f);
+                billboardShader.use();
+                billboardShader.setMat4("projection", projection);
+                billboardShader.setMat4("view", player.getViewMatrix());
+                billboardShader.setMat4("model", glm::mat4(1.0f));
+                billboardShader.setFloat("brightness", 0.02f);
                 glDisable(GL_CULL_FACE);
                 glLineWidth(2.0f);
 
@@ -1258,7 +1274,6 @@ int main(int argc, char* argv[]) {
                 glBindVertexArray(0);
 
                 glEnable(GL_CULL_FACE);
-                shaderProgram.setFloat("emissive", 0.0f);
             }
 
             // First-person arm — lit by environment
@@ -1285,9 +1300,11 @@ int main(int argc, char* argv[]) {
                 }
 
                 glClear(GL_DEPTH_BUFFER_BIT);
-                shaderProgram.setMat4("view", glm::mat4(1.0f));
-                shaderProgram.setMat4("model", armModel);
-                shaderProgram.setFloat("emissive", armBrightness);
+                billboardShader.use();
+                billboardShader.setMat4("projection", projection);
+                billboardShader.setMat4("view", glm::mat4(1.0f));
+                billboardShader.setMat4("model", armModel);
+                billboardShader.setFloat("brightness", armBrightness);
                 glDisable(GL_CULL_FACE);
 
                 glBindVertexArray(armVAO);
@@ -1295,10 +1312,6 @@ int main(int argc, char* argv[]) {
                 glBindVertexArray(0);
 
                 glEnable(GL_CULL_FACE);
-                shaderProgram.setFloat("emissive", 0.0f);
-                shaderProgram.setMat4("model", glm::mat4(1.0f));
-                // Restore view matrix for next frame
-                player.defineLookAt(shaderProgram);
             }
 
             // Pause menu overlay (rendered after the world)
