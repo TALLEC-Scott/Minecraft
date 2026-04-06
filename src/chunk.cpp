@@ -136,11 +136,11 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
     // Deterministic per-chunk PRNG seeded from chunk coordinates
     uint64_t treeSeed = static_cast<uint64_t>(chunkX) * 73856093ULL ^ static_cast<uint64_t>(chunkY) * 19349663ULL;
     std::mt19937 rng(static_cast<unsigned int>(treeSeed));
-    std::uniform_int_distribution<int> posDist(2, CHUNK_SIZE - 3);
+    std::uniform_int_distribution<int> posDist(3, CHUNK_SIZE - 4);
     std::uniform_int_distribution<int> chanceDist(0, 99);
-    std::uniform_int_distribution<int> trunkDist(3, 5);
-    std::uniform_int_distribution<int> radiusDist(1, 2);
-    std::uniform_int_distribution<int> layersDist(2, 3);
+    std::uniform_int_distribution<int> trunkDist(4, 7);
+    std::uniform_int_distribution<int> radiusDist(2, 3);
+    std::uniform_int_distribution<int> layersDist(3, 5);
 
     // Tree density from biome params (checked per tree position for accuracy at borders)
 
@@ -171,8 +171,8 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
         int surface = heights[tx][tz];
         if (surface <= TREE_WATER_LEVEL) continue;
         if (surface + totalH >= CHUNK_HEIGHT) continue;
-        if (tx - radius < 0 || tx + radius >= CHUNK_SIZE) continue;
-        if (tz - radius < 0 || tz + radius >= CHUNK_SIZE) continue;
+        if (tx - radius < 1 || tx + radius >= CHUNK_SIZE - 1) continue;
+        if (tz - radius < 1 || tz + radius >= CHUNK_SIZE - 1) continue;
 
         Cube* surfaceBlock = getBlock(tx, surface, tz);
         if (!surfaceBlock || surfaceBlock->getType() != tbp.surfaceBlock) continue;
@@ -197,23 +197,34 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
             if (b) b->setType(WOOD);
         }
 
-        // Canopy: radius x radius layers at top of trunk
+        // Canopy: tapered — full radius at bottom, shrinks toward top
         int canopyBase = surface + trunkH;
-        for (int ly = canopyBase; ly < canopyBase + layers; ly++) {
-            for (int dx = -radius; dx <= radius; dx++) {
-                for (int dz = -radius; dz <= radius; dz++) {
-                    // Skip corners for rounder look on radius 2
-                    if (radius == 2 && abs(dx) == 2 && abs(dz) == 2) continue;
-                    if (dx == 0 && dz == 0 && ly == canopyBase) continue; // trunk top
-                    Cube* b = getBlock(tx + dx, ly, tz + dz);
+        for (int ly = 0; ly < layers; ly++) {
+            // Taper: radius shrinks as we go up
+            int layerR = std::max(1, radius - ly / 2);
+            for (int dx = -layerR; dx <= layerR; dx++) {
+                for (int dz = -layerR; dz <= layerR; dz++) {
+                    // Skip corners for rounder look
+                    if (abs(dx) == layerR && abs(dz) == layerR && layerR > 1) continue;
+                    if (dx == 0 && dz == 0 && ly == 0) continue; // trunk top
+                    int bx = tx + dx, by = canopyBase + ly, bz = tz + dz;
+                    if (bx < 0 || bx >= CHUNK_SIZE || bz < 0 || bz >= CHUNK_SIZE) continue;
+                    Cube* b = getBlock(bx, by, bz);
                     if (b && b->getType() == AIR) b->setType(LEAVES);
                 }
             }
         }
 
-        // Crown: single leaf on top
-        Cube* crown = getBlock(tx, canopyBase + layers, tz);
-        if (crown && crown->getType() == AIR) crown->setType(LEAVES);
+        // Crown: small cross on top
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (abs(dx) == 1 && abs(dz) == 1) continue; // skip diagonals
+                int bx = tx + dx, bz = tz + dz;
+                if (bx < 0 || bx >= CHUNK_SIZE || bz < 0 || bz >= CHUNK_SIZE) continue;
+                Cube* crown = getBlock(bx, canopyBase + layers, bz);
+                if (crown && crown->getType() == AIR) crown->setType(LEAVES);
+            }
+        }
     }
 
     // --- Cactus placement in desert biomes ---
