@@ -15,6 +15,7 @@
 #include <condition_variable>
 #include <queue>
 #include <atomic>
+#include <memory>
 #endif
 
 struct Vec2Hash {
@@ -50,7 +51,7 @@ class ChunkManager {
     void generateChunk(int x, int z);
 
 #ifndef __EMSCRIPTEN__
-    // Threading: worker threads generate ChunkData, main thread integrates
+    // Chunk generation
     std::queue<glm::ivec2> requestQueue;
     std::mutex requestMutex;
     std::condition_variable requestCV;
@@ -60,12 +61,33 @@ class ChunkManager {
 
     std::unordered_set<glm::ivec2, Vec2Hash> pendingChunks;
 
+    // Mesh build requests (dispatched to workers with snapshotted data)
+    struct MeshRequest {
+        glm::ivec2 pos;
+        std::shared_ptr<Cube[]> blocks;
+        std::shared_ptr<uint8_t[]> skyLight;
+        int maxSolidY;
+        int chunkX, chunkZ;
+        Chunk::NeighborBorders borders;
+    };
+
+    struct MeshResult {
+        glm::ivec2 pos;
+        Chunk::MeshData mesh;
+    };
+
+    std::queue<MeshRequest> meshRequestQueue;
+    std::queue<MeshResult> meshResultQueue; // guarded by resultMutex
+
+    // Worker threads
     std::vector<std::thread> workers;
     std::atomic<bool> shutdownFlag{false};
 
-    glm::ivec2 currentMin, currentMax; // updated each frame for staleness check
+    glm::ivec2 currentMin, currentMax;
 
     void workerLoop();
     void drainResults();
+    void queueMeshBuild(glm::ivec2 pos);
+    void queueDirtyMeshBuilds();
 #endif
 };
