@@ -29,8 +29,11 @@ class ChunkManager {
     void render(Shader shaderProgram);
     std::unordered_map<glm::ivec2, Chunk, Vec2Hash> chunks;
     Chunk* getChunk(int chunkX, int chunkZ);
+    void setRenderDistance(int rd) { renderDistance = rd; }
+    int getRenderDistance() const { return renderDistance; }
 
   private:
+    int renderDistance;
     TerrainGenerator& terrainGenerator;
 
     void loadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk);

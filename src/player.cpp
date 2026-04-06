@@ -67,7 +67,7 @@ void Player::updateMouseLook(double xPos, double yPos, int /*windowWidth*/, int 
         return;
     }
 
-    float sensitivity = 0.1f;
+    float sensitivity = 0.1f * mouseSensitivity;
     float xOffset = (float)(xPos - lastX) * sensitivity;
     float yOffset = (float)(lastY - yPos) * sensitivity;
     lastX = xPos;

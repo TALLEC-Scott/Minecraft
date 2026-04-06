@@ -32,8 +32,16 @@ void main() {
     // Directional sun light
     float diff = max(dot(norm, sunDir), 0.0) * faceBright;
 
-    // Combine: AO for corner darkening, skyLight for shadow areas
-    float light = (0.4 + diff * 0.8) * ao * skyLight;
+    float sunUp = max(sunDir.y, 0.0);
 
-    FragColor = vec4(texColor.rgb * light * lightColor, texColor.a);
+    // Sun contribution: diffuse + sky ambient, colored by sun
+    float sunAmbient = 0.3 * sunUp;
+    float sunContrib = (sunAmbient + diff * 0.8);
+    vec3 sunLit = texColor.rgb * sunContrib * lightColor * ao * skyLight;
+
+    // Moonlight: fades in as sun goes down, strongest at midnight
+    float moonIntensity = max(-sunDir.y, 0.0); // 0 during day, 1 at midnight
+    vec3 moonLit = texColor.rgb * 0.15 * moonIntensity * ao * skyLight * vec3(0.6, 0.7, 1.0);
+
+    FragColor = vec4(sunLit + moonLit, texColor.a);
 }

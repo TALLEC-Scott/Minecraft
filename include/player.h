@@ -35,6 +35,9 @@ class Player {
 
     Camera& getCamera() { return camera; }
 
+    void resetMouseState() { firstMouse = true; }
+    void setMouseSensitivity(float s) { mouseSensitivity = s; }
+
   private:
     Camera camera;
 
@@ -57,6 +60,7 @@ class Player {
     float yaw = -90.0f;
     float pitch = 0.0f;
     bool firstMouse = true;
+    float mouseSensitivity = 1.0f;
 
     void findGroundAndUpdate(World* world);
     void updateTargetedBlock(World* world);

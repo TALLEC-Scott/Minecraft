@@ -41,6 +41,10 @@ add_executable(minecraft
     src/ChunkManager.cpp
     src/texture_array.cpp
     src/player.cpp
+    src/game_state.cpp
+    src/ui_renderer.cpp
+    src/menu.cpp
+    src/miniaudio.cpp
 )
 
 target_include_directories(minecraft PRIVATE include Libraries/include)
@@ -50,6 +54,7 @@ target_link_libraries(minecraft
     ${OPENGL_gl_LIBRARY}
     glfw
     Threads::Threads
+    dl
 )
 
 # --- Unit Tests ---

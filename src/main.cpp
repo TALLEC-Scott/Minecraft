@@ -25,6 +25,9 @@
 #include "ChunkManager.h"
 #include "texture_array.h"
 #include "player.h"
+#include "game_state.h"
+#include "ui_renderer.h"
+#include "menu.h"
 
 #define WINDOW_WIDTH 1000
 #define WINDOW_HEIGHT 1000
@@ -44,6 +47,10 @@ bool fullscreenMode = false;
 bool doDaylightCycle = true;
 bool previousDaylight = false;
 
+GameState currentState = GameState::MainMenu;
+GameSettings gameSettings;
+bool escKeyPressed = false;
+
 void framebuffer_size_callback(GLFWwindow* /*window*/, int width, int height) {
     // make sure the viewport matches the new window dimensions; note that width axnd
     // height will be significantly larger than specified on retina displays.
@@ -53,7 +60,7 @@ void framebuffer_size_callback(GLFWwindow* /*window*/, int width, int height) {
 }
 
 void cursorPositionCallback(GLFWwindow* /*window*/, double xPos, double yPos) {
-    player.updateMouseLook(xPos, yPos, windowWidth, windowHeight);
+    if (currentState == GameState::Playing) player.updateMouseLook(xPos, yPos, windowWidth, windowHeight);
 }
 
 void setSkyColor(float angle) {
@@ -70,10 +77,15 @@ void setSkyColor(float angle) {
 }
 
 void processInput(GLFWwindow* window) {
-    // Close window
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-        glfwSetWindowShouldClose(window, true);
+    // ESC: open pause menu (edge-triggered)
+    bool escDown = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+    if (escDown && !escKeyPressed) {
+        currentState = GameState::Paused;
+        glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_NORMAL);
+        escKeyPressed = escDown;
+        return;
     }
+    escKeyPressed = escDown;
 
     // Enable/Disable wireframe mode
     bool xKeyDown = glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS;
@@ -166,12 +178,15 @@ int main(int argc, char* argv[]) {
 
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-    glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_DISABLED);
+    // Start with cursor visible for main menu
+    glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_NORMAL);
     glfwSetCursorPos(window, static_cast<double>(WINDOW_WIDTH) / 2.0, static_cast<double>(WINDOW_HEIGHT) / 2.0);
 
     glfwSetCursorPosCallback(window, cursorPositionCallback);
 
-    glfwSwapInterval(0); // Disable vsync
+    // Load settings
+    gameSettings.load("settings.txt");
+    glfwSwapInterval(gameSettings.vsync ? 1 : 0);
 
     // Headless mode: create an FBO so rendering goes to an offscreen buffer
     // instead of through the WSL2/D3D12 presentation pipeline.
@@ -202,6 +217,13 @@ int main(int argc, char* argv[]) {
     std::cout << "Maximum number of vertex attributes supported: " << nrAttributes << std::endl;
 
     TextureArray::initialize();
+
+    // Initialize UI
+    UIRenderer uiRenderer;
+    uiRenderer.init();
+    Menu menu;
+    menu.init();
+
     {
         Shader shaderProgram("assets/Shaders/vert.shd", "assets/Shaders/frag.shd");
         World world(worldSeed);
@@ -244,34 +266,61 @@ int main(int argc, char* argv[]) {
             constexpr int CLOUD_BLOCK = 12; // larger cloud pieces
             float cl = (float)TextureArray::CLOUD_LAYER;
 
-            // Precompute cloud pattern: low-frequency noise for large connected blobs
+            // Precompute cloud pattern: 3D cloud slabs with depth
+            constexpr float CLOUD_DEPTH = 3.0f;
+            constexpr int CLOUD_HALF = CLOUD_GRID / 2;
             std::vector<float> cverts;
             std::vector<unsigned int> cidx;
             unsigned int cbase = 0;
 
+            // Precompute cloud grid for neighbor checks
+            std::vector<bool> cloudGrid(static_cast<size_t>(CLOUD_GRID) * CLOUD_GRID, false);
+            for (int gx = 0; gx < CLOUD_GRID; gx++)
+                for (int gz = 0; gz < CLOUD_GRID; gz++)
+                    if (world.terrainGenerator->getNoise(gx, gz) >= 0.65) cloudGrid[gx * CLOUD_GRID + gz] = true;
+
+            auto isCloud = [&](int gx, int gz) -> bool {
+                // Wrap for seamless tiling
+                gx = ((gx % CLOUD_GRID) + CLOUD_GRID) % CLOUD_GRID;
+                gz = ((gz % CLOUD_GRID) + CLOUD_GRID) % CLOUD_GRID;
+                return cloudGrid[gx * CLOUD_GRID + gz];
+            };
+
+            auto addQuad = [&](float x0, float y0, float z0, float x1, float y1, float z1, float x2, float y2, float z2,
+                               float x3, float y3, float z3, float nx, float ny, float nz) {
+                float verts[] = {
+                    x0, y0, z0, 0, 0, nx, ny, nz, cl, 1, x1, y1, z1, 0, 1, nx, ny, nz, cl, 1,
+                    x2, y2, z2, 1, 1, nx, ny, nz, cl, 1, x3, y3, z3, 1, 0, nx, ny, nz, cl, 1,
+                };
+                for (float f : verts) cverts.push_back(f);
+                cidx.push_back(cbase);
+                cidx.push_back(cbase + 1);
+                cidx.push_back(cbase + 2);
+                cidx.push_back(cbase + 2);
+                cidx.push_back(cbase + 3);
+                cidx.push_back(cbase);
+                cbase += 4;
+            };
+
             for (int gx = 0; gx < CLOUD_GRID; gx++) {
                 for (int gz = 0; gz < CLOUD_GRID; gz++) {
-                    // Very low frequency → large continuous cloud masses
-                    double cn = world.terrainGenerator->getNoise(gx, gz);
-                    if (cn < 0.65) continue;
+                    if (!isCloud(gx, gz)) continue;
 
-                    constexpr int CLOUD_HALF = CLOUD_GRID / 2;
                     float x0 = static_cast<float>(gx - CLOUD_HALF) * CLOUD_BLOCK;
                     float x1 = x0 + CLOUD_BLOCK;
                     float z0 = static_cast<float>(gz - CLOUD_HALF) * CLOUD_BLOCK;
                     float z1 = z0 + CLOUD_BLOCK;
-                    float v[] = {
-                        x0, 0, z0, 0, 0, 0, 1, 0, cl, 1, x0, 0, z1, 0, 1, 0, 1, 0, cl, 1,
-                        x1, 0, z1, 1, 1, 0, 1, 0, cl, 1, x1, 0, z0, 1, 0, 0, 1, 0, cl, 1,
-                    };
-                    for (float f : v) cverts.push_back(f);
-                    cidx.push_back(cbase);
-                    cidx.push_back(cbase + 1);
-                    cidx.push_back(cbase + 2);
-                    cidx.push_back(cbase + 2);
-                    cidx.push_back(cbase + 3);
-                    cidx.push_back(cbase);
-                    cbase += 4;
+                    float y0 = 0, y1 = CLOUD_DEPTH;
+
+                    // Top face (always visible)
+                    addQuad(x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0, 0, 1, 0);
+                    // Bottom face (always visible)
+                    addQuad(x0, y0, z1, x0, y0, z0, x1, y0, z0, x1, y0, z1, 0, -1, 0);
+                    // Side faces: only at cloud edges
+                    if (!isCloud(gx - 1, gz)) addQuad(x0, y0, z1, x0, y1, z1, x0, y1, z0, x0, y0, z0, -1, 0, 0);
+                    if (!isCloud(gx + 1, gz)) addQuad(x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1, 1, 0, 0);
+                    if (!isCloud(gx, gz - 1)) addQuad(x0, y0, z0, x0, y1, z0, x1, y1, z0, x1, y0, z0, 0, 0, -1);
+                    if (!isCloud(gx, gz + 1)) addQuad(x1, y0, z1, x1, y1, z1, x0, y1, z1, x0, y0, z1, 0, 0, 1);
                 }
             }
             cloudIndexCount = (int)cidx.size();
@@ -634,8 +683,8 @@ int main(int argc, char* argv[]) {
             Profiler profiler;
             profiler.init();
 
-            glm::mat4 projection =
-                glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 5000.0f);
+            glm::mat4 projection = glm::perspective(glm::radians(gameSettings.fov),
+                                                    (float)windowWidth / (float)windowHeight, 0.1f, 5000.0f);
             glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
             int frame = 0;
 
@@ -706,8 +755,56 @@ int main(int argc, char* argv[]) {
             goto cleanup;
         }
 
+        // Apply initial settings
+        player.setMouseSensitivity(gameSettings.mouseSensitivity);
+        w->chunkManager->setRenderDistance(gameSettings.renderDistance);
+
+        // Helper lambda to apply settings changes at runtime
+        auto applySettings = [&]() {
+            glfwSwapInterval(gameSettings.vsync ? 1 : 0);
+            player.setMouseSensitivity(gameSettings.mouseSensitivity);
+            w->chunkManager->setRenderDistance(gameSettings.renderDistance);
+        };
+
         bool sceneChanged = true; // Initially set to true to render the scene
+        GameState prevState = GameState::MainMenu;
         while (!glfwWindowShouldClose(window)) {
+
+            // --- Menu states ---
+            if (currentState == GameState::MainMenu) {
+                glClearColor(0.2f, 0.15f, 0.1f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                GameState next = menu.drawMainMenu(uiRenderer, windowWidth, windowHeight, window);
+                if (next == GameState::Playing && currentState != GameState::Playing) {
+                    glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_DISABLED);
+                    player.resetMouseState();
+                }
+                if (next == GameState::Settings) applySettings();
+                currentState = next;
+                glfwSwapBuffers(window);
+                glfwPollEvents();
+                continue;
+            }
+
+            if (currentState == GameState::Settings) {
+                glClearColor(0.2f, 0.15f, 0.1f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                GameState next = menu.drawSettings(uiRenderer, windowWidth, windowHeight, window, gameSettings);
+                if (next != GameState::Settings) {
+                    gameSettings.save("settings.txt");
+                    applySettings();
+                    if (next == GameState::Playing) {
+                        glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_DISABLED);
+                        player.resetMouseState();
+                    }
+                }
+                currentState = next;
+                glfwSwapBuffers(window);
+                glfwPollEvents();
+                continue;
+            }
+
+            // --- Game rendering (used by both Playing and Paused) ---
             float speed = 0.05;
             float timeValue = 0.0f;
             if (doDaylightCycle) {
@@ -718,8 +815,10 @@ int main(int argc, char* argv[]) {
             setSkyColor(timeValue);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            // Player physics + targeting
-            player.update(w);
+            // Only update player/world when actually playing
+            if (currentState == GameState::Playing) {
+                player.update(w);
+            }
 
             double currentTime = glfwGetTime();
             double frameTime = (currentTime - lastFrameTime) * 1000.0; // ms
@@ -736,7 +835,9 @@ int main(int argc, char* argv[]) {
                 lastTime += 1.0;
             }
 
-            processInput(window);
+            if (currentState == GameState::Playing) {
+                processInput(window);
+            }
             shaderProgram.use();
 
             glm::vec3 cameraPos = player.getPosition();
@@ -745,12 +846,17 @@ int main(int argc, char* argv[]) {
             glm::vec3 lightPos(cameraPos.x + std::cos(timeValue) * radius, std::sin(timeValue) * radius, cameraPos.z);
             glm::vec3 sunDir = glm::normalize(lightPos - cameraPos);
             shaderProgram.setVec3("sunDir", sunDir);
-            shaderProgram.setVec3("lightColor", lightColor);
+
+            // Light color dims with sun height: white at noon, orange at sunset, dark at night
+            float sunH = std::max(sunDir.y, 0.0f);
+            glm::vec3 dayColor = glm::mix(glm::vec3(1.0f, 0.5f, 0.2f), glm::vec3(1.0f), std::min(sunH * 3.0f, 1.0f));
+            glm::vec3 sunColor = dayColor * std::min(sunH * 2.0f, 1.0f);
+            shaderProgram.setVec3("lightColor", sunColor);
 
             player.defineLookAt(shaderProgram);
 
-            glm::mat4 projection =
-                glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 5000.0f);
+            glm::mat4 projection = glm::perspective(glm::radians(gameSettings.fov),
+                                                    (float)windowWidth / (float)windowHeight, 0.1f, 5000.0f);
             shaderProgram.setMat4("projection", projection);
 
             glm::mat4 model = glm::mat4(1.0f);
@@ -762,7 +868,9 @@ int main(int argc, char* argv[]) {
             // Targeting handled by player.update()
 
             TextureArray::bind();
-            w->update(player.getPosition());
+            if (currentState == GameState::Playing) {
+                w->update(player.getPosition());
+            }
             glm::mat4 viewProjection = projection * player.getViewMatrix();
 
             // Render sun billboard (before terrain, no depth write)
@@ -840,6 +948,78 @@ int main(int argc, char* argv[]) {
                 shaderProgram.setFloat("emissive", 0.0f);
             }
 
+            // Render moon billboard (opposite side of sun)
+            if (lightPos.y < 0) {
+                glm::vec3 moonDir = glm::normalize(-lightPos + 2.0f * cameraPos); // opposite of sun
+                glm::vec3 moonCenter = cameraPos + moonDir * SUN_DISTANCE;
+                constexpr float MOON_SIZE = 45.0f;
+                glm::vec3 upRef = (glm::abs(moonDir.y) > 0.99f) ? glm::vec3(1, 0, 0) : glm::vec3(0, 1, 0);
+                glm::vec3 right = glm::normalize(glm::cross(moonDir, upRef)) * MOON_SIZE;
+                glm::vec3 up = glm::normalize(glm::cross(right, moonDir)) * MOON_SIZE;
+
+                float moonLayer = (float)TextureArray::MOON_LAYER;
+                float moonVerts[40] = {
+                    moonCenter.x - right.x - up.x,
+                    moonCenter.y - right.y - up.y,
+                    moonCenter.z - right.z - up.z,
+                    0,
+                    0,
+                    0,
+                    0,
+                    1,
+                    moonLayer,
+                    1,
+                    moonCenter.x - right.x + up.x,
+                    moonCenter.y - right.y + up.y,
+                    moonCenter.z - right.z + up.z,
+                    0,
+                    1,
+                    0,
+                    0,
+                    1,
+                    moonLayer,
+                    1,
+                    moonCenter.x + right.x + up.x,
+                    moonCenter.y + right.y + up.y,
+                    moonCenter.z + right.z + up.z,
+                    1,
+                    1,
+                    0,
+                    0,
+                    1,
+                    moonLayer,
+                    1,
+                    moonCenter.x + right.x - up.x,
+                    moonCenter.y + right.y - up.y,
+                    moonCenter.z + right.z - up.z,
+                    1,
+                    0,
+                    0,
+                    0,
+                    1,
+                    moonLayer,
+                    1,
+                };
+
+                glBindBuffer(GL_ARRAY_BUFFER, sunVBO);
+                glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(moonVerts), moonVerts);
+
+                shaderProgram.setFloat("emissive", 1.0f);
+                glDepthMask(GL_FALSE);
+                glDisable(GL_CULL_FACE);
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+                glBindVertexArray(sunVAO);
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+                glBindVertexArray(0);
+
+                glDepthMask(GL_TRUE);
+                glEnable(GL_CULL_FACE);
+                glDisable(GL_BLEND);
+                shaderProgram.setFloat("emissive", 0.0f);
+            }
+
             chunksRendered = w->render(shaderProgram, viewProjection, player.getPosition());
 
             // Clouds: precomputed grid translated to follow camera + drift
@@ -850,25 +1030,16 @@ int main(int argc, char* argv[]) {
                 constexpr float CLOUD_TILE = CLOUD_GRID_SIZE * CLOUD_BLOCK_SIZE; // 1024 blocks
                 float drift = (float)glfwGetTime() * 1.5f;
 
-                // Render a 3x3 grid of the cloud tile centered on camera for seamless tiling
+                // Single cloud tile centered on camera (grid is large enough to cover view)
                 shaderProgram.setFloat("emissive", 1.0f);
                 glEnable(GL_BLEND);
                 glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
                 glDisable(GL_CULL_FACE);
 
-                float tileOriginX = std::floor(cameraPos.x / CLOUD_TILE) * CLOUD_TILE;
-                float tileOriginZ = std::floor(cameraPos.z / CLOUD_TILE) * CLOUD_TILE;
-
-                for (int tx = -1; tx <= 1; tx++) {
-                    for (int tz = -1; tz <= 1; tz++) {
-                        glm::mat4 cloudModel =
-                            glm::translate(glm::mat4(1.0f), glm::vec3(tileOriginX + tx * CLOUD_TILE + drift, CLOUD_Y,
-                                                                      tileOriginZ + tz * CLOUD_TILE));
-                        shaderProgram.setMat4("model", cloudModel);
-                        glBindVertexArray(cloudVAO);
-                        glDrawElements(GL_TRIANGLES, cloudIndexCount, GL_UNSIGNED_INT, nullptr);
-                    }
-                }
+                glm::mat4 cloudModel = glm::translate(glm::mat4(1.0f), glm::vec3(drift, CLOUD_Y, 0.0f));
+                shaderProgram.setMat4("model", cloudModel);
+                glBindVertexArray(cloudVAO);
+                glDrawElements(GL_TRIANGLES, cloudIndexCount, GL_UNSIGNED_INT, nullptr);
                 glBindVertexArray(0);
                 glEnable(GL_CULL_FACE);
                 glDisable(GL_BLEND);
@@ -948,12 +1119,31 @@ int main(int argc, char* argv[]) {
                 player.defineLookAt(shaderProgram);
             }
 
+            // Pause menu overlay (rendered after the world)
+            if (currentState == GameState::Paused) {
+                GameState next = menu.drawPauseMenu(uiRenderer, windowWidth, windowHeight, window);
+                if (next == GameState::Playing) {
+                    glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_DISABLED);
+                    player.resetMouseState();
+                }
+                if (next == GameState::Settings) {
+                    gameSettings.save("settings.txt");
+                    applySettings();
+                }
+                if (next == GameState::MainMenu) {
+                    glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_NORMAL);
+                }
+                currentState = next;
+            }
+
             glfwSwapBuffers(window);
             glfwPollEvents();
         }
 
         shaderProgram.destroy();
     } // world and shaderProgram destroyed here, while GL context is still valid
+    menu.destroy();
+    uiRenderer.destroy();
 cleanup:
     if (headlessFBO) {
         glDeleteFramebuffers(1, &headlessFBO);
