@@ -48,7 +48,6 @@ void ChunkManager::update(glm::vec3 cameraPosition) {
     currentMin = minChunk;
     currentMax = maxChunk;
     drainResults();
-    queueDirtyMeshBuilds();
 #endif
 
     loadChunks(minChunk, maxChunk);

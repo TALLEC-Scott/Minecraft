@@ -15,6 +15,10 @@ class TextureArray {
             if (face == 5) return static_cast<int>(DIRT);
             return GRASS_SIDE_LAYER;
         }
+        if (t == WOOD) {
+            if (face == 4 || face == 5) return WOOD_TOP_LAYER; // top and bottom
+            return static_cast<int>(WOOD); // sides = bark
+        }
         if (t == SNOW) return SNOW_LAYER;
         if (t == GRAVEL) return GRAVEL_LAYER;
         if (t == CACTUS) return CACTUS_LAYER;
@@ -28,5 +32,6 @@ class TextureArray {
     static constexpr int CLOUD_LAYER = 16;
     static constexpr int SKIN_LAYER = 17;
     static constexpr int MOON_LAYER = 18;
+    static constexpr int WOOD_TOP_LAYER = 19;
     static GLuint id;
 };

@@ -13,8 +13,9 @@ static const char* TEXTURE_PATHS[] = {
     "assets/Textures/sun.png",    "assets/Textures/snow.png",     "assets/Textures/gravel.png",
     "assets/Textures/cactus.png", "assets/Textures/cloud.png",    "assets/Textures/skin.png",
     "assets/Textures/moon.png",
+    "assets/Textures/wood_top.png",
 };
-static constexpr int NUM_LAYERS = 19;
+static constexpr int NUM_LAYERS = 20;
 
 void TextureArray::initialize() {
     stbi_set_flip_vertically_on_load(true);

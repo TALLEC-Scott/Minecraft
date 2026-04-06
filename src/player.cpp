@@ -13,6 +13,10 @@ void Player::destroyAudio() {
         for (auto& set : stepSounds)
             for (auto& s : set.sounds)
                 ma_sound_uninit(&s);
+        for (auto& set : breakSounds)
+            for (auto& s : set.sounds)
+                ma_sound_uninit(&s);
+
         stepSoundsLoaded = false;
     }
 }
@@ -34,6 +38,7 @@ void Player::initAudio(ma_engine* engine) {
         {STEP_SNOW,   "assets/Sounds/step/snow/snow",     4},
         {STEP_WOOD,   "assets/Sounds/step/wood/wood",     6},
         {STEP_WATER,  "assets/Sounds/step/water/swim",    4},
+        {STEP_CLOTH,  "assets/Sounds/dig/cloth/cloth",    4},
     };
 
     for (auto& def : defs) {
@@ -44,6 +49,25 @@ void Player::initAudio(ma_engine* engine) {
             ma_sound_init_from_file(engine, path.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, &set.sounds[i]);
         }
     }
+    // Load break/dig sounds (same categories, different files)
+    SoundDef breakDefs[] = {
+        {STEP_GRASS,  "assets/Sounds/dig/grass/grass",   4},
+        {STEP_STONE,  "assets/Sounds/dig/stone/stone",   4},
+        {STEP_SAND,   "assets/Sounds/dig/sand/sand",     4},
+        {STEP_GRAVEL, "assets/Sounds/dig/gravel/gravel", 4},
+        {STEP_SNOW,   "assets/Sounds/dig/snow/snow",     4},
+        {STEP_WOOD,   "assets/Sounds/dig/wood/wood",     4},
+        {STEP_CLOTH,  "assets/Sounds/dig/cloth/cloth",    4},
+    };
+    for (auto& def : breakDefs) {
+        auto& set = breakSounds[def.type - 1];
+        set.sounds.resize(def.count);
+        for (int i = 0; i < def.count; i++) {
+            std::string path = std::string(def.prefix) + std::to_string(i + 1) + ".wav";
+            ma_sound_init_from_file(engine, path.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, &set.sounds[i]);
+        }
+    }
+
     stepSoundsLoaded = true;
     lastStepPos = camera.getPosition();
 }
@@ -56,6 +80,20 @@ void Player::playStepSound(block_type groundBlock) {
     if (set.sounds.empty()) return;
 
     static std::mt19937 rng(42);
+    int idx = std::uniform_int_distribution<int>(0, (int)set.sounds.size() - 1)(rng);
+    ma_sound_seek_to_pcm_frame(&set.sounds[idx], 0);
+    ma_sound_start(&set.sounds[idx]);
+}
+
+void Player::playBreakSound(block_type brokenBlock) {
+    StepSound ss = getStepSound(brokenBlock);
+    if (ss == STEP_NONE || ss == STEP_WATER || !stepSoundsLoaded) return;
+    if (ss - 1 >= NUM_SOUND_TYPES) return;
+
+    auto& set = breakSounds[ss - 1];
+    if (set.sounds.empty()) return;
+
+    static std::mt19937 rng(123);
     int idx = std::uniform_int_distribution<int>(0, (int)set.sounds.size() - 1)(rng);
     ma_sound_seek_to_pcm_frame(&set.sounds[idx], 0);
     ma_sound_start(&set.sounds[idx]);
@@ -103,7 +141,11 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     if (leftDown && !leftClickHeld && world) {
         isPunching = true;
         punchStartTime = glfwGetTime();
-        if (hasHighlight) world->destroyBlock(glm::vec3(targeted));
+        if (hasHighlight) {
+            Cube* block = world->getBlock(targeted.x, targeted.y, targeted.z);
+            if (block) playBreakSound(block->getType());
+            world->destroyBlock(glm::vec3(targeted));
+        }
     }
     leftClickHeld = leftDown;
 }
