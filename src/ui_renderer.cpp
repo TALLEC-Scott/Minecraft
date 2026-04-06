@@ -374,6 +374,55 @@ void UIRenderer::drawTextShadow(const std::string& text, float x, float y, float
     drawText(text, x, y, scale, color);
 }
 
+void UIRenderer::drawTextRotated(const std::string& text, float pivotX, float pivotY, float scale, float angleDeg,
+                                 glm::vec4 color) {
+    ensureState(true, fontTexture);
+    float rad = angleDeg * 3.14159f / 180.0f;
+    float cosA = std::cos(rad), sinA = std::sin(rad);
+
+    float totalW = (float)text.length() * GLYPH_W * scale;
+    float startX = -totalW / 2.0f; // center text on pivot
+    float startY = -GLYPH_H * scale / 2.0f;
+
+    constexpr float INV_W = 1.0f / 128.0f;
+    constexpr float INV_H = 1.0f / 48.0f;
+
+    for (size_t i = 0; i < text.size(); i++) {
+        int idx = text[i] - 32;
+        if (idx < 0 || idx >= 96) continue;
+        int col = idx % 16;
+        int row = idx / 16;
+        float u0 = col * 8.0f * INV_W;
+        float u1 = u0 + 8.0f * INV_W;
+        float v1 = 1.0f - row * 8.0f * INV_H;
+        float v0 = v1 - 8.0f * INV_H;
+
+        float lx = startX + i * GLYPH_W * scale;
+        float ly = startY;
+        float gw = GLYPH_W * scale;
+        float gh = GLYPH_H * scale;
+
+        // Rotate 4 corners around pivot
+        auto rot = [&](float x, float y) -> std::pair<float, float> {
+            return {pivotX + x * cosA - y * sinA, pivotY + x * sinA + y * cosA};
+        };
+        auto [x0, y0] = rot(lx, ly);
+        auto [x1, y1] = rot(lx, ly + gh);
+        auto [x2, y2] = rot(lx + gw, ly + gh);
+        auto [x3, y3] = rot(lx + gw, ly);
+
+        float verts[] = {
+            x0, y0, u0, v1, color.r, color.g, color.b, color.a,
+            x2, y2, u1, v0, color.r, color.g, color.b, color.a,
+            x3, y3, u1, v1, color.r, color.g, color.b, color.a,
+            x0, y0, u0, v1, color.r, color.g, color.b, color.a,
+            x1, y1, u0, v0, color.r, color.g, color.b, color.a,
+            x2, y2, u1, v0, color.r, color.g, color.b, color.a,
+        };
+        vertices.insert(vertices.end(), std::begin(verts), std::end(verts));
+    }
+}
+
 float UIRenderer::textWidth(const std::string& text, float scale) const {
     return (float)text.length() * GLYPH_W * scale;
 }
