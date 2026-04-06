@@ -9,7 +9,8 @@
 #include <algorithm>
 
 static constexpr int MAX_CHUNKS_PER_FRAME = 4;
-static constexpr int MAX_INTEGRATE_PER_FRAME = 4;
+static constexpr int MAX_INTEGRATE_PER_FRAME = 2;
+static constexpr int MAX_MESH_RESULTS_PER_FRAME = 8;
 
 ChunkManager::ChunkManager(int renderDist, int /*chunkSize*/, TerrainGenerator& terrainGenerator)
     : renderDistance(renderDist), terrainGenerator(terrainGenerator) {
@@ -47,6 +48,7 @@ void ChunkManager::update(glm::vec3 cameraPosition) {
     currentMin = minChunk;
     currentMax = maxChunk;
     drainResults();
+    queueDirtyMeshBuilds();
 #endif
 
     loadChunks(minChunk, maxChunk);
@@ -55,7 +57,6 @@ void ChunkManager::update(glm::vec3 cameraPosition) {
 
 void ChunkManager::loadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
 #ifdef __EMSCRIPTEN__
-    // Synchronous fallback
     int generated = 0;
     for (int x = minChunk.x; x <= maxChunk.x && generated < MAX_CHUNKS_PER_FRAME; x++) {
         for (int z = minChunk.y; z <= maxChunk.y && generated < MAX_CHUNKS_PER_FRAME; z++) {
@@ -67,7 +68,6 @@ void ChunkManager::loadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
         }
     }
 #else
-    // Enqueue missing chunks for background generation
     for (int x = minChunk.x; x <= maxChunk.x; x++) {
         for (int z = minChunk.y; z <= maxChunk.y; z++) {
             glm::ivec2 pos(x, z);
@@ -95,7 +95,6 @@ void ChunkManager::unloadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
     }
 
 #ifndef __EMSCRIPTEN__
-    // Also remove pending requests that are out of range
     for (auto it = pendingChunks.begin(); it != pendingChunks.end();) {
         if (it->x < minChunk.x || it->x > maxChunk.x || it->y < minChunk.y || it->y > maxChunk.y)
             it = pendingChunks.erase(it);
@@ -126,27 +125,86 @@ Chunk* ChunkManager::getChunk(int chunkX, int chunkZ) {
 #ifndef __EMSCRIPTEN__
 void ChunkManager::workerLoop() {
     while (true) {
+        bool isChunkGen = false;
+        bool isMeshBuild = false;
         glm::ivec2 pos;
+        MeshRequest meshReq;
         {
             std::unique_lock<std::mutex> lock(requestMutex);
-            requestCV.wait(lock, [&] { return !requestQueue.empty() || shutdownFlag.load(); });
-            if (shutdownFlag.load() && requestQueue.empty()) return;
-            pos = requestQueue.front();
-            requestQueue.pop();
+            requestCV.wait(lock, [&] {
+                return !requestQueue.empty() || !meshRequestQueue.empty() || shutdownFlag.load();
+            });
+            if (shutdownFlag.load() && requestQueue.empty() && meshRequestQueue.empty()) return;
+
+            // Prioritize mesh builds (faster, reduces visible pop-in)
+            if (!meshRequestQueue.empty()) {
+                meshReq = std::move(meshRequestQueue.front());
+                meshRequestQueue.pop();
+                isMeshBuild = true;
+            } else if (!requestQueue.empty()) {
+                pos = requestQueue.front();
+                requestQueue.pop();
+                isChunkGen = true;
+            }
         }
 
-        ChunkData data = generateChunkData(pos.x, pos.y, terrainGenerator);
-
-        {
+        if (isChunkGen) {
+            ChunkData data = generateChunkData(pos.x, pos.y, terrainGenerator);
             std::lock_guard<std::mutex> lock(resultMutex);
             resultQueue.push(std::move(data));
+        } else if (isMeshBuild) {
+            Chunk::MeshData mesh = buildMeshFromData(
+                meshReq.blocks.get(), meshReq.skyLight.get(),
+                meshReq.maxSolidY, meshReq.chunkX, meshReq.chunkZ,
+                meshReq.borders);
+            std::lock_guard<std::mutex> lock(resultMutex);
+            meshResultQueue.push({meshReq.pos, std::move(mesh)});
+        }
+    }
+}
+
+void ChunkManager::queueMeshBuild(glm::ivec2 pos) {
+    auto it = chunks.find(pos);
+    if (it == chunks.end()) return;
+    Chunk& chunk = it->second;
+    if (chunk.meshBuildInFlight) return;
+
+    // Snapshot neighbor borders
+    Chunk::NeighborBorders borders = Chunk::snapshotBorders(
+        getChunk(pos.x - 1, pos.y), getChunk(pos.x + 1, pos.y),
+        getChunk(pos.x, pos.y - 1), getChunk(pos.x, pos.y + 1));
+
+    MeshRequest req;
+    req.pos = pos;
+    req.blocks = chunk.blocks;     // shared_ptr copy — keeps data alive
+    req.skyLight = chunk.skyLight;  // shared_ptr copy
+    req.maxSolidY = chunk.maxSolidY;
+    req.chunkX = chunk.chunkX;
+    req.chunkZ = chunk.chunkY; // chunkY is actually Z coordinate
+    req.borders = borders;
+
+    chunk.meshBuildInFlight = true;
+
+    {
+        std::lock_guard<std::mutex> lock(requestMutex);
+        meshRequestQueue.push(std::move(req));
+    }
+    requestCV.notify_one();
+}
+
+void ChunkManager::queueDirtyMeshBuilds() {
+    // Queue mesh builds for dirty chunks that aren't already in-flight
+    for (auto& [pos, chunk] : chunks) {
+        if (chunk.meshDirty && !chunk.meshBuildInFlight) {
+            queueMeshBuild(pos);
+            chunk.markDirty(); // keep dirty until result arrives
         }
     }
 }
 
 void ChunkManager::drainResults() {
+    // Drain completed chunk generations
     int integrated = 0;
-
     while (integrated < MAX_INTEGRATE_PER_FRAME) {
         ChunkData data;
         {
@@ -159,20 +217,42 @@ void ChunkManager::drainResults() {
         glm::ivec2 pos(data.chunkX, data.chunkZ);
         pendingChunks.erase(pos);
 
-        // Discard if chunk is no longer in render range
         if (pos.x < currentMin.x || pos.x > currentMax.x || pos.y < currentMin.y || pos.y > currentMax.y) {
             continue;
         }
 
         chunks[pos] = Chunk(std::move(data));
 
-        // Invalidate neighbors for border face culling
+        // Queue async mesh build for the new chunk and its neighbors
+        queueMeshBuild(pos);
         for (auto& [dx, dz] : std::initializer_list<std::pair<int, int>>{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}) {
-            auto it = chunks.find(glm::ivec2(pos.x + dx, pos.y + dz));
-            if (it != chunks.end()) it->second.markDirty();
+            glm::ivec2 npos(pos.x + dx, pos.y + dz);
+            auto it = chunks.find(npos);
+            if (it != chunks.end()) {
+                it->second.markDirty();
+                queueMeshBuild(npos);
+            }
         }
 
         integrated++;
+    }
+
+    // Drain completed mesh builds
+    int meshDrained = 0;
+    while (meshDrained < MAX_MESH_RESULTS_PER_FRAME) {
+        MeshResult res;
+        {
+            std::lock_guard<std::mutex> lock(resultMutex);
+            if (meshResultQueue.empty()) break;
+            res = std::move(meshResultQueue.front());
+            meshResultQueue.pop();
+        }
+
+        auto it = chunks.find(res.pos);
+        if (it == chunks.end()) continue; // chunk was unloaded
+
+        it->second.setPendingMesh(std::move(res.mesh));
+        meshDrained++;
     }
 }
 #endif

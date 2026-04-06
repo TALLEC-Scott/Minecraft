@@ -17,7 +17,7 @@
 struct FrameAccum {
     double meshBuildMs = 0;
     int meshBuilds = 0;
-    int meshBuildBudget = 8; // max mesh builds per frame
+    int meshBuildBudget = 4; // max mesh builds per frame
     int opaqueTriangles = 0;
     int waterTriangles = 0;
     int opaqueDrawCalls = 0;
@@ -27,7 +27,7 @@ struct FrameAccum {
 
     void reset() {
         *this = {};
-        meshBuildBudget = 8;
+        meshBuildBudget = 4;
     }
 };
 

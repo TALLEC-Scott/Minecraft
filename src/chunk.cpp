@@ -59,8 +59,8 @@ static Cube* getBlockFromData(ChunkData& d, int i, int j, int k) {
 
 ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
     ChunkData d;
-    d.blocks = new Cube[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE];
-    d.skyLight = new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]();
+    d.blocks = std::shared_ptr<Cube[]>(new Cube[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]);
+    d.skyLight = std::shared_ptr<uint8_t[]>(new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]());
     d.chunkX = chunkX;
     d.chunkZ = chunkZ;
 
@@ -268,7 +268,7 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
         if (found) break;
     }
 
-    computeSkyLightData(d.blocks, d.skyLight, d.maxSolidY);
+    computeSkyLightData(d.blocks.get(), d.skyLight.get(), d.maxSolidY);
     return d;
 }
 
@@ -278,10 +278,8 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain)
 
 // Construct from pre-generated data (no computation, main thread only)
 Chunk::Chunk(ChunkData&& data) {
-    blocks = data.blocks;
-    data.blocks = nullptr;
-    skyLight = data.skyLight;
-    data.skyLight = nullptr;
+    blocks = std::move(data.blocks);
+    skyLight = std::move(data.skyLight);
     this->chunkX = data.chunkX;
     this->chunkY = data.chunkZ;
     maxSolidY = data.maxSolidY;
@@ -386,7 +384,7 @@ static void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY) 
 }
 
 void Chunk::computeSkyLight() {
-    computeSkyLightData(blocks, skyLight, maxSolidY);
+    computeSkyLightData(blocks.get(), skyLight.get(), maxSolidY);
 }
 
 uint8_t Chunk::getSkyLight(int x, int y, int z) const {
@@ -480,13 +478,23 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
     static constexpr int MAX_DIM = CHUNK_HEIGHT > CHUNK_SIZE ? CHUNK_HEIGHT : CHUNK_SIZE;
 
     constexpr size_t MAX_FACES = static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * 4;
+    constexpr int FLOATS_PER_VERT = 11;
     std::vector<float> opaqueVerts, waterVerts;
     std::vector<unsigned int> opaqueIdx, waterIdx;
-    opaqueVerts.reserve(MAX_FACES * 4 * 9);
+    opaqueVerts.reserve(MAX_FACES * 4 * FLOATS_PER_VERT);
     opaqueIdx.reserve(MAX_FACES * 6);
-    waterVerts.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 4 * 9);
+    waterVerts.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 4 * FLOATS_PER_VERT);
     waterIdx.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 6);
     unsigned int opaqueBase = 0, waterBase = 0;
+
+    // Pre-cache sky light values in a flat array for fast access (avoids getSkyLight bounds checks)
+    uint8_t* slPtr = skyLight.get();
+    auto slDirect = [slPtr](int x, int y, int z) -> float {
+        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE)
+            return 0.15f + 0.85f;
+        uint8_t sl = slPtr[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z];
+        return 0.15f + 0.85f * (sl / 15.0f);
+    };
 
     int mask[MAX_DIM][MAX_DIM];
     const float worldOff[3] = {(float)(chunkX * CHUNK_SIZE), 0.0f, (float)(chunkY * CHUNK_SIZE)};
@@ -620,9 +628,7 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
 
                         ao[vi] = AO_CURVE[aoVal];
 
-                        // Sky light stored separately — applied in shader, not baked into AO
-                        uint8_t sl = getSkyLight(bc[0] + n[0], bc[1] + n[1], bc[2] + n[2]);
-                        skyLightVals[vi] = 0.15f + 0.85f * (sl / 15.0f);
+                        skyLightVals[vi] = slDirect(bc[0] + n[0], bc[1] + n[1], bc[2] + n[2]);
                     }
 
                     bool isWater = (bt == (int)WATER);
@@ -630,18 +636,23 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     auto& idx = isWater ? waterIdx : opaqueIdx;
                     unsigned int& base = isWater ? waterBase : opaqueBase;
 
+                    // Batch-write 4 vertices (44 floats) at once
+                    size_t off = verts.size();
+                    verts.resize(off + 4 * FLOATS_PER_VERT);
+                    float* dst = &verts[off];
                     for (int vi = 0; vi < 4; vi++) {
-                        verts.push_back(vp[vi][0] + worldOff[0]);
-                        verts.push_back(vp[vi][1] + worldOff[1]);
-                        verts.push_back(vp[vi][2] + worldOff[2]);
-                        verts.push_back(uvs[vi][0]);
-                        verts.push_back(uvs[vi][1]);
-                        verts.push_back(norm.x);
-                        verts.push_back(norm.y);
-                        verts.push_back(norm.z);
-                        verts.push_back(layer);
-                        verts.push_back(ao[vi]);
-                        verts.push_back(skyLightVals[vi]);
+                        dst[0] = vp[vi][0] + worldOff[0];
+                        dst[1] = vp[vi][1] + worldOff[1];
+                        dst[2] = vp[vi][2] + worldOff[2];
+                        dst[3] = uvs[vi][0];
+                        dst[4] = uvs[vi][1];
+                        dst[5] = norm.x;
+                        dst[6] = norm.y;
+                        dst[7] = norm.z;
+                        dst[8] = layer;
+                        dst[9] = ao[vi];
+                        dst[10] = skyLightVals[vi];
+                        dst += FLOATS_PER_VERT;
                     }
                     // Flip quad diagonal when AO is asymmetric to avoid interpolation artifacts
                     if (ao[0] + ao[2] > ao[1] + ao[3]) {
@@ -673,18 +684,13 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
         }
     }
 
-    // Combine into one VBO/EBO (opaque first, then water)
-    std::vector<float> allVerts;
-    allVerts.insert(allVerts.end(), opaqueVerts.begin(), opaqueVerts.end());
-    allVerts.insert(allVerts.end(), waterVerts.begin(), waterVerts.end());
+    // Combine into one VBO/EBO (opaque first, then water) — append in-place
+    opaqueVerts.insert(opaqueVerts.end(), waterVerts.begin(), waterVerts.end());
+    for (auto idx_val : waterIdx) opaqueIdx.push_back(idx_val + opaqueBase);
 
-    // Store CPU-side mesh data for later GL upload
-    pendingMesh.verts = std::move(allVerts);
+    pendingMesh.verts = std::move(opaqueVerts);
+    pendingMesh.waterIdx.resize(waterIdx.size());
     pendingMesh.opaqueIdx = std::move(opaqueIdx);
-    pendingMesh.waterIdx.clear();
-    for (auto idx_val : waterIdx) pendingMesh.waterIdx.push_back(idx_val + opaqueBase);
-    pendingMesh.opaqueIdx.insert(pendingMesh.opaqueIdx.end(), pendingMesh.waterIdx.begin(), pendingMesh.waterIdx.end());
-    // opaqueIdx now contains all indices (opaque + water), waterIdx count is separate
     pendingMesh.ready = true;
 
     g_frame.meshBuildMs += (glfwGetTime() - _buildStart) * 1000.0;
@@ -693,6 +699,262 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
 
 void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
     buildMeshData(nx_neg, nx_pos, nz_neg, nz_pos);
+}
+
+Chunk::NeighborBorders Chunk::snapshotBorders(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
+    NeighborBorders nb;
+    if (nx_neg) {
+        nb.xNeg.valid = true;
+        for (int z = 0; z < CHUNK_SIZE; z++)
+            for (int y = 0; y < CHUNK_HEIGHT; y++)
+                nb.xNeg.types[z][y] = nx_neg->getBlock(CHUNK_SIZE - 1, y, z)->getType();
+    }
+    if (nx_pos) {
+        nb.xPos.valid = true;
+        for (int z = 0; z < CHUNK_SIZE; z++)
+            for (int y = 0; y < CHUNK_HEIGHT; y++)
+                nb.xPos.types[z][y] = nx_pos->getBlock(0, y, z)->getType();
+    }
+    if (nz_neg) {
+        nb.zNeg.valid = true;
+        for (int x = 0; x < CHUNK_SIZE; x++)
+            for (int y = 0; y < CHUNK_HEIGHT; y++)
+                nb.zNeg.types[x][y] = nz_neg->getBlock(x, y, CHUNK_SIZE - 1)->getType();
+    }
+    if (nz_pos) {
+        nb.zPos.valid = true;
+        for (int x = 0; x < CHUNK_SIZE; x++)
+            for (int y = 0; y < CHUNK_HEIGHT; y++)
+                nb.zPos.types[x][y] = nz_pos->getBlock(x, y, 0)->getType();
+    }
+    return nb;
+}
+
+// Free function: build mesh from raw data — fully thread-safe, no GL calls
+Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* skyLight,
+                                  int maxSolidY, int chunkX, int chunkZ,
+                                  const Chunk::NeighborBorders& nb) {
+
+    int opaqueH = std::min(maxSolidY + 2, (int)CHUNK_HEIGHT);
+    constexpr int OX = CHUNK_SIZE + 2, OZ = CHUNK_SIZE + 2;
+    std::vector<uint8_t> opaq(static_cast<size_t>(OX) * opaqueH * OZ, 0);
+    auto oIdx = [&](int x, int y, int z) -> int { return (x + 1) * opaqueH * OZ + y * OZ + (z + 1); };
+
+    for (int x = 0; x < CHUNK_SIZE; x++)
+        for (int y = 0; y < opaqueH; y++)
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                block_type t = blocks[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].getType();
+                opaq[oIdx(x, y, z)] = (t != AIR && t != WATER) ? 1 : 0;
+            }
+
+    for (int y = 0; y < opaqueH; y++)
+        for (int z = 0; z < CHUNK_SIZE; z++) {
+            if (nb.xNeg.valid) {
+                block_type t = nb.xNeg.types[z][y];
+                opaq[oIdx(-1, y, z)] = (t != AIR && t != WATER) ? 1 : 0;
+            }
+            if (nb.xPos.valid) {
+                block_type t = nb.xPos.types[z][y];
+                opaq[oIdx(CHUNK_SIZE, y, z)] = (t != AIR && t != WATER) ? 1 : 0;
+            }
+        }
+    for (int y = 0; y < opaqueH; y++)
+        for (int x = 0; x < CHUNK_SIZE; x++) {
+            if (nb.zNeg.valid) {
+                block_type t = nb.zNeg.types[x][y];
+                opaq[oIdx(x, y, -1)] = (t != AIR && t != WATER) ? 1 : 0;
+            }
+            if (nb.zPos.valid) {
+                block_type t = nb.zPos.types[x][y];
+                opaq[oIdx(x, y, CHUNK_SIZE)] = (t != AIR && t != WATER) ? 1 : 0;
+            }
+        }
+
+    // Helper: get block type from borders (replaces getBlockCross)
+    auto getTypeCross = [&](int i, int j, int k) -> block_type {
+        if (j < 0 || j >= CHUNK_HEIGHT) return AIR;
+        if (i >= 0 && i < CHUNK_SIZE && k >= 0 && k < CHUNK_SIZE)
+            return blocks[i * CHUNK_HEIGHT * CHUNK_SIZE + j * CHUNK_SIZE + k].getType();
+        if (i < 0) return nb.xNeg.valid ? nb.xNeg.types[k][j] : AIR;
+        if (i >= CHUNK_SIZE) return nb.xPos.valid ? nb.xPos.types[k][j] : AIR;
+        if (k < 0) return nb.zNeg.valid ? nb.zNeg.types[i][j] : AIR;
+        if (k >= CHUNK_SIZE) return nb.zPos.valid ? nb.zPos.types[i][j] : AIR;
+        return AIR;
+    };
+
+    // --- Same mesh construction as buildMeshData but using getTypeCross ---
+    constexpr int FLOATS_PER_VERT = 11;
+    struct FaceDef {
+        int d, u, v;
+        int d_sign, u_sign, v_sign;
+    };
+    static constexpr FaceDef FACE_DEFS[6] = {
+        {2, 0, 1, 1, 1, 1},   {2, 0, 1, -1, -1, 1},
+        {0, 2, 1, -1, 1, 1},  {0, 2, 1, 1, -1, 1},
+        {1, 0, 2, 1, 1, -1},  {1, 0, 2, -1, 1, 1},
+    };
+    static constexpr int DIM[3] = {CHUNK_SIZE, CHUNK_HEIGHT, CHUNK_SIZE};
+    static constexpr int MAX_DIM = CHUNK_HEIGHT > CHUNK_SIZE ? CHUNK_HEIGHT : CHUNK_SIZE;
+
+    constexpr size_t MAX_FACES = static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * 4;
+    std::vector<float> opaqueVerts, waterVerts;
+    std::vector<unsigned int> opaqueIdx, waterIdx;
+    opaqueVerts.reserve(MAX_FACES * 4 * FLOATS_PER_VERT);
+    opaqueIdx.reserve(MAX_FACES * 6);
+    waterVerts.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 4 * FLOATS_PER_VERT);
+    waterIdx.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 6);
+    unsigned int opaqueBase = 0, waterBase = 0;
+
+    auto slDirect = [skyLight](int x, int y, int z) -> float {
+        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE)
+            return 0.15f + 0.85f;
+        uint8_t sl = skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z];
+        return 0.15f + 0.85f * (sl / 15.0f);
+    };
+
+    int mask[MAX_DIM][MAX_DIM];
+    const float worldOff[3] = {(float)(chunkX * CHUNK_SIZE), 0.0f, (float)(chunkZ * CHUNK_SIZE)};
+    const int effDIM[3] = {CHUNK_SIZE, maxSolidY + 2, CHUNK_SIZE};
+
+    for (int f = 0; f < 6; f++) {
+        const FaceDef& fd = FACE_DEFS[f];
+        const glm::vec3& norm = FACE_NORMALS[f];
+        const int d_dim = std::min(DIM[fd.d], effDIM[fd.d]);
+        const int u_dim = std::min(DIM[fd.u], effDIM[fd.u]);
+        const int v_dim = std::min(DIM[fd.v], effDIM[fd.v]);
+
+        for (int d = 0; d < d_dim; d++) {
+            bool anyFace = false;
+            for (int u = 0; u < u_dim; u++) {
+                for (int v = 0; v < v_dim; v++) {
+                    int c[3]; c[fd.d] = d; c[fd.u] = u; c[fd.v] = v;
+                    block_type bt = blocks[c[0] * CHUNK_HEIGHT * CHUNK_SIZE + c[1] * CHUNK_SIZE + c[2]].getType();
+                    if (bt == AIR || (hasFlag(bt, BF_LIQUID) && f != 4)) {
+                        mask[u][v] = -1; continue;
+                    }
+                    int nc[3] = {c[0], c[1], c[2]};
+                    nc[fd.d] += fd.d_sign;
+                    block_type nbType = getTypeCross(nc[0], nc[1], nc[2]);
+                    int val = (nbType == AIR || (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID))) ? (int)bt : -1;
+                    mask[u][v] = val;
+                    if (val != -1) anyFace = true;
+                }
+            }
+            if (!anyFace) continue;
+
+            for (int u = 0; u < u_dim; u++) {
+                for (int v = 0; v < v_dim;) {
+                    int bt = mask[u][v];
+                    if (bt == -1) { v++; continue; }
+
+                    int h = 1, w = 1;
+                    if (g_greedyMeshing) {
+                        while (v + h < v_dim && mask[u][v + h] == bt) h++;
+                        w = 1;
+                        while (u + w < u_dim) {
+                            bool ok = true;
+                            for (int dv = 0; dv < h && ok; dv++) ok = (mask[u + w][v + dv] == bt);
+                            if (!ok) break; w++;
+                        }
+                    }
+
+                    float layer = (float)TextureArray::layerForFace((block_type)bt, f);
+                    float d_val = (float)d + fd.d_sign * 0.5f;
+                    float u_lo = (float)u - 0.5f, u_hi = (float)(u + w) - 0.5f;
+                    float v_lo = (float)v - 0.5f, v_hi = (float)(v + h) - 0.5f;
+                    float u0 = fd.u_sign > 0 ? u_lo : u_hi;
+                    float u1 = fd.u_sign > 0 ? u_hi : u_lo;
+                    float v0 = fd.v_sign > 0 ? v_lo : v_hi;
+                    float v1 = fd.v_sign > 0 ? v_hi : v_lo;
+
+                    float vp[4][3];
+                    vp[0][fd.d] = d_val; vp[0][fd.u] = u0; vp[0][fd.v] = v0;
+                    vp[1][fd.d] = d_val; vp[1][fd.u] = u0; vp[1][fd.v] = v1;
+                    vp[2][fd.d] = d_val; vp[2][fd.u] = u1; vp[2][fd.v] = v1;
+                    vp[3][fd.d] = d_val; vp[3][fd.u] = u1; vp[3][fd.v] = v0;
+
+                    const float uvs[4][2] = {{0.f, 0.f}, {0.f, (float)h}, {(float)w, (float)h}, {(float)w, 0.f}};
+
+                    static const float AO_CURVE[4] = {0.55f, 0.7f, 0.85f, 1.0f};
+                    float skyLightVals[4];
+                    int bu[4], bv[4], cu[4], cv[4];
+                    bu[0] = bu[1] = (fd.u_sign > 0) ? u : u + w - 1;
+                    bu[2] = bu[3] = (fd.u_sign > 0) ? u + w - 1 : u;
+                    bv[0] = bv[3] = (fd.v_sign > 0) ? v : v + h - 1;
+                    bv[1] = bv[2] = (fd.v_sign > 0) ? v + h - 1 : v;
+                    cu[0] = cu[1] = -fd.u_sign; cu[2] = cu[3] = fd.u_sign;
+                    cv[0] = cv[3] = -fd.v_sign; cv[1] = cv[2] = fd.v_sign;
+
+                    float ao[4];
+                    for (int vi = 0; vi < 4; vi++) {
+                        int bc[3]; bc[fd.d] = d; bc[fd.u] = bu[vi]; bc[fd.v] = bv[vi];
+                        int n[3] = {0, 0, 0}; n[fd.d] = fd.d_sign;
+                        int su[3] = {0, 0, 0}; su[fd.u] = cu[vi];
+                        int sv[3] = {0, 0, 0}; sv[fd.v] = cv[vi];
+
+                        int px = bc[0] + n[0], py = bc[1] + n[1], pz = bc[2] + n[2];
+                        int s1 = (py + su[1] >= 0 && py + su[1] < opaqueH)
+                                     ? opaq[oIdx(px + su[0], py + su[1], pz + su[2])] : 0;
+                        int s2 = (py + sv[1] >= 0 && py + sv[1] < opaqueH)
+                                     ? opaq[oIdx(px + sv[0], py + sv[1], pz + sv[2])] : 0;
+                        int cr = (py + su[1] + sv[1] >= 0 && py + su[1] + sv[1] < opaqueH)
+                                     ? opaq[oIdx(px + su[0] + sv[0], py + su[1] + sv[1], pz + su[2] + sv[2])] : 0;
+                        int aoVal = (s1 && s2) ? 0 : 3 - (s1 + s2 + cr);
+                        ao[vi] = AO_CURVE[aoVal];
+                        skyLightVals[vi] = slDirect(bc[0] + n[0], bc[1] + n[1], bc[2] + n[2]);
+                    }
+
+                    bool isWater = (bt == (int)WATER);
+                    auto& verts = isWater ? waterVerts : opaqueVerts;
+                    auto& idx = isWater ? waterIdx : opaqueIdx;
+                    unsigned int& base = isWater ? waterBase : opaqueBase;
+
+                    size_t off = verts.size();
+                    verts.resize(off + 4 * FLOATS_PER_VERT);
+                    float* dst = &verts[off];
+                    for (int vi = 0; vi < 4; vi++) {
+                        dst[0] = vp[vi][0] + worldOff[0]; dst[1] = vp[vi][1] + worldOff[1];
+                        dst[2] = vp[vi][2] + worldOff[2]; dst[3] = uvs[vi][0]; dst[4] = uvs[vi][1];
+                        dst[5] = norm.x; dst[6] = norm.y; dst[7] = norm.z;
+                        dst[8] = layer; dst[9] = ao[vi]; dst[10] = skyLightVals[vi];
+                        dst += FLOATS_PER_VERT;
+                    }
+
+                    if (ao[0] + ao[2] > ao[1] + ao[3]) {
+                        idx.push_back(base); idx.push_back(base + 1); idx.push_back(base + 2);
+                        idx.push_back(base + 2); idx.push_back(base + 3); idx.push_back(base);
+                    } else {
+                        idx.push_back(base + 1); idx.push_back(base + 2); idx.push_back(base + 3);
+                        idx.push_back(base + 3); idx.push_back(base); idx.push_back(base + 1);
+                    }
+                    base += 4;
+
+                    if (g_greedyMeshing) {
+                        for (int du = 0; du < w; du++)
+                            for (int dv = 0; dv < h; dv++) mask[u + du][v + dv] = -1;
+                    }
+                    v += h;
+                }
+            }
+        }
+    }
+
+    opaqueVerts.insert(opaqueVerts.end(), waterVerts.begin(), waterVerts.end());
+    for (auto idx_val : waterIdx) opaqueIdx.push_back(idx_val + opaqueBase);
+
+    Chunk::MeshData result;
+    result.verts = std::move(opaqueVerts);
+    result.waterIdx.resize(waterIdx.size());
+    result.opaqueIdx = std::move(opaqueIdx);
+    result.ready = true;
+    return result;
+}
+
+void Chunk::buildMeshDataAsync(const NeighborBorders& borders) {
+    double _buildStart = glfwGetTime();
+    pendingMesh = buildMeshFromData(blocks.get(), skyLight.get(), maxSolidY, chunkX, chunkY, borders);
+    g_frame.meshBuildMs += (glfwGetTime() - _buildStart) * 1000.0;
+    g_frame.meshBuilds++;
 }
 
 void Chunk::uploadMesh() {
@@ -750,7 +1012,8 @@ std::vector<Cube*> Chunk::render(const Shader& /*shaderProgram*/, Chunk* nx_neg,
                                  Chunk* nz_pos) {
     if (pendingMesh.ready) {
         uploadMesh();
-    } else if (meshDirty && g_frame.meshBuildBudget > 0) {
+    } else if (meshDirty && !meshBuildInFlight && g_frame.meshBuildBudget > 0) {
+        // Fallback: build on main thread if not queued for async
         buildMesh(nx_neg, nx_pos, nz_neg, nz_pos);
         uploadMesh();
         g_frame.meshBuildBudget--;
@@ -807,10 +1070,8 @@ void Chunk::destroy() {
         glDeleteBuffers(1, &chunkEBO);
         chunkEBO = 0;
     }
-    delete[] blocks;
-    blocks = nullptr;
-    delete[] skyLight;
-    skyLight = nullptr;
+    blocks.reset();
+    skyLight.reset();
 }
 
 Chunk::~Chunk() {
