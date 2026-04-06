@@ -42,10 +42,13 @@ void main() {
     vec3 sunLit = texColor.rgb * sunContrib * lightColor * ao * skyLight;
 
     // Moonlight: fades in as sun goes down, strongest at midnight
-    float moonIntensity = max(-sunDir.y, 0.0); // 0 during day, 1 at midnight
-    vec3 moonLit = texColor.rgb * 0.15 * moonIntensity * ao * skyLight * vec3(0.6, 0.7, 1.0);
+    float moonIntensity = max(-sunDir.y, 0.0);
+    vec3 moonLit = texColor.rgb * 0.25 * moonIntensity * ao * skyLight * vec3(0.6, 0.7, 1.0);
 
-    vec3 litColor = sunLit + moonLit;
+    // Base ambient so nighttime is never pitch black
+    vec3 baseAmbient = texColor.rgb * 0.08 * ao;
+
+    vec3 litColor = sunLit + moonLit + baseAmbient;
 
     // Blend with fog at render distance edges
     vec3 finalColor = mix(fogColor, litColor, fogFactor);
