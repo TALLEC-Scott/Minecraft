@@ -56,6 +56,12 @@
                     alert('WebGL context lost!');
                     e.preventDefault();
                 }, false);
+                // Click to capture mouse (browsers require user gesture for pointer lock)
+                c.addEventListener('click', function() {
+                    if (!document.pointerLockElement) {
+                        c.requestPointerLock();
+                    }
+                });
                 return c;
             })(),
             onRuntimeInitialized: function() {
