@@ -265,7 +265,7 @@ void Chunk::computeSkyLight() {
     std::memset(skyLight, 0, total);
 
     auto slIdx = [](int x, int y, int z) -> size_t {
-        return static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z;
+        return static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z;
     };
 
     // Phase 1: vertical ray — blocks with clear sky above get light 15
@@ -282,7 +282,7 @@ void Chunk::computeSkyLight() {
 
     // Phase 2: BFS flood fill — light spreads sideways through air, -1 per step
     std::vector<std::tuple<int, int, int>> queue;
-    queue.reserve(CHUNK_SIZE * CHUNK_SIZE * 4);
+    queue.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 4);
 
     // Seed BFS with all blocks at light 15 that have a dark neighbor
     for (int x = 0; x < CHUNK_SIZE; x++)
@@ -314,7 +314,7 @@ void Chunk::computeSkyLight() {
 
 uint8_t Chunk::getSkyLight(int x, int y, int z) const {
     if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 15;
-    return skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z];
+    return skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z];
 }
 
 Cube* Chunk::getBlock(int i, int j, int k) {
