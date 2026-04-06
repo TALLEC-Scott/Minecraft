@@ -260,6 +260,7 @@ int main(int argc, char* argv[]) {
 
     // Share audio engine with player for footstep sounds
     player.initAudio(menuObj.getAudioEngine());
+    menuObj.startMenuMusic();
 
     {
 #ifdef __EMSCRIPTEN__
@@ -1194,6 +1195,8 @@ int main(int argc, char* argv[]) {
                 }
                 if (next == GameState::MainMenu) {
                     glfwSetInputMode(window, GLFW_CURSOR_NORMAL, GLFW_CURSOR_NORMAL);
+                    menu.stopMusic();
+                    menu.startMenuMusic();
                 }
                 currentState = next;
             }

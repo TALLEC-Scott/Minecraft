@@ -1042,8 +1042,10 @@ void Chunk::renderWater(const Shader& /*shaderProgram*/, Chunk* /*nx_neg*/, Chun
 }
 
 void Chunk::destroyBlock(int x, int y, int z) {
-    blocks[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].setType(AIR);
-    computeSkyLight(); // recompute — broken block may expose new areas to light
+    size_t i = static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z;
+    blocks[i].setType(AIR);
+    // Inherit light from above — async mesh rebuild will correct nearby lighting
+    skyLight[i] = (y + 1 < CHUNK_HEIGHT) ? skyLight[i + CHUNK_SIZE] : 15;
     meshDirty = true;
 }
 
