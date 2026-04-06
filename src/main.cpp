@@ -78,6 +78,7 @@ static int nbFrames = 0, chunksRendered = 0;
 static void applySettings() {
     glfwSwapInterval(gameSettings.vsync ? 1 : 0);
     player.setMouseSensitivity(gameSettings.mouseSensitivity);
+    if (g_menu) g_menu->setMusicVolume(gameSettings.musicVolume);
     if (w) {
         w->chunkManager->setRenderDistance(gameSettings.renderDistance);
         // Rebuild all chunk meshes if greedy meshing toggle changed
@@ -103,9 +104,25 @@ void cursorPositionCallback(GLFWwindow* /*window*/, double xPos, double yPos) {
 
 glm::vec3 getSkyColor(float angle) {
     glm::vec3 noonColor(0.2f, 0.6f, 1.0f);
-    glm::vec3 duskColor(0.15f, 0.15f, 0.25f);
-    float t = (std::cos(angle) + 1.0f) * 0.5f;
-    return duskColor * (1.0f - t) + noonColor * t;
+    glm::vec3 sunsetColor(0.9f, 0.4f, 0.15f);
+    glm::vec3 duskColor(0.05f, 0.05f, 0.15f);
+    glm::vec3 nightColor(0.01f, 0.01f, 0.05f);
+
+    float sunHeight = std::sin(angle); // -1 (midnight) to 1 (noon)
+
+    if (sunHeight > 0.2f) {
+        // Day: blue sky
+        float t = (sunHeight - 0.2f) / 0.8f;
+        return glm::mix(sunsetColor, noonColor, t);
+    } else if (sunHeight > -0.1f) {
+        // Sunset/sunrise: orange → dusk
+        float t = (sunHeight + 0.1f) / 0.3f;
+        return glm::mix(duskColor, sunsetColor, t);
+    } else {
+        // Night: dark
+        float t = (sunHeight + 0.1f) / -0.9f;
+        return glm::mix(duskColor, nightColor, std::min(t, 1.0f));
+    }
 }
 
 void processInput(GLFWwindow* window) {
@@ -883,10 +900,11 @@ int main(int argc, char* argv[]) {
             glm::vec3 sunDir = glm::normalize(lightPos - cameraPos);
             shaderProgram.setVec3("sunDir", sunDir);
 
-            // Light color dims with sun height: white at noon, orange at sunset, dark at night
+            // Light color: warm orange near horizon, white at noon, fades to dark at night
             float sunH = std::max(sunDir.y, 0.0f);
-            glm::vec3 dayColor = glm::mix(glm::vec3(1.0f, 0.5f, 0.2f), glm::vec3(1.0f), std::min(sunH * 3.0f, 1.0f));
-            glm::vec3 sunColor = dayColor * std::min(sunH * 2.0f, 1.0f);
+            glm::vec3 sunsetTint(1.0f, 0.35f, 0.1f); // deep orange
+            glm::vec3 dayColor = glm::mix(sunsetTint, glm::vec3(1.0f), std::min(sunH * 2.0f, 1.0f));
+            glm::vec3 sunColor = dayColor * std::min(sunH * 1.5f, 1.0f);
             shaderProgram.setVec3("lightColor", sunColor);
 
             player.defineLookAt(shaderProgram);
@@ -993,7 +1011,7 @@ int main(int argc, char* argv[]) {
             }
 
             // Render moon billboard (opposite side of sun)
-            if (lightPos.y < 0) {
+            if (lightPos.y < 200.0f) { // moon rises before sun fully sets
                 glm::vec3 moonDir = glm::normalize(-lightPos + 2.0f * cameraPos); // opposite of sun
                 glm::vec3 moonCenter = cameraPos + moonDir * SUN_DISTANCE;
                 constexpr float MOON_SIZE = 45.0f;
@@ -1168,14 +1186,29 @@ int main(int argc, char* argv[]) {
                 shaderProgram.setFloat("emissive", 0.0f);
             }
 
-            // First-person arm
+            // First-person arm — lit by environment
             {
                 glm::mat4 armModel = player.getArmModelMatrix();
 
-                glClear(GL_DEPTH_BUFFER_BIT);                   // arm always on top
-                shaderProgram.setMat4("view", glm::mat4(1.0f)); // identity view (screen space)
+                // Sample sky light at player's feet for arm brightness
+                float armBrightness = 1.0f;
+                {
+                    int bx = (int)std::floor(cameraPos.x);
+                    int bz = (int)std::floor(cameraPos.z);
+                    int by = (int)std::floor(cameraPos.y - PLAYER_HEIGHT);
+                    int cx = worldToChunk(bx);
+                    int cz = worldToChunk(bz);
+                    Chunk* chunk = w->chunkManager->getChunk(cx, cz);
+                    if (chunk) {
+                        uint8_t sl = chunk->getSkyLight(worldToLocal(bx, cx), by, worldToLocal(bz, cz));
+                        armBrightness = 0.15f + 0.85f * (sl / 15.0f);
+                    }
+                }
+
+                glClear(GL_DEPTH_BUFFER_BIT);
+                shaderProgram.setMat4("view", glm::mat4(1.0f));
                 shaderProgram.setMat4("model", armModel);
-                shaderProgram.setFloat("emissive", 1.0f);
+                shaderProgram.setFloat("emissive", armBrightness);
                 glDisable(GL_CULL_FACE);
 
                 glBindVertexArray(armVAO);

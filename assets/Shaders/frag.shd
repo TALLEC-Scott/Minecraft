@@ -19,8 +19,8 @@ uniform vec3 fogColor;
 void main() {
     vec4 texColor = texture(ourTexture, vec3(TexCoord, texLayer));
 
-    if (emissive > 0.5) {
-        FragColor = texColor;
+    if (emissive > 0.01) {
+        FragColor = vec4(texColor.rgb * emissive, texColor.a);
         return;
     }
 

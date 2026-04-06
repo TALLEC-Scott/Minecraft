@@ -62,6 +62,11 @@ void Menu::startMenuMusic() {
     }
 }
 
+void Menu::setMusicVolume(float vol) {
+    if (musicLoaded) ma_sound_set_volume(&musicSound, vol);
+    if (menuMusicLoaded) ma_sound_set_volume(&menuMusicSound, vol);
+}
+
 void Menu::stopMenuMusic() {
     if (menuMusicLoaded && menuMusicPlaying) {
         ma_sound_stop(&menuMusicSound);
@@ -294,10 +299,12 @@ GameState Menu::drawSettings(UIRenderer& ui, int windowW, int windowH, GLFWwindo
 
     drawToggle(ui, "Greedy Meshing", ctrlX, startY + gap * 4, ctrlW, ctrlH, settings.greedyMeshing);
 
+    drawSlider(ui, "Music", 3, ctrlX, startY + gap * 5, ctrlW, ctrlH, settings.musicVolume, 0.0f, 1.0f);
+
     // Done button
     float btnW = 400.0f, btnH = 44.0f;
     float btnX = cx - btnW / 2.0f;
-    if (drawButton(ui, "Done", btnX, startY + gap * 5.5f, btnW, btnH)) next = settingsReturnState;
+    if (drawButton(ui, "Done", btnX, startY + gap * 6.5f, btnW, btnH)) next = settingsReturnState;
 
     if (escPressed(window)) next = settingsReturnState;
 
