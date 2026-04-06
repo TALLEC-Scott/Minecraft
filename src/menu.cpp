@@ -247,10 +247,12 @@ GameState Menu::drawSettings(UIRenderer& ui, int windowW, int windowH, GLFWwindo
 
     drawToggle(ui, "VSync", ctrlX, startY + gap * 3, ctrlW, ctrlH, settings.vsync);
 
+    drawToggle(ui, "Greedy Meshing", ctrlX, startY + gap * 4, ctrlW, ctrlH, settings.greedyMeshing);
+
     // Done button
     float btnW = 400.0f, btnH = 44.0f;
     float btnX = cx - btnW / 2.0f;
-    if (drawButton(ui, "Done", btnX, startY + gap * 4.5f, btnW, btnH)) next = settingsReturnState;
+    if (drawButton(ui, "Done", btnX, startY + gap * 5.5f, btnW, btnH)) next = settingsReturnState;
 
     if (escPressed(window)) next = settingsReturnState;
 

@@ -2,6 +2,8 @@
 build/
 build_asan/
 build_debug/
+build_web/
+settings.txt
 
 # IDE
 .vs/

@@ -102,8 +102,10 @@ else()
         tests/test_terrain.cpp
         tests/test_coordinates.cpp
         tests/test_biomes.cpp
+        tests/test_settings.cpp
         src/TerrainGenerator.cpp
         src/perlin_noise.cpp
+        src/game_state.cpp
     )
     target_include_directories(tests PRIVATE include Libraries/include)
     target_link_libraries(tests GTest::gtest_main)

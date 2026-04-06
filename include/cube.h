@@ -3,7 +3,8 @@
 #define RENDER_DISTANCE 16
 #define CHUNK_SIZE 16
 #define CHUNK_HEIGHT 128
-#define GREEDY_MESHING 0
+// Runtime greedy meshing toggle (default off due to AO interpolation artifacts)
+inline bool g_greedyMeshing = false;
 
 enum block_type {
     AIR,
