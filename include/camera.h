@@ -4,7 +4,7 @@
 
 #include "shader.h"
 
-#define SPEED 0.15f
+#define SPEED 0.05f
 #define GRAVITY 0.008f
 #define TERMINAL_VELOCITY -0.8f
 #define JUMP_VELOCITY 0.18f

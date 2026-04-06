@@ -20,6 +20,8 @@ class Menu {
     GameState settingsReturnState = GameState::MainMenu;
 
     ma_engine* getAudioEngine() { return audioInitialized ? &audioEngine : nullptr; }
+    void startMusic();
+    void stopMusic();
 
   private:
     GLuint dirtTexture = 0;
@@ -27,8 +29,11 @@ class Menu {
     // Audio
     ma_engine audioEngine;
     ma_sound clickSound;
+    ma_sound musicSound;
     bool audioInitialized = false;
     bool clickLoaded = false;
+    bool musicLoaded = false;
+    bool musicPlaying = false;
     void playClick();
 
     // Mouse state for click detection
