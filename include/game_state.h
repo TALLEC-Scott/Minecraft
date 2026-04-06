@@ -14,7 +14,7 @@ struct GameSettings {
     bool vsync = false;
     float mouseSensitivity = 1.0f;
     bool greedyMeshing = false;
-    float musicVolume = 0.3f;
+    float musicVolume = 1.0f;
 
     void load(const std::string& path);
     void save(const std::string& path) const;
