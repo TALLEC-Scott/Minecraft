@@ -268,7 +268,11 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) {
 }
 
 static bool isBlockOpaque(block_type t) {
-    return t != AIR && t != WATER;
+    return hasFlag(t, BF_OPAQUE);
+}
+
+static bool isBlockFiltering(block_type t) {
+    return hasFlag(t, BF_FILTERING);
 }
 
 void Chunk::computeSkyLight() {
@@ -279,14 +283,15 @@ void Chunk::computeSkyLight() {
         return static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z;
     };
 
-    // Phase 1: vertical ray — blocks with clear sky above get light 15
-    // Light passes through transparent blocks (air, water, leaves) without reduction
+    // Phase 1: vertical ray — light starts at 15, reduced by 1 per filtering block (leaves)
     for (int x = 0; x < CHUNK_SIZE; x++) {
         for (int z = 0; z < CHUNK_SIZE; z++) {
+            uint8_t light = 15;
             for (int y = CHUNK_HEIGHT - 1; y >= 0; y--) {
                 block_type bt = blocks[slIdx(x, y, z)].getType();
                 if (isBlockOpaque(bt)) break;
-                skyLight[slIdx(x, y, z)] = 15;
+                if (isBlockFiltering(bt)) light = (light > 1) ? light - 1 : 0;
+                skyLight[slIdx(x, y, z)] = light;
             }
         }
     }
@@ -315,7 +320,7 @@ void Chunk::computeSkyLight() {
             block_type bt = blocks[slIdx(nx, ny, nz)].getType();
             if (isBlockOpaque(bt)) continue;
 
-            uint8_t newLight = (light >= 3) ? light - 3 : 0;
+            uint8_t newLight = light - 1;
             if (skyLight[slIdx(nx, ny, nz)] >= newLight) continue;
             skyLight[slIdx(nx, ny, nz)] = newLight;
             queue.emplace_back(nx, ny, nz);
@@ -446,7 +451,8 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
                     c[fd.u] = u;
                     c[fd.v] = v;
                     block_type bt = getBlock(c[0], c[1], c[2])->getType();
-                    if (bt == AIR || (bt == WATER && f != 4)) {
+                    // Skip air; skip liquid sides (only render top face, f==4)
+                    if (bt == AIR || (hasFlag(bt, BF_LIQUID) && f != 4)) {
                         mask[u][v] = -1;
                         continue;
                     }
@@ -455,8 +461,8 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
                     nc[fd.d] += fd.d_sign;
                     Cube* nb = getBlockCross(this, nc[0], nc[1], nc[2], nx_neg, nx_pos, nz_neg, nz_pos);
                     block_type nbType = nb ? nb->getType() : AIR;
-                    bool isWater = (bt == WATER);
-                    int val = (!nb || nbType == AIR || (nbType == WATER && !isWater)) ? (int)bt : -1;
+                    // Show face if neighbor is air or liquid next to solid
+                    int val = (!nb || nbType == AIR || (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID))) ? (int)bt : -1;
                     mask[u][v] = val;
                     if (val != -1) anyFace = true;
                 }
@@ -555,7 +561,7 @@ void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos
 
                         // Sky light stored separately — applied in shader, not baked into AO
                         uint8_t sl = getSkyLight(bc[0] + n[0], bc[1] + n[1], bc[2] + n[2]);
-                        skyLightVals[vi] = 0.4f + 0.6f * (sl / 15.0f);
+                        skyLightVals[vi] = 0.15f + 0.85f * (sl / 15.0f);
                     }
 
                     bool isWater = (bt == (int)WATER);

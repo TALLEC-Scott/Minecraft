@@ -5,6 +5,9 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <miniaudio.h>
+#include <vector>
+#include <string>
 
 class World;
 class ChunkManager;
@@ -12,6 +15,10 @@ class ChunkManager;
 class Player {
   public:
     Player();
+    ~Player();
+
+    void initAudio(ma_engine* engine);
+    void destroyAudio();
 
     // Input
     void handleInput(GLFWwindow* window, World* world);
@@ -64,4 +71,16 @@ class Player {
 
     void findGroundAndUpdate(World* world);
     void updateTargetedBlock(World* world);
+
+    // Footstep audio
+    ma_engine* audioEngine = nullptr;
+    struct StepSoundSet {
+        std::vector<ma_sound> sounds;
+    };
+    StepSoundSet stepSounds[6]; // indexed by StepSound-1 (STEP_GRASS..STEP_WOOD)
+    bool stepSoundsLoaded = false;
+    glm::vec3 lastStepPos = glm::vec3(0);
+    float distSinceStep = 0.0f;
+    static constexpr float STEP_INTERVAL = 2.5f;
+    void playStepSound(block_type groundBlock);
 };

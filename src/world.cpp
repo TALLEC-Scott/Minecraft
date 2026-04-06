@@ -39,10 +39,10 @@ void World::destroyBlock(glm::vec3 position) const {
     int bz = (int)std::floor(position.z);
     if (by < 0 || by >= CHUNK_HEIGHT) return;
 
-    int chunkX = (bx >= 0) ? bx / CHUNK_SIZE : (bx - CHUNK_SIZE + 1) / CHUNK_SIZE;
-    int chunkZ = (bz >= 0) ? bz / CHUNK_SIZE : (bz - CHUNK_SIZE + 1) / CHUNK_SIZE;
-    int lx = bx - chunkX * CHUNK_SIZE;
-    int lz = bz - chunkZ * CHUNK_SIZE;
+    int chunkX = worldToChunk(bx);
+    int chunkZ = worldToChunk(bz);
+    int lx = worldToLocal(bx, chunkX);
+    int lz = worldToLocal(bz, chunkZ);
 
     auto chunk = this->chunkManager->getChunk(chunkX, chunkZ);
     if (chunk) chunk->destroyBlock(lx, by, lz);
@@ -60,8 +60,8 @@ Chunk* World::getChunk(int x, int y) {
 Cube* World::getBlock(int x, int y, int z) const {
     if (y < 0 || y >= CHUNK_HEIGHT) return nullptr;
 
-    int chunkX = (x >= 0) ? x / CHUNK_SIZE : (x - CHUNK_SIZE + 1) / CHUNK_SIZE;
-    int chunkZ = (z >= 0) ? z / CHUNK_SIZE : (z - CHUNK_SIZE + 1) / CHUNK_SIZE;
+    int chunkX = worldToChunk(x);
+    int chunkZ = worldToChunk(z);
 
     auto res = this->chunkManager->getChunk(chunkX, chunkZ);
     if (res == nullptr) return nullptr;
@@ -152,12 +152,12 @@ bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::i
     while (dist < maxDist) {
         // Check current block
         if (pos.y >= 0 && pos.y < CHUNK_HEIGHT) {
-            int chunkX = (pos.x >= 0) ? pos.x / CHUNK_SIZE : (pos.x - CHUNK_SIZE + 1) / CHUNK_SIZE;
-            int chunkZ = (pos.z >= 0) ? pos.z / CHUNK_SIZE : (pos.z - CHUNK_SIZE + 1) / CHUNK_SIZE;
+            int chunkX = worldToChunk(pos.x);
+            int chunkZ = worldToChunk(pos.z);
             Chunk* chunk = chunkManager->getChunk(chunkX, chunkZ);
             if (chunk) {
-                int lx = pos.x - chunkX * CHUNK_SIZE;
-                int lz = pos.z - chunkZ * CHUNK_SIZE;
+                int lx = worldToLocal(pos.x, chunkX);
+                int lz = worldToLocal(pos.z, chunkZ);
                 Cube* block = chunk->getBlock(lx, pos.y, lz);
                 if (block && block->getType() != AIR && block->getType() != WATER) {
                     hitPos = pos;

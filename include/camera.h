@@ -31,6 +31,7 @@ class Camera {
 
     void toggleWalkMode();
     bool isWalkMode() const { return walkMode; }
+    bool isOnGround() const { return onGround; }
     // isSolid: callback to check if block at (x,y,z) is solid
     using BlockCheck = bool (*)(int, int, int, void*);
     void update(float groundHeight, BlockCheck isSolid, void* ctx = nullptr);
