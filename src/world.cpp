@@ -121,7 +121,6 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
         vc.chunk->renderWater(shaderProgram, nx_neg, nx_pos, nz_neg, nz_pos);
     }
     glDisable(GL_BLEND);
-    shaderProgram.setInt("materialType", 0);
 
     return rendered;
 }
