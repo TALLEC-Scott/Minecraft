@@ -69,6 +69,60 @@ void World::destroyBlock(glm::vec3 position) const {
     markBorderNeighborsDirty(chunkManager, chunkX, chunkZ, lx, lz);
 }
 
+// World-space BFS: flood block light from a source, crossing chunk boundaries.
+// Caches chunk pointer to avoid repeated hash lookups for blocks in the same chunk.
+static void floodBlockLight(ChunkManager* cm, int sx, int sy, int sz, uint8_t emission) {
+    static const int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    auto toIdx = [](int lx, int y, int lz) -> size_t {
+        return static_cast<size_t>(lx) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + lz;
+    };
+
+    // Resolve world coord to chunk + local, with chunk pointer cache
+    int cachedCX = INT_MIN, cachedCZ = INT_MIN;
+    Chunk* cachedChunk = nullptr;
+    auto resolve = [&](int wx, int wy, int wz) -> std::pair<Chunk*, size_t> {
+        if (wy < 0 || wy >= CHUNK_HEIGHT) return {nullptr, 0};
+        int cx = worldToChunk(wx), cz = worldToChunk(wz);
+        if (cx != cachedCX || cz != cachedCZ) {
+            cachedCX = cx; cachedCZ = cz;
+            cachedChunk = cm->getChunk(cx, cz);
+        }
+        if (!cachedChunk || !cachedChunk->blockLight) return {nullptr, 0};
+        return {cachedChunk, toIdx(worldToLocal(wx, cx), wy, worldToLocal(wz, cz))};
+    };
+
+    struct Node { int x, y, z; };
+    std::vector<Node> queue;
+    queue.reserve(4096);
+
+    auto [srcChunk, srcIdx] = resolve(sx, sy, sz);
+    if (!srcChunk) return;
+    srcChunk->blockLight.get()[srcIdx] = emission;
+    srcChunk->markDirty();
+    queue.push_back({sx, sy, sz});
+
+    size_t head = 0;
+    while (head < queue.size()) {
+        auto [bx, by, bz] = queue[head++];
+        auto [chunk, idx] = resolve(bx, by, bz);
+        if (!chunk) continue;
+        uint8_t light = chunk->blockLight.get()[idx];
+        if (light <= 1) continue;
+        for (auto& d : DIRS) {
+            int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
+            auto [nc, ni] = resolve(nx, ny, nz);
+            if (!nc) continue;
+            block_type bt = nc->blocks.get()[ni].getType();
+            if (hasFlag(bt, BF_OPAQUE) && getBlockLightEmission(bt) == 0) continue;
+            uint8_t propagated = light - 1;
+            if (nc->blockLight.get()[ni] >= propagated) continue;
+            nc->blockLight.get()[ni] = propagated;
+            nc->markDirty();
+            queue.push_back({nx, ny, nz});
+        }
+    }
+}
+
 void World::placeBlock(glm::ivec3 position, block_type type) const {
     int bx = position.x;
     int by = position.y;
@@ -84,6 +138,12 @@ void World::placeBlock(glm::ivec3 position, block_type type) const {
     if (!chunk) return;
     chunk->placeBlock(lx, by, lz, type);
     markBorderNeighborsDirty(chunkManager, chunkX, chunkZ, lx, lz);
+
+    // Flood block light in world space, crossing chunk boundaries
+    uint8_t emission = getBlockLightEmission(type);
+    if (emission > 0) {
+        floodBlockLight(chunkManager, bx, by, bz, emission);
+    }
 }
 
 World::~World() {

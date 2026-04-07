@@ -66,6 +66,7 @@ class ChunkManager {
         glm::ivec2 pos;
         std::shared_ptr<Cube[]> blocks;
         std::shared_ptr<uint8_t[]> skyLight;
+        std::shared_ptr<uint8_t[]> blockLight;
         int maxSolidY;
         int chunkX, chunkZ;
         Chunk::NeighborBorders borders;

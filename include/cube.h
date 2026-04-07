@@ -78,6 +78,11 @@ enum StepSound {
     STEP_CLOTH
 };
 
+inline uint8_t getBlockLightEmission(block_type t) {
+    if (t == GLOWSTONE) return 15;
+    return 0;
+}
+
 inline StepSound getStepSound(block_type t) {
     // clang-format off
     static const StepSound sounds[] = {

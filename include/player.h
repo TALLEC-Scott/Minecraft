@@ -51,6 +51,7 @@ class Player {
     Camera& getCamera() { return camera; }
 
     void resetMouseState() { firstMouse = true; }
+    void consumeMouseButtons() { leftClickHeld = true; rightClickHeld = true; }
     void setMouseSensitivity(float s) { mouseSensitivity = s; }
 
   private:
