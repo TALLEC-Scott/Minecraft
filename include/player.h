@@ -40,6 +40,7 @@ class Player {
     // Hotbar
     static constexpr int HOTBAR_SIZE = 10;
     int getSelectedSlot() const { return selectedSlot; }
+    void setSelectedSlot(int s) { selectedSlot = s; }
     block_type getSelectedBlockType() const { return hotbar[selectedSlot]; }
     const block_type* getHotbar() const { return hotbar; }
 
@@ -61,7 +62,7 @@ class Player {
     bool hasHighlight = false;
 
     // Hotbar
-    block_type hotbar[HOTBAR_SIZE] = {GRASS, DIRT, STONE, WOOD, SAND, SNOW, GLOWSTONE, LEAVES, COAL_ORE, GRAVEL};
+    block_type hotbar[HOTBAR_SIZE] = {AIR, GRASS, DIRT, STONE, WOOD, SAND, SNOW, GLOWSTONE, LEAVES, COAL_ORE};
     int selectedSlot = 0;
     bool rightClickHeld = false;
 
