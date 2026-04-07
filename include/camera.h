@@ -36,7 +36,7 @@ class Camera {
     bool isOnGround() const { return onGround; }
     // isSolid: callback to check if block at (x,y,z) is solid
     using BlockCheck = bool (*)(int, int, int, void*);
-    void update(float groundHeight, BlockCheck isSolid, void* ctx = nullptr);
+    void update(BlockCheck isSolid, void* ctx = nullptr);
 
     void changeDirection(glm::vec3 direction);
     glm::vec3 getPosition() const;
