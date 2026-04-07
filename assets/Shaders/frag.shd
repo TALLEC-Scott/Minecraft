@@ -22,9 +22,11 @@ uniform int fancyLeaves;
 void main() {
     float isWater = float(materialType);
     vec2 uv = TexCoord;
-    // Water UV animation (no-op when isWater=0)
-    uv += isWater * (vec2(time * 0.03, time * 0.02)
-        + 0.02 * vec2(sin(FragPos.x * 2.0 + time * 1.5), cos(FragPos.z * 2.0 + time * 1.2)));
+    // Water UV animation — only compute sin/cos for actual water fragments
+    if (isWater > 0.5) {
+        uv += vec2(time * 0.03, time * 0.02)
+            + 0.02 * vec2(sin(FragPos.x * 2.0 + time * 1.5), cos(FragPos.z * 2.0 + time * 1.2));
+    }
 
     vec4 texColor = texture(ourTexture, vec3(uv, texLayer));
 

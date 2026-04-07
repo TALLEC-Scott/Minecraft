@@ -981,8 +981,11 @@ int main(int argc, char* argv[]) {
             shaderProgram.setFloat("fogStart", fogStart);
             shaderProgram.setFloat("fogEnd", fogEnd);
             shaderProgram.setVec3("fogColor", skyColor);
-            shaderProgram.setFloat("time", (float)glfwGetTime());
+            float gameTime = (float)glfwGetTime();
+            shaderProgram.setFloat("time", gameTime);
             shaderProgram.setInt("fancyLeaves", g_fancyLeaves ? 1 : 0);
+            shaderProgram.setVec2("leafSway", glm::vec2(std::sin(gameTime * 2.0f) * 0.06f,
+                                                         std::cos(gameTime * 1.5f) * 0.04f));
 
             // Targeting handled by player.update()
 
