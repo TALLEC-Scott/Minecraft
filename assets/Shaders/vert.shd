@@ -6,6 +6,7 @@ layout (location = 2) in vec3 aNormal;
 layout (location = 3) in float aTexLayer;
 layout (location = 4) in float aAO;
 layout (location = 5) in float aSkyLight;
+layout (location = 6) in float aBlockLight;
 
 out vec2 TexCoord;
 out vec3 Normal;
@@ -13,6 +14,7 @@ out vec3 FragPos;
 out float texLayer;
 out float ao;
 out float skyLight;
+out float blockLight;
 out float fogFactor;
 
 uniform mat4 projection;
@@ -29,6 +31,7 @@ void main() {
     texLayer = aTexLayer;
     ao = aAO;
     skyLight = aSkyLight;
+    blockLight = aBlockLight;
 
     vec3 pos = aPos;
     // Leaf sway: branchless — isLeaf is 0 or 1

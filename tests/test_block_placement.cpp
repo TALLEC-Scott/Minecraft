@@ -258,6 +258,252 @@ TEST(SkyLightTest, PlacedBlockSkyLightIsZero) {
     EXPECT_EQ(tc.skyLight[skyIdx(x, y, z)], 0);
 }
 
+// --- Block Light Tests ---
+
+// Replicate computeBlockLightData BFS (same algorithm as chunk.cpp)
+static void computeBlockLight(Cube* blocks, uint8_t* blockLight) {
+    const size_t total = static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE;
+    memset(blockLight, 0, total);
+    static const int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+
+    struct Node { int x, y, z; };
+    std::vector<Node> queue;
+    for (int x = 0; x < CHUNK_SIZE; x++)
+        for (int y = 0; y < CHUNK_HEIGHT; y++)
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                uint8_t em = getBlockLightEmission(blocks[skyIdx(x, y, z)].getType());
+                if (em > 0) {
+                    blockLight[skyIdx(x, y, z)] = em;
+                    queue.push_back({x, y, z});
+                }
+            }
+    size_t head = 0;
+    while (head < queue.size()) {
+        auto [cx, cy, cz] = queue[head++];
+        uint8_t light = blockLight[skyIdx(cx, cy, cz)];
+        if (light <= 1) continue;
+        for (auto& d : DIRS) {
+            int nx = cx + d[0], ny = cy + d[1], nz = cz + d[2];
+            if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= CHUNK_HEIGHT || nz < 0 || nz >= CHUNK_SIZE) continue;
+            if (hasFlag(blocks[skyIdx(nx, ny, nz)].getType(), BF_OPAQUE)) continue;
+            uint8_t newLight = light - 1;
+            if (blockLight[skyIdx(nx, ny, nz)] >= newLight) continue;
+            blockLight[skyIdx(nx, ny, nz)] = newLight;
+            queue.push_back({nx, ny, nz});
+        }
+    }
+}
+
+// Simulate cross-chunk border propagation: seed from one chunk's border into the other
+static void propagateBorderBlockLight(Cube* blocks, uint8_t* blockLight, const uint8_t* neighborBorder, int borderX) {
+    static const int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    struct Node { int x, y, z; };
+    std::vector<Node> queue;
+    // Seed: for each block on our border, check if neighbor has higher light
+    for (int y = 0; y < CHUNK_HEIGHT; y++)
+        for (int z = 0; z < CHUNK_SIZE; z++) {
+            uint8_t nLight = neighborBorder[y * CHUNK_SIZE + z];
+            if (nLight > 1 && nLight - 1 > blockLight[skyIdx(borderX, y, z)] &&
+                !hasFlag(blocks[skyIdx(borderX, y, z)].getType(), BF_OPAQUE)) {
+                blockLight[skyIdx(borderX, y, z)] = nLight - 1;
+                queue.push_back({borderX, y, z});
+            }
+        }
+    size_t head = 0;
+    while (head < queue.size()) {
+        auto [cx, cy, cz] = queue[head++];
+        uint8_t light = blockLight[skyIdx(cx, cy, cz)];
+        if (light <= 1) continue;
+        for (auto& d : DIRS) {
+            int nx = cx + d[0], ny = cy + d[1], nz = cz + d[2];
+            if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= CHUNK_HEIGHT || nz < 0 || nz >= CHUNK_SIZE) continue;
+            if (hasFlag(blocks[skyIdx(nx, ny, nz)].getType(), BF_OPAQUE)) continue;
+            uint8_t newLight = light - 1;
+            if (blockLight[skyIdx(nx, ny, nz)] >= newLight) continue;
+            blockLight[skyIdx(nx, ny, nz)] = newLight;
+            queue.push_back({nx, ny, nz});
+        }
+    }
+}
+
+TEST(BlockLightTest, GlowstoneEmitsLight) {
+    TestChunk tc;
+    uint8_t blockLight[CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
+    // Place glowstone at (8, 65, 8)
+    tc.blocks[skyIdx(8, 65, 8)].setType(GLOWSTONE);
+    computeBlockLight(tc.blocks, blockLight);
+
+    EXPECT_EQ(blockLight[skyIdx(8, 65, 8)], 15);
+    // Adjacent blocks get 14
+    EXPECT_EQ(blockLight[skyIdx(9, 65, 8)], 14);
+    EXPECT_EQ(blockLight[skyIdx(8, 66, 8)], 14);
+    // Two away gets 13
+    EXPECT_EQ(blockLight[skyIdx(10, 65, 8)], 13);
+}
+
+TEST(BlockLightTest, LightBlockedByOpaque) {
+    TestChunk tc;
+    uint8_t blockLight[CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
+    // Place glowstone at (8, 65, 8) and a stone wall next to it
+    tc.blocks[skyIdx(8, 65, 8)].setType(GLOWSTONE);
+    tc.blocks[skyIdx(9, 65, 8)].setType(STONE);
+    computeBlockLight(tc.blocks, blockLight);
+
+    EXPECT_EQ(blockLight[skyIdx(8, 65, 8)], 15);
+    // Stone blocks light
+    EXPECT_EQ(blockLight[skyIdx(9, 65, 8)], 0);
+    // Behind the wall: light must go around (at least 3 steps away), so much dimmer
+    EXPECT_LT(blockLight[skyIdx(10, 65, 8)], 13);
+}
+
+TEST(BlockLightTest, LightAttenuatesUniformly) {
+    TestChunk tc;
+    uint8_t blockLight[CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
+    tc.blocks[skyIdx(8, 65, 8)].setType(GLOWSTONE);
+    computeBlockLight(tc.blocks, blockLight);
+
+    // Light decreases by 1 per block in any direction
+    for (int dist = 1; dist <= 7; dist++) {
+        // Check along +X
+        if (8 + dist < CHUNK_SIZE) {
+            EXPECT_EQ(blockLight[skyIdx(8 + dist, 65, 8)], 15 - dist)
+                << "Light at distance " << dist << " should be " << (15 - dist);
+        }
+    }
+}
+
+TEST(BlockLightTest, CrossChunkPropagation) {
+    // Simulate two adjacent chunks: chunkA (left) has glowstone at x=15, chunkB (right) should receive light
+
+    // ChunkA: glowstone at (15, 65, 8)
+    TestChunk chunkA;
+    uint8_t blockLightA[CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
+    chunkA.blocks[skyIdx(15, 65, 8)].setType(GLOWSTONE);
+    computeBlockLight(chunkA.blocks, blockLightA);
+
+    // ChunkA's x=15 border should have light
+    EXPECT_EQ(blockLightA[skyIdx(15, 65, 8)], 15);
+
+    // ChunkB: empty air above floor, no emissive blocks
+    TestChunk chunkB;
+    uint8_t blockLightB[CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
+    computeBlockLight(chunkB.blocks, blockLightB);
+    EXPECT_EQ(blockLightB[skyIdx(0, 65, 8)], 0); // no light yet
+
+    // Extract chunkA's x=15 border as neighbor data for chunkB
+    uint8_t borderFromA[CHUNK_HEIGHT * CHUNK_SIZE];
+    for (int y = 0; y < CHUNK_HEIGHT; y++)
+        for (int z = 0; z < CHUNK_SIZE; z++)
+            borderFromA[y * CHUNK_SIZE + z] = blockLightA[skyIdx(15, y, z)];
+
+    // Propagate from A's border into B's x=0
+    propagateBorderBlockLight(chunkB.blocks, blockLightB, borderFromA, 0);
+
+    // ChunkB's x=0 should now have light from the glowstone (15 - 1 = 14)
+    EXPECT_EQ(blockLightB[skyIdx(0, 65, 8)], 14)
+        << "Cross-chunk propagation: block at x=0 should receive light 14 from neighbor's glowstone at x=15";
+
+    // Light should continue propagating inward
+    EXPECT_EQ(blockLightB[skyIdx(1, 65, 8)], 13);
+    EXPECT_EQ(blockLightB[skyIdx(2, 65, 8)], 12);
+
+    // Far away should have no light (14 steps in = 0)
+    EXPECT_EQ(blockLightB[skyIdx(14, 65, 8)], 0);
+}
+
+TEST(BlockLightTest, WorldSpaceBFSCrossesMultipleChunks) {
+    // Simulate world-space BFS: glowstone at chunk A's corner (x=15, z=15)
+    // Light should reach into chunk B (+X), chunk C (+Z), and chunk D (+X,+Z diagonal)
+    // We simulate 4 chunks as separate arrays, using world-to-local conversion
+
+    static constexpr size_t TOTAL = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
+    // Chunk (0,0), (1,0), (0,1), (1,1)
+    Cube blocksA[TOTAL], blocksB[TOTAL], blocksC[TOTAL], blocksD[TOTAL];
+    uint8_t lightA[TOTAL], lightB[TOTAL], lightC[TOTAL], lightD[TOTAL];
+    memset(lightA, 0, TOTAL); memset(lightB, 0, TOTAL);
+    memset(lightC, 0, TOTAL); memset(lightD, 0, TOTAL);
+
+    // All air except floor at y<=60
+    auto initChunk = [](Cube* blocks) {
+        for (size_t i = 0; i < TOTAL; i++) blocks[i].setType(AIR);
+        for (int x = 0; x < CHUNK_SIZE; x++)
+            for (int z = 0; z < CHUNK_SIZE; z++)
+                for (int y = 0; y <= 60; y++)
+                    blocks[skyIdx(x, y, z)].setType(STONE);
+    };
+    initChunk(blocksA); initChunk(blocksB); initChunk(blocksC); initChunk(blocksD);
+
+    // World-space accessor helpers
+    auto getChunkData = [&](int wx, int wz) -> std::pair<Cube*, uint8_t*> {
+        int cx = wx / CHUNK_SIZE, cz = wz / CHUNK_SIZE;
+        if (wx < 0 || wz < 0) return {nullptr, nullptr}; // out of our 4-chunk grid
+        if (cx == 0 && cz == 0) return {blocksA, lightA};
+        if (cx == 1 && cz == 0) return {blocksB, lightB};
+        if (cx == 0 && cz == 1) return {blocksC, lightC};
+        if (cx == 1 && cz == 1) return {blocksD, lightD};
+        return {nullptr, nullptr};
+    };
+
+    // World-space BFS (same algorithm as floodBlockLight in world.cpp)
+    struct Node { int x, y, z; };
+    std::vector<Node> queue;
+    int sx = 15, sy = 65, sz = 15; // world coords: chunk A corner
+
+    // Place glowstone
+    blocksA[skyIdx(15, 65, 15)].setType(GLOWSTONE);
+    lightA[skyIdx(15, 65, 15)] = 15;
+    queue.push_back({sx, sy, sz});
+
+    static const int DIRS[6][3] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+    size_t head = 0;
+    while (head < queue.size()) {
+        auto [cx, cy, cz] = queue[head++];
+        auto [cblocks, clight] = getChunkData(cx, cz);
+        if (!cblocks) continue;
+        int lx = cx % CHUNK_SIZE, lz = cz % CHUNK_SIZE;
+        uint8_t light = clight[skyIdx(lx, cy, lz)];
+        if (light <= 1) continue;
+        for (auto& d : DIRS) {
+            int nx = cx + d[0], ny = cy + d[1], nz = cz + d[2];
+            if (ny < 0 || ny >= CHUNK_HEIGHT) continue;
+            auto [nblocks, nlight] = getChunkData(nx, nz);
+            if (!nblocks) continue;
+            int nlx = nx % CHUNK_SIZE, nlz = nz % CHUNK_SIZE;
+            if (hasFlag(nblocks[skyIdx(nlx, ny, nlz)].getType(), BF_OPAQUE)) continue;
+            uint8_t propagated = light - 1;
+            if (nlight[skyIdx(nlx, ny, nlz)] >= propagated) continue;
+            nlight[skyIdx(nlx, ny, nlz)] = propagated;
+            queue.push_back({nx, ny, nz});
+        }
+    }
+
+    // Verify: chunk A source
+    EXPECT_EQ(lightA[skyIdx(15, 65, 15)], 15);
+    EXPECT_EQ(lightA[skyIdx(14, 65, 15)], 14);
+
+    // Verify: chunk B (x=16 in world = local x=0 in chunk 1,0)
+    EXPECT_EQ(lightB[skyIdx(0, 65, 15)], 14) << "Light should cross +X chunk border";
+    EXPECT_EQ(lightB[skyIdx(1, 65, 15)], 13) << "Light should continue into chunk B";
+
+    // Verify: chunk C (z=16 in world = local z=0 in chunk 0,1)
+    EXPECT_EQ(lightC[skyIdx(15, 65, 0)], 14) << "Light should cross +Z chunk border";
+
+    // Verify: chunk D (diagonal, x=16 z=16 = local 0,0 in chunk 1,1)
+    // Diagonal takes 2 steps (via B or C), so light = 13
+    EXPECT_EQ(lightD[skyIdx(0, 65, 0)], 13) << "Light should reach diagonal chunk via 2 border crossings";
+
+    // Verify: light attenuates to 0 far into chunk B
+    EXPECT_EQ(lightB[skyIdx(14, 65, 15)], 0) << "Light should fully attenuate 15 blocks from source";
+}
+
+TEST(BlockLightTest, NoEmissionForNonEmissiveBlocks) {
+    EXPECT_EQ(getBlockLightEmission(AIR), 0);
+    EXPECT_EQ(getBlockLightEmission(STONE), 0);
+    EXPECT_EQ(getBlockLightEmission(DIRT), 0);
+    EXPECT_EQ(getBlockLightEmission(GRASS), 0);
+    EXPECT_EQ(getBlockLightEmission(GLOWSTONE), 15);
+}
+
 // --- Block Placement Coordinate Tests ---
 
 TEST(PlacementCoordTest, WorldToChunkForPlacement) {

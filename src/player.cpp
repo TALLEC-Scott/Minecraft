@@ -118,14 +118,18 @@ void Player::handleInput(GLFWwindow* window, World* world) {
         spaceWasPressed = spaceDown;
     }
 
-    // Down (fly mode only)
-    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) camera.down();
+    // Down (fly mode only) — Shift or Q
+    if (!camera.isWalkMode() &&
+        (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS))
+        camera.down();
 
-    // Sprint
-    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
-        camera.speedUp();
-    else
-        camera.resetSpeed();
+    // Sprint — R always, Ctrl on desktop only (conflicts with browser shortcuts)
+    bool sprint = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
+#ifndef __EMSCRIPTEN__
+    sprint = sprint || glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS;
+#endif
+    if (sprint) camera.speedUp();
+    else camera.resetSpeed();
 
     // Hotbar selection: keys 1-9 = slots 0-8, key 0 = slot 9
     for (int i = 0; i < HOTBAR_SIZE; i++) {

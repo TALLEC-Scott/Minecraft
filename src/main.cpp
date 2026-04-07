@@ -971,6 +971,7 @@ int main(int argc, char* argv[]) {
                 if (next == GameState::Playing && currentState != GameState::Playing) {
                     glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
                     player.resetMouseState();
+                    player.consumeMouseButtons();
                     menu.startMusic();
                 }
                 if (next == GameState::Settings) applySettings();
@@ -990,6 +991,7 @@ int main(int argc, char* argv[]) {
                     if (next == GameState::Playing) {
                         glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
                         player.resetMouseState();
+                        player.consumeMouseButtons();
                     }
                 }
                 currentState = next;
@@ -1484,6 +1486,7 @@ int main(int argc, char* argv[]) {
                 if (next == GameState::Playing) {
                     glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
                     player.resetMouseState();
+                    player.consumeMouseButtons();
                 }
                 if (next == GameState::Settings) {
                     gameSettings.save("settings.txt");

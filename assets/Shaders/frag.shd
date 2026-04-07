@@ -6,6 +6,7 @@ in vec3 FragPos;
 in float texLayer;
 in float ao;
 in float skyLight;
+in float blockLight;
 in float fogFactor;
 
 out vec4 FragColor;
@@ -52,6 +53,10 @@ void main() {
     float moonIntensity = max(-sunDir.y, 0.0);
     vec3 moonLit = texColor.rgb * 0.25 * moonIntensity * ao * skyLight * vec3(0.6, 0.7, 1.0);
     vec3 litColor = sunLit + moonLit + texColor.rgb * 0.08 * ao;
+
+    // Block light: warm-tinted emission, independent of sun/moon
+    vec3 blockLit = texColor.rgb * blockLight * ao * vec3(1.0, 0.9, 0.75);
+    litColor = max(litColor, blockLit);
 
     // Water effects (branchless multiply — no-op when isWater=0)
     litColor *= mix(vec3(1.0), vec3(0.6, 0.8, 1.0), isWater);
