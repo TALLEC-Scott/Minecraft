@@ -82,14 +82,19 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
     std::vector<VisibleChunk> visible;
     visible.reserve(chunkManager->chunks.size());
 
+    // Fog fully hides chunks beyond this distance — skip rendering them
+    float fogEnd = (float)(chunkManager->getRenderDistance() * CHUNK_SIZE);
+    float maxRenderDistSq = fogEnd * fogEnd;
+
     for (auto& [pos, chunk] : chunkManager->chunks) {
         glm::vec3 minP(pos.x * CHUNK_SIZE, 0, pos.y * CHUNK_SIZE);
         glm::vec3 maxP(minP.x + CHUNK_SIZE, CHUNK_HEIGHT, minP.z + CHUNK_SIZE);
         if (!aabbInFrustum(planes, minP, maxP)) continue;
-        // Distance from camera to chunk center (squared, skip sqrt)
         glm::vec3 center(minP.x + CHUNK_SIZE * 0.5f, CHUNK_HEIGHT * 0.5f, minP.z + CHUNK_SIZE * 0.5f);
-        glm::vec3 d = center - cameraPos;
-        visible.push_back({pos, const_cast<Chunk*>(&chunk), d.x * d.x + d.y * d.y + d.z * d.z});
+        float dx = center.x - cameraPos.x, dz = center.z - cameraPos.z;
+        float distSq = dx * dx + dz * dz;
+        if (distSq > maxRenderDistSq) continue; // fully fogged, skip
+        visible.push_back({pos, const_cast<Chunk*>(&chunk), distSq});
     }
 
     std::sort(visible.begin(), visible.end(),
