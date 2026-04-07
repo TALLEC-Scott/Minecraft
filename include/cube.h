@@ -10,7 +10,7 @@
 inline bool g_greedyMeshing = false;
 inline bool g_fancyLeaves = true;
 
-enum block_type {
+enum block_type : uint8_t {
     AIR,
     GRASS,
     DIRT,

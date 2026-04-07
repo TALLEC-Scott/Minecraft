@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "cube.h"
+#include "light_data.h"
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -9,11 +10,11 @@ static size_t skyIdx(int x, int y, int z) {
     return static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z;
 }
 
-// Replicate darkenSkyLightLocal for testing (same algorithm as chunk.cpp)
+// Replicate darkenSkyLightLocal for testing (same algorithm as chunk.cpp, packed format)
 static void darkenSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, int z) {
     static const int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
 
-    skyLight[skyIdx(x, y, z)] = 0;
+    { size_t i = skyIdx(x, y, z); skyLight[i] = skyLight[i] & 0xF; }
 
     struct Node {
         int x, y, z;
@@ -24,9 +25,10 @@ static void darkenSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, i
 
     for (int by = y - 1; by >= 0; by--) {
         if (hasFlag(blocks[skyIdx(x, by, z)].getType(), BF_OPAQUE)) break;
-        if (skyLight[skyIdx(x, by, z)] != 15) break;
-        uint8_t old = skyLight[skyIdx(x, by, z)];
-        skyLight[skyIdx(x, by, z)] = 0;
+        size_t bi = skyIdx(x, by, z);
+        if (unpackSky(skyLight[bi]) != 15) break;
+        uint8_t old = unpackSky(skyLight[bi]);
+        skyLight[bi] = skyLight[bi] & 0xF;
         removeQueue.push_back({x, by, z, old});
     }
 
@@ -39,9 +41,10 @@ static void darkenSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, i
             int nx = cx + d[0], ny = cy + d[1], nz = cz + d[2];
             if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= CHUNK_HEIGHT || nz < 0 || nz >= CHUNK_SIZE) continue;
             if (hasFlag(blocks[skyIdx(nx, ny, nz)].getType(), BF_OPAQUE)) continue;
-            uint8_t neighborLight = skyLight[skyIdx(nx, ny, nz)];
+            size_t ni = skyIdx(nx, ny, nz);
+            uint8_t neighborLight = unpackSky(skyLight[ni]);
             if (neighborLight > 0 && neighborLight < oldLight) {
-                skyLight[skyIdx(nx, ny, nz)] = 0;
+                skyLight[ni] = skyLight[ni] & 0xF;
                 removeQueue.push_back({nx, ny, nz, neighborLight});
             } else if (neighborLight >= oldLight && neighborLight > 0) {
                 relightSeeds.push_back({nx, ny, nz, neighborLight});
@@ -60,21 +63,22 @@ static void darkenSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, i
     head = 0;
     while (head < lightQueue.size()) {
         auto [cx, cy, cz] = lightQueue[head++];
-        uint8_t light = skyLight[skyIdx(cx, cy, cz)];
+        uint8_t light = unpackSky(skyLight[skyIdx(cx, cy, cz)]);
         if (light <= 1) continue;
         for (auto& d : DIRS) {
             int nx = cx + d[0], ny = cy + d[1], nz = cz + d[2];
             if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= CHUNK_HEIGHT || nz < 0 || nz >= CHUNK_SIZE) continue;
             if (hasFlag(blocks[skyIdx(nx, ny, nz)].getType(), BF_OPAQUE)) continue;
             uint8_t propagated = (light == 15 && d[1] == -1) ? 15 : (light - 1);
-            if (skyLight[skyIdx(nx, ny, nz)] >= propagated) continue;
-            skyLight[skyIdx(nx, ny, nz)] = propagated;
+            size_t ni = skyIdx(nx, ny, nz);
+            if (unpackSky(skyLight[ni]) >= propagated) continue;
+            skyLight[ni] = (propagated << 4) | (skyLight[ni] & 0xF);
             lightQueue.push_back({nx, ny, nz});
         }
     }
 }
 
-// Replicate updateSkyLightLocal (brightening after block removal)
+// Replicate updateSkyLightLocal (brightening after block removal, packed format)
 static void updateSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, int z) {
     static const int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
 
@@ -82,15 +86,15 @@ static void updateSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, i
     for (auto& d : DIRS) {
         int nx = x + d[0], ny = y + d[1], nz = z + d[2];
         if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_HEIGHT && nz >= 0 && nz < CHUNK_SIZE) {
-            uint8_t nl = skyLight[skyIdx(nx, ny, nz)];
+            uint8_t nl = unpackSky(skyLight[skyIdx(nx, ny, nz)]);
             if (nl > maxLight) maxLight = nl;
         }
     }
     if (y + 1 >= CHUNK_HEIGHT) maxLight = 15;
 
     uint8_t newLight =
-        (y + 1 < CHUNK_HEIGHT && skyLight[skyIdx(x, y + 1, z)] == 15) ? 15 : (maxLight > 0 ? maxLight - 1 : 0);
-    skyLight[skyIdx(x, y, z)] = newLight;
+        (y + 1 < CHUNK_HEIGHT && unpackSky(skyLight[skyIdx(x, y + 1, z)]) == 15) ? 15 : (maxLight > 0 ? maxLight - 1 : 0);
+    { size_t i = skyIdx(x, y, z); skyLight[i] = (newLight << 4) | (skyLight[i] & 0xF); }
 
     struct Node {
         int x, y, z;
@@ -102,28 +106,30 @@ static void updateSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, i
     size_t head = 0;
     while (head < queue.size()) {
         auto [cx, cy, cz] = queue[head++];
-        uint8_t light = skyLight[skyIdx(cx, cy, cz)];
+        uint8_t light = unpackSky(skyLight[skyIdx(cx, cy, cz)]);
         if (light <= 1) continue;
         for (auto& d : DIRS) {
             int nx = cx + d[0], ny = cy + d[1], nz = cz + d[2];
             if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= CHUNK_HEIGHT || nz < 0 || nz >= CHUNK_SIZE) continue;
             if (hasFlag(blocks[skyIdx(nx, ny, nz)].getType(), BF_OPAQUE)) continue;
             uint8_t propagated = (light == 15 && d[1] == -1) ? 15 : (light - 1);
-            if (skyLight[skyIdx(nx, ny, nz)] >= propagated) continue;
-            skyLight[skyIdx(nx, ny, nz)] = propagated;
+            size_t ni = skyIdx(nx, ny, nz);
+            if (unpackSky(skyLight[ni]) >= propagated) continue;
+            skyLight[ni] = (propagated << 4) | (skyLight[ni] & 0xF);
             queue.push_back({nx, ny, nz});
         }
     }
 }
 
-// Helper: create a flat world — stone floor at y=60, air above
+// Helper: create a flat world -- stone floor at y=60, air above
+// Uses packed light format: high nibble = sky, low nibble = block
 struct TestChunk {
     static constexpr size_t TOTAL = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
     Cube blocks[TOTAL];
-    uint8_t skyLight[TOTAL];
+    uint8_t light[TOTAL]; // packed: high nibble = sky, low nibble = block
 
     TestChunk() {
-        memset(skyLight, 0, sizeof(skyLight));
+        memset(light, 0, sizeof(light));
         // Fill with air
         for (size_t i = 0; i < TOTAL; i++) blocks[i].setType(AIR);
         // Stone floor at y <= 60
@@ -131,11 +137,11 @@ struct TestChunk {
             for (int z = 0; z < CHUNK_SIZE; z++)
                 for (int y = 0; y <= 60; y++)
                     blocks[skyIdx(x, y, z)].setType(STONE);
-        // Sky light: 15 for all air blocks above the floor (simple vertical propagation)
+        // Sky light: 15 for all air blocks above the floor (packed into high nibble)
         for (int x = 0; x < CHUNK_SIZE; x++)
             for (int z = 0; z < CHUNK_SIZE; z++)
                 for (int y = 61; y < CHUNK_HEIGHT; y++)
-                    skyLight[skyIdx(x, y, z)] = 15;
+                    light[skyIdx(x, y, z)] = 15 << 4;
     }
 };
 
@@ -169,13 +175,13 @@ TEST(SkyLightTest, PlaceBlockDarkensBelow) {
     // Place a stone block at y=70 (in the air column at x=8, z=8)
     int x = 8, y = 70, z = 8;
     tc.blocks[skyIdx(x, y, z)].setType(STONE);
-    darkenSkyLightLocal(tc.blocks, tc.skyLight, x, y, z);
+    darkenSkyLightLocal(tc.blocks, tc.light, x, y, z);
 
     // The placed block should have light 0
-    EXPECT_EQ(tc.skyLight[skyIdx(x, y, z)], 0);
+    EXPECT_EQ(unpackSky(tc.light[skyIdx(x, y, z)]), 0);
     // Blocks below should no longer have light 15 (sky column is broken)
     for (int by = y - 1; by > 60; by--) {
-        EXPECT_LT(tc.skyLight[skyIdx(x, by, z)], 15)
+        EXPECT_LT(unpackSky(tc.light[skyIdx(x, by, z)]), 15)
             << "Block at y=" << by << " should not have full sky light after placement above";
     }
 }
@@ -184,11 +190,11 @@ TEST(SkyLightTest, PlaceBlockDoesNotAffectDistantColumns) {
     TestChunk tc;
     // Place a stone block at (8, 70, 8)
     tc.blocks[skyIdx(8, 70, 8)].setType(STONE);
-    darkenSkyLightLocal(tc.blocks, tc.skyLight, 8, 70, 8);
+    darkenSkyLightLocal(tc.blocks, tc.light, 8, 70, 8);
 
     // A distant column (0, y, 0) should still have full sky light
     for (int y = 61; y < CHUNK_HEIGHT; y++) {
-        EXPECT_EQ(tc.skyLight[skyIdx(0, y, 0)], 15)
+        EXPECT_EQ(unpackSky(tc.light[skyIdx(0, y, 0)]), 15)
             << "Distant column at y=" << y << " should be unaffected";
     }
 }
@@ -198,12 +204,12 @@ TEST(SkyLightTest, PlaceBlockAtSurfaceLevel) {
     // Place right above the floor at y=61
     int x = 4, z = 4;
     tc.blocks[skyIdx(x, 61, z)].setType(STONE);
-    darkenSkyLightLocal(tc.blocks, tc.skyLight, x, 61, z);
+    darkenSkyLightLocal(tc.blocks, tc.light, x, 61, z);
 
     // Placed block: light 0
-    EXPECT_EQ(tc.skyLight[skyIdx(x, 61, z)], 0);
+    EXPECT_EQ(unpackSky(tc.light[skyIdx(x, 61, z)]), 0);
     // Block above (y=62) should still have sky light (from neighbors)
-    EXPECT_GT(tc.skyLight[skyIdx(x, 62, z)], 0);
+    EXPECT_GT(unpackSky(tc.light[skyIdx(x, 62, z)]), 0);
 }
 
 TEST(SkyLightTest, DestroyBlockRestoresLight) {
@@ -211,17 +217,17 @@ TEST(SkyLightTest, DestroyBlockRestoresLight) {
     // Place then destroy a block
     int x = 8, y = 70, z = 8;
     tc.blocks[skyIdx(x, y, z)].setType(STONE);
-    darkenSkyLightLocal(tc.blocks, tc.skyLight, x, y, z);
+    darkenSkyLightLocal(tc.blocks, tc.light, x, y, z);
 
     // Verify it's dark
-    EXPECT_EQ(tc.skyLight[skyIdx(x, y, z)], 0);
+    EXPECT_EQ(unpackSky(tc.light[skyIdx(x, y, z)]), 0);
 
     // Destroy the block
     tc.blocks[skyIdx(x, y, z)].setType(AIR);
-    updateSkyLightLocal(tc.blocks, tc.skyLight, x, y, z);
+    updateSkyLightLocal(tc.blocks, tc.light, x, y, z);
 
     // Should restore full sky light (direct sky column)
-    EXPECT_EQ(tc.skyLight[skyIdx(x, y, z)], 15);
+    EXPECT_EQ(unpackSky(tc.light[skyIdx(x, y, z)]), 15);
 }
 
 TEST(SkyLightTest, PlaceAndDestroyRoundTrip) {
@@ -231,19 +237,19 @@ TEST(SkyLightTest, PlaceAndDestroyRoundTrip) {
     // Save original light for the column
     uint8_t originalLight[CHUNK_HEIGHT];
     for (int y = 0; y < CHUNK_HEIGHT; y++)
-        originalLight[y] = tc.skyLight[skyIdx(x, y, z)];
+        originalLight[y] = unpackSky(tc.light[skyIdx(x, y, z)]);
 
     // Place a block at y=80
     tc.blocks[skyIdx(x, 80, z)].setType(STONE);
-    darkenSkyLightLocal(tc.blocks, tc.skyLight, x, 80, z);
+    darkenSkyLightLocal(tc.blocks, tc.light, x, 80, z);
 
     // Destroy it
     tc.blocks[skyIdx(x, 80, z)].setType(AIR);
-    updateSkyLightLocal(tc.blocks, tc.skyLight, x, 80, z);
+    updateSkyLightLocal(tc.blocks, tc.light, x, 80, z);
 
     // Light should be fully restored (sky column re-established)
     for (int y = 61; y < CHUNK_HEIGHT; y++) {
-        EXPECT_EQ(tc.skyLight[skyIdx(x, y, z)], originalLight[y])
+        EXPECT_EQ(unpackSky(tc.light[skyIdx(x, y, z)]), originalLight[y])
             << "Light at y=" << y << " should be restored after place+destroy round trip";
     }
 }
@@ -252,18 +258,19 @@ TEST(SkyLightTest, PlacedBlockSkyLightIsZero) {
     TestChunk tc;
     // Place opaque block in full sunlight
     int x = 3, y = 100, z = 3;
-    EXPECT_EQ(tc.skyLight[skyIdx(x, y, z)], 15); // was full sky light
+    EXPECT_EQ(unpackSky(tc.light[skyIdx(x, y, z)]), 15); // was full sky light
     tc.blocks[skyIdx(x, y, z)].setType(DIRT);
-    darkenSkyLightLocal(tc.blocks, tc.skyLight, x, y, z);
-    EXPECT_EQ(tc.skyLight[skyIdx(x, y, z)], 0);
+    darkenSkyLightLocal(tc.blocks, tc.light, x, y, z);
+    EXPECT_EQ(unpackSky(tc.light[skyIdx(x, y, z)]), 0);
 }
 
 // --- Block Light Tests ---
 
-// Replicate computeBlockLightData BFS (same algorithm as chunk.cpp)
-static void computeBlockLight(Cube* blocks, uint8_t* blockLight) {
+// Replicate computeBlockLightData BFS using packed format (low nibble)
+static void computeBlockLight(Cube* blocks, uint8_t* packedLight) {
     const size_t total = static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE;
-    memset(blockLight, 0, total);
+    // Zero only the block light nibble (preserve sky light)
+    for (size_t i = 0; i < total; i++) packedLight[i] = packedLight[i] & 0xF0;
     static const int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
 
     struct Node { int x, y, z; };
@@ -273,54 +280,57 @@ static void computeBlockLight(Cube* blocks, uint8_t* blockLight) {
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 uint8_t em = getBlockLightEmission(blocks[skyIdx(x, y, z)].getType());
                 if (em > 0) {
-                    blockLight[skyIdx(x, y, z)] = em;
+                    size_t i = skyIdx(x, y, z);
+                    packedLight[i] = (packedLight[i] & 0xF0) | (em & 0xF);
                     queue.push_back({x, y, z});
                 }
             }
     size_t head = 0;
     while (head < queue.size()) {
         auto [cx, cy, cz] = queue[head++];
-        uint8_t light = blockLight[skyIdx(cx, cy, cz)];
+        uint8_t light = unpackBlock(packedLight[skyIdx(cx, cy, cz)]);
         if (light <= 1) continue;
         for (auto& d : DIRS) {
             int nx = cx + d[0], ny = cy + d[1], nz = cz + d[2];
             if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= CHUNK_HEIGHT || nz < 0 || nz >= CHUNK_SIZE) continue;
             if (hasFlag(blocks[skyIdx(nx, ny, nz)].getType(), BF_OPAQUE)) continue;
             uint8_t newLight = light - 1;
-            if (blockLight[skyIdx(nx, ny, nz)] >= newLight) continue;
-            blockLight[skyIdx(nx, ny, nz)] = newLight;
+            size_t ni = skyIdx(nx, ny, nz);
+            if (unpackBlock(packedLight[ni]) >= newLight) continue;
+            packedLight[ni] = (packedLight[ni] & 0xF0) | (newLight & 0xF);
             queue.push_back({nx, ny, nz});
         }
     }
 }
 
-// Simulate cross-chunk border propagation: seed from one chunk's border into the other
-static void propagateBorderBlockLight(Cube* blocks, uint8_t* blockLight, const uint8_t* neighborBorder, int borderX) {
+// Simulate cross-chunk border propagation using packed format
+static void propagateBorderBlockLight(Cube* blocks, uint8_t* packedLight, const uint8_t* neighborBorder, int borderX) {
     static const int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
     struct Node { int x, y, z; };
     std::vector<Node> queue;
-    // Seed: for each block on our border, check if neighbor has higher light
     for (int y = 0; y < CHUNK_HEIGHT; y++)
         for (int z = 0; z < CHUNK_SIZE; z++) {
             uint8_t nLight = neighborBorder[y * CHUNK_SIZE + z];
-            if (nLight > 1 && nLight - 1 > blockLight[skyIdx(borderX, y, z)] &&
-                !hasFlag(blocks[skyIdx(borderX, y, z)].getType(), BF_OPAQUE)) {
-                blockLight[skyIdx(borderX, y, z)] = nLight - 1;
+            size_t bi = skyIdx(borderX, y, z);
+            if (nLight > 1 && nLight - 1 > unpackBlock(packedLight[bi]) &&
+                !hasFlag(blocks[bi].getType(), BF_OPAQUE)) {
+                packedLight[bi] = (packedLight[bi] & 0xF0) | ((nLight - 1) & 0xF);
                 queue.push_back({borderX, y, z});
             }
         }
     size_t head = 0;
     while (head < queue.size()) {
         auto [cx, cy, cz] = queue[head++];
-        uint8_t light = blockLight[skyIdx(cx, cy, cz)];
+        uint8_t light = unpackBlock(packedLight[skyIdx(cx, cy, cz)]);
         if (light <= 1) continue;
         for (auto& d : DIRS) {
             int nx = cx + d[0], ny = cy + d[1], nz = cz + d[2];
             if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= CHUNK_HEIGHT || nz < 0 || nz >= CHUNK_SIZE) continue;
             if (hasFlag(blocks[skyIdx(nx, ny, nz)].getType(), BF_OPAQUE)) continue;
             uint8_t newLight = light - 1;
-            if (blockLight[skyIdx(nx, ny, nz)] >= newLight) continue;
-            blockLight[skyIdx(nx, ny, nz)] = newLight;
+            size_t ni = skyIdx(nx, ny, nz);
+            if (unpackBlock(packedLight[ni]) >= newLight) continue;
+            packedLight[ni] = (packedLight[ni] & 0xF0) | (newLight & 0xF);
             queue.push_back({nx, ny, nz});
         }
     }
@@ -328,45 +338,42 @@ static void propagateBorderBlockLight(Cube* blocks, uint8_t* blockLight, const u
 
 TEST(BlockLightTest, GlowstoneEmitsLight) {
     TestChunk tc;
-    uint8_t blockLight[CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
     // Place glowstone at (8, 65, 8)
     tc.blocks[skyIdx(8, 65, 8)].setType(GLOWSTONE);
-    computeBlockLight(tc.blocks, blockLight);
+    computeBlockLight(tc.blocks, tc.light);
 
-    EXPECT_EQ(blockLight[skyIdx(8, 65, 8)], 15);
+    EXPECT_EQ(unpackBlock(tc.light[skyIdx(8, 65, 8)]), 15);
     // Adjacent blocks get 14
-    EXPECT_EQ(blockLight[skyIdx(9, 65, 8)], 14);
-    EXPECT_EQ(blockLight[skyIdx(8, 66, 8)], 14);
+    EXPECT_EQ(unpackBlock(tc.light[skyIdx(9, 65, 8)]), 14);
+    EXPECT_EQ(unpackBlock(tc.light[skyIdx(8, 66, 8)]), 14);
     // Two away gets 13
-    EXPECT_EQ(blockLight[skyIdx(10, 65, 8)], 13);
+    EXPECT_EQ(unpackBlock(tc.light[skyIdx(10, 65, 8)]), 13);
 }
 
 TEST(BlockLightTest, LightBlockedByOpaque) {
     TestChunk tc;
-    uint8_t blockLight[CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
     // Place glowstone at (8, 65, 8) and a stone wall next to it
     tc.blocks[skyIdx(8, 65, 8)].setType(GLOWSTONE);
     tc.blocks[skyIdx(9, 65, 8)].setType(STONE);
-    computeBlockLight(tc.blocks, blockLight);
+    computeBlockLight(tc.blocks, tc.light);
 
-    EXPECT_EQ(blockLight[skyIdx(8, 65, 8)], 15);
+    EXPECT_EQ(unpackBlock(tc.light[skyIdx(8, 65, 8)]), 15);
     // Stone blocks light
-    EXPECT_EQ(blockLight[skyIdx(9, 65, 8)], 0);
+    EXPECT_EQ(unpackBlock(tc.light[skyIdx(9, 65, 8)]), 0);
     // Behind the wall: light must go around (at least 3 steps away), so much dimmer
-    EXPECT_LT(blockLight[skyIdx(10, 65, 8)], 13);
+    EXPECT_LT(unpackBlock(tc.light[skyIdx(10, 65, 8)]), 13);
 }
 
 TEST(BlockLightTest, LightAttenuatesUniformly) {
     TestChunk tc;
-    uint8_t blockLight[CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
     tc.blocks[skyIdx(8, 65, 8)].setType(GLOWSTONE);
-    computeBlockLight(tc.blocks, blockLight);
+    computeBlockLight(tc.blocks, tc.light);
 
     // Light decreases by 1 per block in any direction
     for (int dist = 1; dist <= 7; dist++) {
         // Check along +X
         if (8 + dist < CHUNK_SIZE) {
-            EXPECT_EQ(blockLight[skyIdx(8 + dist, 65, 8)], 15 - dist)
+            EXPECT_EQ(unpackBlock(tc.light[skyIdx(8 + dist, 65, 8)]), 15 - dist)
                 << "Light at distance " << dist << " should be " << (15 - dist);
         }
     }
@@ -377,38 +384,36 @@ TEST(BlockLightTest, CrossChunkPropagation) {
 
     // ChunkA: glowstone at (15, 65, 8)
     TestChunk chunkA;
-    uint8_t blockLightA[CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
     chunkA.blocks[skyIdx(15, 65, 8)].setType(GLOWSTONE);
-    computeBlockLight(chunkA.blocks, blockLightA);
+    computeBlockLight(chunkA.blocks, chunkA.light);
 
     // ChunkA's x=15 border should have light
-    EXPECT_EQ(blockLightA[skyIdx(15, 65, 8)], 15);
+    EXPECT_EQ(unpackBlock(chunkA.light[skyIdx(15, 65, 8)]), 15);
 
     // ChunkB: empty air above floor, no emissive blocks
     TestChunk chunkB;
-    uint8_t blockLightB[CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE];
-    computeBlockLight(chunkB.blocks, blockLightB);
-    EXPECT_EQ(blockLightB[skyIdx(0, 65, 8)], 0); // no light yet
+    computeBlockLight(chunkB.blocks, chunkB.light);
+    EXPECT_EQ(unpackBlock(chunkB.light[skyIdx(0, 65, 8)]), 0); // no light yet
 
-    // Extract chunkA's x=15 border as neighbor data for chunkB
+    // Extract chunkA's x=15 border block light as neighbor data for chunkB
     uint8_t borderFromA[CHUNK_HEIGHT * CHUNK_SIZE];
     for (int y = 0; y < CHUNK_HEIGHT; y++)
         for (int z = 0; z < CHUNK_SIZE; z++)
-            borderFromA[y * CHUNK_SIZE + z] = blockLightA[skyIdx(15, y, z)];
+            borderFromA[y * CHUNK_SIZE + z] = unpackBlock(chunkA.light[skyIdx(15, y, z)]);
 
     // Propagate from A's border into B's x=0
-    propagateBorderBlockLight(chunkB.blocks, blockLightB, borderFromA, 0);
+    propagateBorderBlockLight(chunkB.blocks, chunkB.light, borderFromA, 0);
 
     // ChunkB's x=0 should now have light from the glowstone (15 - 1 = 14)
-    EXPECT_EQ(blockLightB[skyIdx(0, 65, 8)], 14)
+    EXPECT_EQ(unpackBlock(chunkB.light[skyIdx(0, 65, 8)]), 14)
         << "Cross-chunk propagation: block at x=0 should receive light 14 from neighbor's glowstone at x=15";
 
     // Light should continue propagating inward
-    EXPECT_EQ(blockLightB[skyIdx(1, 65, 8)], 13);
-    EXPECT_EQ(blockLightB[skyIdx(2, 65, 8)], 12);
+    EXPECT_EQ(unpackBlock(chunkB.light[skyIdx(1, 65, 8)]), 13);
+    EXPECT_EQ(unpackBlock(chunkB.light[skyIdx(2, 65, 8)]), 12);
 
     // Far away should have no light (14 steps in = 0)
-    EXPECT_EQ(blockLightB[skyIdx(14, 65, 8)], 0);
+    EXPECT_EQ(unpackBlock(chunkB.light[skyIdx(14, 65, 8)]), 0);
 }
 
 TEST(BlockLightTest, WorldSpaceBFSCrossesMultipleChunks) {
@@ -444,14 +449,14 @@ TEST(BlockLightTest, WorldSpaceBFSCrossesMultipleChunks) {
         return {nullptr, nullptr};
     };
 
-    // World-space BFS (same algorithm as floodBlockLight in world.cpp)
+    // World-space BFS (same algorithm as floodBlockLight in world.cpp, using packed low nibble)
     struct Node { int x, y, z; };
     std::vector<Node> queue;
     int sx = 15, sy = 65, sz = 15; // world coords: chunk A corner
 
     // Place glowstone
     blocksA[skyIdx(15, 65, 15)].setType(GLOWSTONE);
-    lightA[skyIdx(15, 65, 15)] = 15;
+    { size_t i = skyIdx(15, 65, 15); lightA[i] = (lightA[i] & 0xF0) | 15; }
     queue.push_back({sx, sy, sz});
 
     static const int DIRS[6][3] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
@@ -461,7 +466,7 @@ TEST(BlockLightTest, WorldSpaceBFSCrossesMultipleChunks) {
         auto [cblocks, clight] = getChunkData(cx, cz);
         if (!cblocks) continue;
         int lx = cx % CHUNK_SIZE, lz = cz % CHUNK_SIZE;
-        uint8_t light = clight[skyIdx(lx, cy, lz)];
+        uint8_t light = unpackBlock(clight[skyIdx(lx, cy, lz)]);
         if (light <= 1) continue;
         for (auto& d : DIRS) {
             int nx = cx + d[0], ny = cy + d[1], nz = cz + d[2];
@@ -471,29 +476,30 @@ TEST(BlockLightTest, WorldSpaceBFSCrossesMultipleChunks) {
             int nlx = nx % CHUNK_SIZE, nlz = nz % CHUNK_SIZE;
             if (hasFlag(nblocks[skyIdx(nlx, ny, nlz)].getType(), BF_OPAQUE)) continue;
             uint8_t propagated = light - 1;
-            if (nlight[skyIdx(nlx, ny, nlz)] >= propagated) continue;
-            nlight[skyIdx(nlx, ny, nlz)] = propagated;
+            size_t ni = skyIdx(nlx, ny, nlz);
+            if (unpackBlock(nlight[ni]) >= propagated) continue;
+            nlight[ni] = (nlight[ni] & 0xF0) | (propagated & 0xF);
             queue.push_back({nx, ny, nz});
         }
     }
 
     // Verify: chunk A source
-    EXPECT_EQ(lightA[skyIdx(15, 65, 15)], 15);
-    EXPECT_EQ(lightA[skyIdx(14, 65, 15)], 14);
+    EXPECT_EQ(unpackBlock(lightA[skyIdx(15, 65, 15)]), 15);
+    EXPECT_EQ(unpackBlock(lightA[skyIdx(14, 65, 15)]), 14);
 
     // Verify: chunk B (x=16 in world = local x=0 in chunk 1,0)
-    EXPECT_EQ(lightB[skyIdx(0, 65, 15)], 14) << "Light should cross +X chunk border";
-    EXPECT_EQ(lightB[skyIdx(1, 65, 15)], 13) << "Light should continue into chunk B";
+    EXPECT_EQ(unpackBlock(lightB[skyIdx(0, 65, 15)]), 14) << "Light should cross +X chunk border";
+    EXPECT_EQ(unpackBlock(lightB[skyIdx(1, 65, 15)]), 13) << "Light should continue into chunk B";
 
     // Verify: chunk C (z=16 in world = local z=0 in chunk 0,1)
-    EXPECT_EQ(lightC[skyIdx(15, 65, 0)], 14) << "Light should cross +Z chunk border";
+    EXPECT_EQ(unpackBlock(lightC[skyIdx(15, 65, 0)]), 14) << "Light should cross +Z chunk border";
 
     // Verify: chunk D (diagonal, x=16 z=16 = local 0,0 in chunk 1,1)
     // Diagonal takes 2 steps (via B or C), so light = 13
-    EXPECT_EQ(lightD[skyIdx(0, 65, 0)], 13) << "Light should reach diagonal chunk via 2 border crossings";
+    EXPECT_EQ(unpackBlock(lightD[skyIdx(0, 65, 0)]), 13) << "Light should reach diagonal chunk via 2 border crossings";
 
     // Verify: light attenuates to 0 far into chunk B
-    EXPECT_EQ(lightB[skyIdx(14, 65, 15)], 0) << "Light should fully attenuate 15 blocks from source";
+    EXPECT_EQ(unpackBlock(lightB[skyIdx(14, 65, 15)]), 0) << "Light should fully attenuate 15 blocks from source";
 }
 
 TEST(BlockLightTest, NoEmissionForNonEmissiveBlocks) {
