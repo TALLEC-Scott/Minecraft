@@ -1,4 +1,5 @@
 #include "world.h"
+#include "light_data.h"
 #include "profiler.h"
 #include <array>
 #include <algorithm>
@@ -87,7 +88,7 @@ static void floodBlockLight(ChunkManager* cm, int sx, int sy, int sz, uint8_t em
             cachedCX = cx; cachedCZ = cz;
             cachedChunk = cm->getChunk(cx, cz);
         }
-        if (!cachedChunk || !cachedChunk->blockLight) return {nullptr, 0};
+        if (!cachedChunk || !cachedChunk->skyLight) return {nullptr, 0};
         return {cachedChunk, toIdx(worldToLocal(wx, cx), wy, worldToLocal(wz, cz))};
     };
 
@@ -97,7 +98,8 @@ static void floodBlockLight(ChunkManager* cm, int sx, int sy, int sz, uint8_t em
 
     auto [srcChunk, srcIdx] = resolve(sx, sy, sz);
     if (!srcChunk) return;
-    srcChunk->blockLight.get()[srcIdx] = emission;
+    uint8_t* sl = srcChunk->skyLight.get();
+    sl[srcIdx] = (sl[srcIdx] & 0xF0) | (emission & 0xF);
     srcChunk->markDirty();
     queue.push_back({sx, sy, sz});
 
@@ -106,7 +108,7 @@ static void floodBlockLight(ChunkManager* cm, int sx, int sy, int sz, uint8_t em
         auto [bx, by, bz] = queue[head++];
         auto [chunk, idx] = resolve(bx, by, bz);
         if (!chunk) continue;
-        uint8_t light = chunk->blockLight.get()[idx];
+        uint8_t light = unpackBlock(chunk->skyLight.get()[idx]);
         if (light <= 1) continue;
         for (auto& d : DIRS) {
             int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
@@ -115,8 +117,9 @@ static void floodBlockLight(ChunkManager* cm, int sx, int sy, int sz, uint8_t em
             block_type bt = nc->blocks.get()[ni].getType();
             if (hasFlag(bt, BF_OPAQUE) && getBlockLightEmission(bt) == 0) continue;
             uint8_t propagated = light - 1;
-            if (nc->blockLight.get()[ni] >= propagated) continue;
-            nc->blockLight.get()[ni] = propagated;
+            uint8_t* nlt = nc->skyLight.get();
+            if (unpackBlock(nlt[ni]) >= propagated) continue;
+            nlt[ni] = (nlt[ni] & 0xF0) | (propagated & 0xF);
             nc->markDirty();
             queue.push_back({nx, ny, nz});
         }

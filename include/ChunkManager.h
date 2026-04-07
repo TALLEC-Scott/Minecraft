@@ -65,8 +65,7 @@ class ChunkManager {
     struct MeshRequest {
         glm::ivec2 pos;
         std::shared_ptr<Cube[]> blocks;
-        std::shared_ptr<uint8_t[]> skyLight;
-        std::shared_ptr<uint8_t[]> blockLight;
+        std::shared_ptr<uint8_t[]> skyLight; // packed: high nibble = sky, low nibble = block
         int maxSolidY;
         int chunkX, chunkZ;
         Chunk::NeighborBorders borders;

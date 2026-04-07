@@ -12,14 +12,14 @@
 #include "gl_header.h"
 #include <glm/glm.hpp>
 #include "cube.h"
+#include "light_data.h"
 #include "shader.h"
 #include "TerrainGenerator.h"
 
 // CPU-side chunk data — no GL resources, safe to build on worker threads
 struct ChunkData {
     std::shared_ptr<Cube[]> blocks;
-    std::shared_ptr<uint8_t[]> skyLight;
-    std::shared_ptr<uint8_t[]> blockLight;
+    std::shared_ptr<uint8_t[]> skyLight; // packed: high nibble = sky, low nibble = block
     int heights[CHUNK_SIZE][CHUNK_SIZE]{};
     Biome biomes[CHUNK_SIZE][CHUNK_SIZE]{};
     int chunkX = 0, chunkZ = 0;
@@ -27,7 +27,7 @@ struct ChunkData {
 
     ChunkData() = default;
     ChunkData(ChunkData&& o) noexcept
-        : blocks(std::move(o.blocks)), skyLight(std::move(o.skyLight)), blockLight(std::move(o.blockLight)),
+        : blocks(std::move(o.blocks)), skyLight(std::move(o.skyLight)),
           chunkX(o.chunkX), chunkZ(o.chunkZ),
           maxSolidY(o.maxSolidY) {
         std::memcpy(heights, o.heights, sizeof(heights));
@@ -37,7 +37,6 @@ struct ChunkData {
         if (this != &o) {
             blocks = std::move(o.blocks);
             skyLight = std::move(o.skyLight);
-            blockLight = std::move(o.blockLight);
             chunkX = o.chunkX;
             chunkZ = o.chunkZ;
             maxSolidY = o.maxSolidY;
@@ -60,8 +59,6 @@ class Chunk {
         blocks = std::shared_ptr<Cube[]>(new Cube[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]);
         skyLight =
             std::shared_ptr<uint8_t[]>(new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]());
-        blockLight =
-            std::shared_ptr<uint8_t[]>(new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]());
         chunkX = -1;
         chunkY = -1;
     }
@@ -71,7 +68,7 @@ class Chunk {
 
     // Move only
     Chunk(Chunk&& other) noexcept
-        : blocks(std::move(other.blocks)), skyLight(std::move(other.skyLight)), blockLight(std::move(other.blockLight)),
+        : blocks(std::move(other.blocks)), skyLight(std::move(other.skyLight)),
           chunkX(other.chunkX),
           chunkY(other.chunkY), chunkVAO(other.chunkVAO), chunkVBO(other.chunkVBO), chunkEBO(other.chunkEBO),
           opaqueIndexCount(other.opaqueIndexCount), waterIndexCount(other.waterIndexCount),
@@ -89,7 +86,6 @@ class Chunk {
 
             blocks = std::move(other.blocks);
             skyLight = std::move(other.skyLight);
-            blockLight = std::move(other.blockLight);
             chunkX = other.chunkX;
             chunkY = other.chunkY;
             chunkVAO = other.chunkVAO;
@@ -115,8 +111,7 @@ class Chunk {
     // Snapshot of one neighbor's border blocks for async mesh building
     struct NeighborBorder {
         block_type types[CHUNK_SIZE][CHUNK_HEIGHT]{};
-        uint8_t skyLightBorder[CHUNK_SIZE][CHUNK_HEIGHT]{};
-        uint8_t blockLightBorder[CHUNK_SIZE][CHUNK_HEIGHT]{};
+        uint8_t lightBorder[CHUNK_SIZE][CHUNK_HEIGHT]{}; // packed: high nibble = sky, low nibble = block
         bool valid = false;
     };
 
@@ -159,13 +154,11 @@ class Chunk {
 
     uint8_t getSkyLight(int x, int y, int z) const;
     uint8_t getBlockLight(int x, int y, int z) const;
-    void computeBlockLight();
     void propagateBorderLight(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
 
     // Shared block data — safe to capture by worker threads
     std::shared_ptr<Cube[]> blocks;
-    std::shared_ptr<uint8_t[]> skyLight;
-    std::shared_ptr<uint8_t[]> blockLight;
+    std::shared_ptr<uint8_t[]> skyLight; // packed: high nibble = sky, low nibble = block
     int maxSolidY = 0;
     int chunkX = -1;
     int chunkY = -1;
@@ -188,5 +181,5 @@ class Chunk {
 };
 
 // Build mesh from raw data — fully thread-safe, no GL calls
-Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* skyLight, uint8_t* blockLight, int maxSolidY, int chunkX,
+Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, int maxSolidY, int chunkX,
                                   int chunkZ, const Chunk::NeighborBorders& borders);

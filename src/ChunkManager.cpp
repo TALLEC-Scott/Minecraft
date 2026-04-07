@@ -57,8 +57,7 @@ void ChunkManager::loadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
     int generated = 0;
     for (int x = minChunk.x; x <= maxChunk.x && generated < MAX_CHUNKS_PER_FRAME; x++) {
         for (int z = minChunk.y; z <= maxChunk.y && generated < MAX_CHUNKS_PER_FRAME; z++) {
-            glm::ivec2 chunkPos = glm::ivec2(x, z);
-            if (chunks.find(chunkPos) == chunks.end()) {
+            if (chunks.find(glm::ivec2(x, z)) == chunks.end()) {
                 generateChunk(x, z);
                 generated++;
             }
@@ -136,7 +135,6 @@ void ChunkManager::workerLoop() {
                            [&] { return !requestQueue.empty() || !meshRequestQueue.empty() || shutdownFlag.load(); });
             if (shutdownFlag.load() && requestQueue.empty() && meshRequestQueue.empty()) return;
 
-            // Prioritize mesh builds (faster, reduces visible pop-in)
             if (!meshRequestQueue.empty()) {
                 meshReq = std::move(meshRequestQueue.front());
                 meshRequestQueue.pop();
@@ -148,16 +146,22 @@ void ChunkManager::workerLoop() {
             }
         }
 
-        if (isChunkGen) {
-            ChunkData data = generateChunkData(pos.x, pos.y, terrainGenerator);
-            std::lock_guard<std::mutex> lock(resultMutex);
-            resultQueue.push(std::move(data));
-        } else if (isMeshBuild) {
-            Chunk::MeshData mesh = buildMeshFromData(meshReq.blocks.get(), meshReq.skyLight.get(),
-                                                     meshReq.blockLight.get(), meshReq.maxSolidY, meshReq.chunkX,
-                                                     meshReq.chunkZ, meshReq.borders);
-            std::lock_guard<std::mutex> lock(resultMutex);
-            meshResultQueue.push({meshReq.pos, std::move(mesh)});
+        try {
+            if (isChunkGen) {
+                ChunkData data = generateChunkData(pos.x, pos.y, terrainGenerator);
+                std::lock_guard<std::mutex> lock(resultMutex);
+                resultQueue.push(std::move(data));
+            } else if (isMeshBuild) {
+                Chunk::MeshData mesh = buildMeshFromData(meshReq.blocks.get(), meshReq.skyLight.get(),
+                                                         meshReq.maxSolidY, meshReq.chunkX,
+                                                         meshReq.chunkZ, meshReq.borders);
+                std::lock_guard<std::mutex> lock(resultMutex);
+                meshResultQueue.push({meshReq.pos, std::move(mesh)});
+            }
+        } catch (const std::exception& e) {
+            printf("Worker exception: %s\n", e.what());
+        } catch (...) {
+            printf("Worker unknown exception\n");
         }
     }
 }
@@ -175,8 +179,7 @@ void ChunkManager::queueMeshBuild(glm::ivec2 pos) {
     MeshRequest req;
     req.pos = pos;
     req.blocks = chunk.blocks;         // shared_ptr copy — keeps data alive
-    req.skyLight = chunk.skyLight;     // shared_ptr copy
-    req.blockLight = chunk.blockLight; // shared_ptr copy
+    req.skyLight = chunk.skyLight;     // shared_ptr copy (packed sky+block)
     req.maxSolidY = chunk.maxSolidY;
     req.chunkX = chunk.chunkX;
     req.chunkZ = chunk.chunkY; // chunkY is actually Z coordinate
