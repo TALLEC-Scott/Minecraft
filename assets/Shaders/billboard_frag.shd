@@ -6,8 +6,9 @@ in float brightness;
 out vec4 FragColor;
 
 uniform sampler2DArray ourTexture;
+uniform vec3 tintColor;
 
 void main() {
     vec4 texColor = texture(ourTexture, vec3(TexCoord, texLayer));
-    FragColor = vec4(texColor.rgb * brightness, texColor.a);
+    FragColor = vec4(texColor.rgb * brightness * tintColor, texColor.a);
 }

@@ -999,6 +999,7 @@ int main(int argc, char* argv[]) {
             billboardShader.use();
             billboardShader.setMat4("projection", projection);
             billboardShader.setMat4("view", player.getViewMatrix());
+            billboardShader.setVec3("tintColor", glm::vec3(1.0f));
             TextureArray::bind();
 
             // Stars
@@ -1009,7 +1010,6 @@ int main(int argc, char* argv[]) {
                 glm::mat4 starModel = glm::translate(glm::mat4(1.0f), cameraPos);
                 starModel = glm::rotate(starModel, starRotation, glm::vec3(0.3f, 1.0f, 0.1f));
 
-                billboardShader.setFloat("brightness", starAlpha);
                 billboardShader.setMat4("model", starModel);
                 glDepthMask(GL_FALSE);
                 glDisable(GL_CULL_FACE);
@@ -1084,7 +1084,6 @@ int main(int argc, char* argv[]) {
                 glBindBuffer(GL_ARRAY_BUFFER, sunVBO);
                 glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(sunVerts), sunVerts);
 
-                billboardShader.setFloat("brightness", 1.0f);
                 billboardShader.setMat4("model", glm::mat4(1.0f));
                 glDepthMask(GL_FALSE);
                 glDisable(GL_CULL_FACE);
@@ -1156,7 +1155,6 @@ int main(int argc, char* argv[]) {
                 glBindBuffer(GL_ARRAY_BUFFER, sunVBO);
                 glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(moonVerts), moonVerts);
 
-                billboardShader.setFloat("brightness", 1.0f);
                 billboardShader.setMat4("model", glm::mat4(1.0f));
                 glDepthMask(GL_FALSE);
                 glDisable(GL_CULL_FACE);
@@ -1268,7 +1266,7 @@ int main(int argc, char* argv[]) {
                 billboardShader.setMat4("projection", projection);
                 billboardShader.setMat4("view", player.getViewMatrix());
                 billboardShader.setMat4("model", glm::mat4(1.0f));
-                billboardShader.setFloat("brightness", 0.02f);
+                billboardShader.setVec3("tintColor", glm::vec3(0.02f));
                 glDisable(GL_CULL_FACE);
                 glLineWidth(2.0f);
 
@@ -1279,16 +1277,16 @@ int main(int argc, char* argv[]) {
                 glEnable(GL_CULL_FACE);
             }
 
-            // First-person arm — lit by environment
+            // First-person arm — lit by environment (matches terrain shader)
             {
                 glm::mat4 armModel = player.getArmModelMatrix();
 
-                // Arm brightness: sky light * sun intensity (matches world lighting)
-                float armBrightness = 1.0f;
+                // Sample sky light at player position
+                glm::vec3 armTint(1.0f);
                 {
                     int bx = (int)std::floor(cameraPos.x);
                     int bz = (int)std::floor(cameraPos.z);
-                    int by = (int)std::floor(cameraPos.y - PLAYER_HEIGHT);
+                    int by = (int)std::floor(cameraPos.y);
                     int cx = worldToChunk(bx);
                     int cz = worldToChunk(bz);
                     Chunk* chunk = w->chunkManager->getChunk(cx, cz);
@@ -1297,9 +1295,14 @@ int main(int argc, char* argv[]) {
                         uint8_t sl = chunk->getSkyLight(worldToLocal(bx, cx), by, worldToLocal(bz, cz));
                         skyFactor = 0.15f + 0.85f * (sl / 15.0f);
                     }
-                    // Blend with sun intensity so arm dims at night
-                    float sunIntensity = std::max(0.2f, std::min(sunH * 1.5f, 1.0f));
-                    armBrightness = skyFactor * sunIntensity;
+                    // Sun contribution (matches frag.shd: sunContrib * lightColor)
+                    float sunContrib = std::min(0.35f * sunH + 0.65f * sunH, 1.0f);
+                    glm::vec3 sunLit = sunColor * sunContrib * skyFactor;
+                    // Moon contribution (matches frag.shd: 0.25 * moonIntensity * blue tint)
+                    float moonIntensity = std::max(-sunDir.y, 0.0f);
+                    glm::vec3 moonLit = glm::vec3(0.6f, 0.7f, 1.0f) * 0.25f * moonIntensity * skyFactor;
+                    // Base ambient
+                    armTint = sunLit + moonLit + glm::vec3(0.08f);
                 }
 
                 glClear(GL_DEPTH_BUFFER_BIT);
@@ -1307,7 +1310,7 @@ int main(int argc, char* argv[]) {
                 billboardShader.setMat4("projection", projection);
                 billboardShader.setMat4("view", glm::mat4(1.0f));
                 billboardShader.setMat4("model", armModel);
-                billboardShader.setFloat("brightness", armBrightness);
+                billboardShader.setVec3("tintColor", armTint);
                 glDisable(GL_CULL_FACE);
 
                 glBindVertexArray(armVAO);
@@ -1315,6 +1318,23 @@ int main(int argc, char* argv[]) {
                 glBindVertexArray(0);
 
                 glEnable(GL_CULL_FACE);
+            }
+
+            // Crosshair (Minecraft-style: inverted colors, centered cross)
+            if (currentState == GameState::Playing) {
+                float cx = std::floor(windowWidth / 2.0f);
+                float cy = std::floor(windowHeight / 2.0f);
+                constexpr float arm = 8.0f;  // arm length
+                constexpr float t = 2.0f;    // thickness
+                float ht = t / 2.0f;
+                uiRenderer.begin(windowWidth, windowHeight);
+                glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR);
+                // Vertical bar
+                uiRenderer.drawRect(cx - ht, cy - arm, t, arm * 2, glm::vec4(1.0f));
+                // Horizontal bar (exclude center overlap)
+                uiRenderer.drawRect(cx - arm, cy - ht, arm - ht, t, glm::vec4(1.0f));
+                uiRenderer.drawRect(cx + ht, cy - ht, arm - ht, t, glm::vec4(1.0f));
+                uiRenderer.end();
             }
 
             // Pause menu overlay (rendered after the world)
