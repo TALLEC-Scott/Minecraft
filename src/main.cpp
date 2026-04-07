@@ -1463,11 +1463,13 @@ int main(int argc, char* argv[]) {
                     glm::vec4 slotColor = (i == sel) ? glm::vec4(1.0f, 1.0f, 1.0f, 0.4f)
                                                      : glm::vec4(0.3f, 0.3f, 0.3f, 0.4f);
                     uiRenderer.drawRect(sx, sy, SLOT_SIZE, SLOT_SIZE, slotColor);
-                    // Block icon (top face)
-                    int layer = TextureArray::layerForFace(hotbar[i], 4);
-                    GLuint tex = TextureArray::getLayerTexture2D(layer);
-                    if (tex) {
-                        uiRenderer.drawTexturedRect(sx + 4, sy + 4, SLOT_SIZE - 8, SLOT_SIZE - 8, tex, 0, 0, 1, 1);
+                    // Block icon (top face) — skip empty slots
+                    if (hotbar[i] != AIR) {
+                        int layer = TextureArray::layerForFace(hotbar[i], 4);
+                        GLuint tex = TextureArray::getLayerTexture2D(layer);
+                        if (tex) {
+                            uiRenderer.drawTexturedRect(sx + 4, sy + 4, SLOT_SIZE - 8, SLOT_SIZE - 8, tex, 0, 0, 1, 1);
+                        }
                     }
                     // Slot number
                     std::string num = std::to_string((i + 1) % 10);
