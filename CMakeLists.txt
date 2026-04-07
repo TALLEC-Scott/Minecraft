@@ -105,6 +105,7 @@ else()
         tests/test_block_properties.cpp
         tests/test_block_placement.cpp
         tests/test_collision.cpp
+        tests/test_chunk_section.cpp
         src/TerrainGenerator.cpp
         src/perlin_noise.cpp
         src/game_state.cpp

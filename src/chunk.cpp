@@ -53,15 +53,40 @@ static bool isBlockOpaque(block_type t);
 static bool isBlockFiltering(block_type t);
 static void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY);
 
-// Helper for block access in ChunkData (same layout as Chunk::getBlock)
-static Cube* getBlockFromData(ChunkData& d, int i, int j, int k) {
+// Helper for block access in a flat Cube[] buffer (same layout as old Chunk::getBlock)
+static Cube* getBlockFromFlat(Cube* blocks, int i, int j, int k) {
     if (i < 0 || i >= CHUNK_SIZE || j < 0 || j >= CHUNK_HEIGHT || k < 0 || k >= CHUNK_SIZE) return nullptr;
-    return &d.blocks[i * CHUNK_HEIGHT * CHUNK_SIZE + j * CHUNK_SIZE + k];
+    return &blocks[i * CHUNK_HEIGHT * CHUNK_SIZE + j * CHUNK_SIZE + k];
+}
+
+// Compress a flat Cube[] buffer into ChunkData sections
+static void compressIntoSections(std::unique_ptr<ChunkSection> sections[], const Cube* flat) {
+    for (int s = 0; s < NUM_SECTIONS; s++) {
+        // Temp buffer for this section's 4096 blocks (section layout: x*256+y*16+z)
+        Cube sectionBuf[ChunkSection::VOLUME];
+        bool allAir = true;
+        int baseY = s * 16;
+        for (int x = 0; x < CHUNK_SIZE; x++)
+            for (int ly = 0; ly < 16; ly++)
+                for (int z = 0; z < CHUNK_SIZE; z++) {
+                    int y = baseY + ly;
+                    block_type bt = flat[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].getType();
+                    sectionBuf[x * 16 * 16 + ly * 16 + z].setType(bt);
+                    if (bt != AIR) allAir = false;
+                }
+        if (allAir) {
+            sections[s].reset();
+        } else {
+            sections[s] = std::make_unique<ChunkSection>();
+            sections[s]->compress(sectionBuf);
+        }
+    }
 }
 
 ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
     ChunkData d;
-    d.blocks = std::shared_ptr<Cube[]>(new Cube[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]);
+    // Generate terrain into a temporary flat buffer, then compress into sections
+    auto flatBlocks = std::shared_ptr<Cube[]>(new Cube[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]);
     d.skyLight = std::shared_ptr<uint8_t[]>(new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]());
     d.chunkX = chunkX;
     d.chunkZ = chunkZ;
@@ -82,7 +107,7 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
             int limit_stone = std::max(1, (int)(0.7 * height));
 
             for (int j = 0; j < CHUNK_HEIGHT; j++) {
-                Cube* block = &d.blocks[i * CHUNK_HEIGHT * CHUNK_SIZE + j * CHUNK_SIZE + k];
+                Cube* block = &flatBlocks[i * CHUNK_HEIGHT * CHUNK_SIZE + j * CHUNK_SIZE + k];
                 double detailNoise = terrain.getNoise(globalX, globalZ, j);
 
                 if (j > height) {
@@ -119,12 +144,12 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
                 shoreBlock = SAND;
 
             for (int j = 0; j <= WATER_LEVEL + 1 && j < CHUNK_HEIGHT; j++) {
-                Cube* block = getBlockFromData(d, i, j, k);
+                Cube* block = getBlockFromFlat(flatBlocks.get(),i, j, k);
                 block_type bt = block->getType();
                 if (bt != DIRT && bt != GRASS && bt != STONE && bt != GRAVEL) continue;
 
                 if (j < WATER_LEVEL) {
-                    Cube* above = getBlockFromData(d, i, j + 1, k);
+                    Cube* above = getBlockFromFlat(flatBlocks.get(),i, j + 1, k);
                     if (above && above->getType() == WATER) {
                         block->setType(shoreBlock);
                         continue;
@@ -132,7 +157,7 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
                 }
                 static const int dirs[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
                 for (auto& dir : dirs) {
-                    Cube* nb = getBlockFromData(d, i + dir[0], j + dir[1], k + dir[2]);
+                    Cube* nb = getBlockFromFlat(flatBlocks.get(),i + dir[0], j + dir[1], k + dir[2]);
                     if (nb && nb->getType() == WATER) {
                         block->setType(shoreBlock);
                         break;
@@ -184,7 +209,7 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
         if (tx - radius < 1 || tx + radius >= CHUNK_SIZE - 1) continue;
         if (tz - radius < 1 || tz + radius >= CHUNK_SIZE - 1) continue;
 
-        Cube* surfaceBlock = getBlockFromData(d, tx, surface, tz);
+        Cube* surfaceBlock = getBlockFromFlat(flatBlocks.get(),tx, surface, tz);
         if (!surfaceBlock || surfaceBlock->getType() != tbp.surfaceBlock) continue;
         if (tbp.surfaceBlock != GRASS) continue; // only plant trees on grass
 
@@ -203,7 +228,7 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
 
         // Trunk
         for (int y = surface + 1; y <= surface + trunkH; y++) {
-            Cube* b = getBlockFromData(d, tx, y, tz);
+            Cube* b = getBlockFromFlat(flatBlocks.get(),tx, y, tz);
             if (b) b->setType(WOOD);
         }
 
@@ -216,7 +241,7 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
                     if (dx == 0 && dz == 0 && ly == 0) continue;
                     int bx = tx + dx, by = canopyBase + ly, bz = tz + dz;
                     if (bx < 0 || bx >= CHUNK_SIZE || bz < 0 || bz >= CHUNK_SIZE) continue;
-                    Cube* b = getBlockFromData(d, bx, by, bz);
+                    Cube* b = getBlockFromFlat(flatBlocks.get(),bx, by, bz);
                     if (b && b->getType() == AIR) b->setType(LEAVES);
                 }
             }
@@ -227,7 +252,7 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
                 if (abs(dx) == 1 && abs(dz) == 1) continue;
                 int bx = tx + dx, bz = tz + dz;
                 if (bx < 0 || bx >= CHUNK_SIZE || bz < 0 || bz >= CHUNK_SIZE) continue;
-                Cube* crown = getBlockFromData(d, bx, canopyBase + layers, bz);
+                Cube* crown = getBlockFromFlat(flatBlocks.get(),bx, canopyBase + layers, bz);
                 if (crown && crown->getType() == AIR) crown->setType(LEAVES);
             }
         }
@@ -248,11 +273,11 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
         int cactusH = cactusDist(rng);
         if (surface + cactusH >= CHUNK_HEIGHT) continue;
 
-        Cube* surfBlock = getBlockFromData(d, cx, surface, cz);
+        Cube* surfBlock = getBlockFromFlat(flatBlocks.get(),cx, surface, cz);
         if (!surfBlock || surfBlock->getType() != SAND) continue;
 
         for (int y = surface + 1; y <= surface + cactusH; y++) {
-            Cube* b = getBlockFromData(d, cx, y, cz);
+            Cube* b = getBlockFromFlat(flatBlocks.get(),cx, y, cz);
             if (b && b->getType() == AIR) b->setType(CACTUS);
         }
     }
@@ -263,14 +288,18 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
         bool found = false;
         for (int i = 0; i < CHUNK_SIZE && !found; i++)
             for (int k = 0; k < CHUNK_SIZE && !found; k++)
-                if (getBlockFromData(d, i, j, k)->getType() != AIR) {
+                if (getBlockFromFlat(flatBlocks.get(), i, j, k)->getType() != AIR) {
                     d.maxSolidY = j;
                     found = true;
                 }
         if (found) break;
     }
 
-    computeSkyLightData(d.blocks.get(), d.skyLight.get(), d.maxSolidY);
+    computeSkyLightData(flatBlocks.get(), d.skyLight.get(), d.maxSolidY);
+
+    // Compress flat buffer into palette-based sections
+    compressIntoSections(d.sections, flatBlocks.get());
+
     return d;
 }
 
@@ -279,7 +308,7 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) : Chunk(generate
 
 // Construct from pre-generated data (no computation, main thread only)
 Chunk::Chunk(ChunkData&& data) {
-    blocks = std::move(data.blocks);
+    for (int i = 0; i < NUM_SECTIONS; i++) sections[i] = std::move(data.sections[i]);
     skyLight = std::move(data.skyLight);
     this->chunkX = data.chunkX;
     this->chunkY = data.chunkZ;
@@ -385,7 +414,8 @@ static void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY) 
 }
 
 void Chunk::computeSkyLight() {
-    computeSkyLightData(blocks.get(), skyLight.get(), maxSolidY);
+    auto flat = decompressBlocks();
+    computeSkyLightData(flat.get(), skyLight.get(), maxSolidY);
 }
 
 uint8_t Chunk::getSkyLight(int x, int y, int z) const {
@@ -410,7 +440,8 @@ void Chunk::propagateBorderLight(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Ch
     auto packCoord = [](int x, int y, int z) -> int32_t { return (x << 20) | (y << 8) | z; };
 
     uint8_t* lt = skyLight.get(); // packed light array
-    Cube* blks = blocks.get();
+    auto flatBlocks = decompressBlocks();
+    Cube* blks = flatBlocks.get();
 
     // Seed from neighbor borders: for each border face, check if the neighbor's
     // light value minus 1 is greater than our edge block's current light.
@@ -511,7 +542,10 @@ void Chunk::propagateBorderLight(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Ch
 
 Cube* Chunk::getBlock(int i, int j, int k) {
     if (i < 0 || i >= CHUNK_SIZE || j < 0 || j >= CHUNK_HEIGHT || k < 0 || k >= CHUNK_SIZE) return nullptr;
-    return &blocks[i * CHUNK_HEIGHT * CHUNK_SIZE + j * CHUNK_SIZE + k];
+    // Use a thread-local scratch cube to return a pointer (callers should migrate to getBlockType)
+    thread_local Cube scratch;
+    scratch.setType(getBlockType(i, j, k));
+    return &scratch;
 }
 
 // Returns the block at local (i,j,k), crossing into a neighbor chunk if needed.
@@ -536,6 +570,10 @@ static bool isOpaqueCross(Chunk* self, int i, int j, int k, Chunk* nx_neg, Chunk
 
 void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
     double _buildStart = glfwGetTime();
+
+    // Decompress sections into flat buffer for mesh building
+    auto flatBlocks = decompressBlocks();
+    Cube* blocks = flatBlocks.get();
 
     // Precompute opacity cache with 1-block padding for fast AO lookups.
     int opaqueH = std::min(maxSolidY + 2, (int)CHUNK_HEIGHT);
@@ -1137,7 +1175,8 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, int maxSolidY, i
 
 void Chunk::buildMeshDataAsync(const NeighborBorders& borders) {
     auto start = std::chrono::steady_clock::now();
-    pendingMesh = buildMeshFromData(blocks.get(), skyLight.get(), maxSolidY, chunkX, chunkY, borders);
+    auto flat = decompressBlocks();
+    pendingMesh = buildMeshFromData(flat.get(), skyLight.get(), maxSolidY, chunkX, chunkY, borders);
     auto end = std::chrono::steady_clock::now();
     g_frame.meshBuildMs += std::chrono::duration<double, std::milli>(end - start).count();
     g_frame.meshBuilds++;
@@ -1388,13 +1427,14 @@ static void removeBlockLightLocal(Cube* blocks, uint8_t* packedLight, int x, int
 }
 
 void Chunk::destroyBlock(int x, int y, int z) {
-    block_type oldType = blocks[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].getType();
-    blocks[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].setType(AIR);
-    updateSkyLightLocal(blocks.get(), skyLight.get(), x, y, z);
+    block_type oldType = getBlockType(x, y, z);
+    setBlockType(x, y, z, AIR);
+    auto flat = decompressBlocks();
+    updateSkyLightLocal(flat.get(), skyLight.get(), x, y, z);
     if (getBlockLightEmission(oldType) > 0)
-        removeBlockLightLocal(blocks.get(), skyLight.get(), x, y, z);
+        removeBlockLightLocal(flat.get(), skyLight.get(), x, y, z);
     else
-        updateBlockLightLocal(blocks.get(), skyLight.get(), x, y, z);
+        updateBlockLightLocal(flat.get(), skyLight.get(), x, y, z);
     meshDirty = true;
 }
 
@@ -1483,10 +1523,10 @@ static void darkenSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, i
 }
 
 void Chunk::placeBlock(int x, int y, int z, block_type type) {
-    size_t i = static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z;
-    blocks[i].setType(type);
+    setBlockType(x, y, z, type);
     if (y > maxSolidY) maxSolidY = y;
-    darkenSkyLightLocal(blocks.get(), skyLight.get(), x, y, z);
+    auto flat = decompressBlocks();
+    darkenSkyLightLocal(flat.get(), skyLight.get(), x, y, z);
     meshDirty = true;
 }
 
@@ -1513,10 +1553,10 @@ void Chunk::destroy() {
         glDeleteBuffers(1, &chunkEBO);
         chunkEBO = 0;
     }
-    blocks.reset();
+    for (int i = 0; i < NUM_SECTIONS; i++) sections[i].reset();
     skyLight.reset();
 }
 
 Chunk::~Chunk() {
-    if (blocks) destroy();
+    if (skyLight) destroy();
 }

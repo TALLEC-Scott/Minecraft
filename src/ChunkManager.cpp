@@ -178,7 +178,7 @@ void ChunkManager::queueMeshBuild(glm::ivec2 pos) {
 
     MeshRequest req;
     req.pos = pos;
-    req.blocks = chunk.blocks;         // shared_ptr copy — keeps data alive
+    req.blocks = chunk.decompressBlocks();  // snapshot: decompress sections into flat buffer
     req.skyLight = chunk.skyLight;     // shared_ptr copy (packed sky+block)
     req.maxSolidY = chunk.maxSolidY;
     req.chunkX = chunk.chunkX;
