@@ -148,7 +148,7 @@ void Player::handleInput(GLFWwindow* window, World* world) {
 
     // Right click: place block
     bool rightDown = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
-    if (rightDown && !rightClickHeld && world && hasHighlight) {
+    if (rightDown && !rightClickHeld && world && hasHighlight && hotbar[selectedSlot] != AIR) {
         glm::vec3 camPos = camera.getPosition();
         int px = (int)std::floor(camPos.x);
         int pzCoord = (int)std::floor(camPos.z);

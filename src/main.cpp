@@ -75,6 +75,8 @@ static GLuint cloudWallVAO, cloudWallVBO, cloudWallEBO;
 static int cloudIndexCount = 0;
 static GLuint highlightVAO, highlightVBO;
 static GLuint armVAO, armVBO, armEBO;
+static GLuint heldBlockVAO, heldBlockVBO, heldBlockEBO;
+static block_type lastHeldBlock = AIR; // track when to rebuild held block mesh
 static double lastTime = 0, lastFrameTime = 0;
 static int nbFrames = 0, chunksRendered = 0;
 
@@ -106,6 +108,15 @@ void cursorPositionCallback(GLFWwindow* /*window*/, double xPos, double yPos) {
     if (currentState == GameState::Playing) player.updateMouseLook(xPos, yPos, windowWidth, windowHeight);
 }
 
+void scrollCallback(GLFWwindow* /*window*/, double /*xOffset*/, double yOffset) {
+    if (currentState == GameState::Playing) {
+        int slot = player.getSelectedSlot();
+        slot -= (int)yOffset; // scroll up = previous slot
+        slot = ((slot % Player::HOTBAR_SIZE) + Player::HOTBAR_SIZE) % Player::HOTBAR_SIZE;
+        player.setSelectedSlot(slot);
+    }
+}
+
 glm::vec3 getSkyColor(float angle) {
     glm::vec3 noonColor(0.2f, 0.6f, 1.0f);
     glm::vec3 duskColor(0.05f, 0.05f, 0.15f);
@@ -120,6 +131,81 @@ glm::vec3 getSkyColor(float angle) {
         float t = std::min(-sunHeight, 1.0f);
         return glm::mix(duskColor, nightColor, t);
     }
+}
+
+// Build a small cube mesh for the held block (6 faces, per-face texture from TextureArray)
+static void buildHeldBlockMesh(block_type bt) {
+    float s = 0.15f; // half-size of the held block
+    // Face definitions: normal direction, then 4 corner offsets (each 3 floats)
+    struct Face {
+        float nx, ny, nz;
+        float v[4][3]; // 4 vertices
+        float u[4][2]; // UVs
+        int faceIdx;    // for layerForFace
+    };
+    Face faces[6] = {
+        // Front (+Z)
+        {0, 0, 1, {{-s, -s, s}, {-s, s, s}, {s, s, s}, {s, -s, s}}, {{0,0},{0,1},{1,1},{1,0}}, 0},
+        // Back (-Z)
+        {0, 0, -1, {{s, -s, -s}, {s, s, -s}, {-s, s, -s}, {-s, -s, -s}}, {{0,0},{0,1},{1,1},{1,0}}, 1},
+        // Left (-X)
+        {-1, 0, 0, {{-s, -s, -s}, {-s, s, -s}, {-s, s, s}, {-s, -s, s}}, {{0,0},{0,1},{1,1},{1,0}}, 2},
+        // Right (+X)
+        {1, 0, 0, {{s, -s, s}, {s, s, s}, {s, s, -s}, {s, -s, -s}}, {{0,0},{0,1},{1,1},{1,0}}, 3},
+        // Top (+Y)
+        {0, 1, 0, {{-s, s, s}, {-s, s, -s}, {s, s, -s}, {s, s, s}}, {{0,0},{0,1},{1,1},{1,0}}, 4},
+        // Bottom (-Y)
+        {0, -1, 0, {{-s, -s, -s}, {-s, -s, s}, {s, -s, s}, {s, -s, -s}}, {{0,0},{0,1},{1,1},{1,0}}, 5},
+    };
+    // 24 verts × 10 floats, 36 indices
+    float verts[24 * 10];
+    unsigned int indices[36];
+    int vi = 0;
+    for (int f = 0; f < 6; f++) {
+        float layer = (float)TextureArray::layerForFace(bt, faces[f].faceIdx);
+        for (int v = 0; v < 4; v++) {
+            verts[vi++] = faces[f].v[v][0];
+            verts[vi++] = faces[f].v[v][1];
+            verts[vi++] = faces[f].v[v][2];
+            verts[vi++] = faces[f].u[v][0];
+            verts[vi++] = faces[f].u[v][1];
+            verts[vi++] = faces[f].nx;
+            verts[vi++] = faces[f].ny;
+            verts[vi++] = faces[f].nz;
+            verts[vi++] = layer;
+            verts[vi++] = 1.0f; // brightness
+        }
+        int b = f * 4;
+        indices[f * 6 + 0] = b;
+        indices[f * 6 + 1] = b + 1;
+        indices[f * 6 + 2] = b + 2;
+        indices[f * 6 + 3] = b + 2;
+        indices[f * 6 + 4] = b + 3;
+        indices[f * 6 + 5] = b;
+    }
+    if (!heldBlockVAO) {
+        glGenVertexArrays(1, &heldBlockVAO);
+        glGenBuffers(1, &heldBlockVBO);
+        glGenBuffers(1, &heldBlockEBO);
+    }
+    glBindVertexArray(heldBlockVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, heldBlockVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, heldBlockEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_DYNAMIC_DRAW);
+    constexpr int STRIDE = 10 * sizeof(float);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, STRIDE, nullptr);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, STRIDE, (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, STRIDE, (void*)(5 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(8 * sizeof(float)));
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(9 * sizeof(float)));
+    glEnableVertexAttribArray(4);
+    glBindVertexArray(0);
+    lastHeldBlock = bt;
 }
 
 void processInput(GLFWwindow* window) {
@@ -231,6 +317,7 @@ int main(int argc, char* argv[]) {
     glfwSetCursorPos(window, static_cast<double>(WINDOW_WIDTH) / 2.0, static_cast<double>(WINDOW_HEIGHT) / 2.0);
 
     glfwSetCursorPosCallback(window, cursorPositionCallback);
+    glfwSetScrollCallback(window, scrollCallback);
 
     // Load settings
     gameSettings.load("settings.txt");
@@ -1310,14 +1397,29 @@ int main(int argc, char* argv[]) {
                 billboardShader.use();
                 billboardShader.setMat4("projection", projection);
                 billboardShader.setMat4("view", glm::mat4(1.0f));
-                billboardShader.setMat4("model", armModel);
                 billboardShader.setVec3("tintColor", armTint);
+
+                block_type heldType = player.getSelectedBlockType();
                 glDisable(GL_CULL_FACE);
-
-                glBindVertexArray(armVAO);
-                glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
+                if (heldType == AIR) {
+                    // Empty hand: show arm
+                    billboardShader.setMat4("model", armModel);
+                    glBindVertexArray(armVAO);
+                    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
+                } else {
+                    // Held block: smaller cube, tilted, in hand position
+                    if (heldType != lastHeldBlock) buildHeldBlockMesh(heldType);
+                    glm::mat4 blockModel = glm::mat4(1.0f);
+                    blockModel = glm::translate(blockModel, glm::vec3(0.4f, -0.35f, -0.5f));
+                    blockModel = glm::rotate(blockModel, glm::radians(player.getPunchSwingAngle()), glm::vec3(1, 0, 0));
+                    blockModel = glm::rotate(blockModel, glm::radians(25.0f), glm::vec3(0, 1, 0));
+                    blockModel = glm::rotate(blockModel, glm::radians(10.0f), glm::vec3(1, 0, 0));
+                    billboardShader.setMat4("model", blockModel);
+                    TextureArray::bind();
+                    glBindVertexArray(heldBlockVAO);
+                    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
+                }
                 glBindVertexArray(0);
-
                 glEnable(GL_CULL_FACE);
             }
 
