@@ -267,6 +267,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Maximum number of vertex attributes supported: " << nrAttributes << std::endl;
 
     TextureArray::initialize();
+    TextureArray::initLayerTextures();
 
     // Initialize UI
     // static storage on Emscripten (main never returns), auto on desktop
@@ -1337,6 +1338,42 @@ int main(int argc, char* argv[]) {
                 uiRenderer.end();
             }
 
+            // Hotbar
+            if (currentState == GameState::Playing) {
+                constexpr float SLOT_SIZE = 40.0f;
+                constexpr float SLOT_PAD = 2.0f;
+                constexpr float BAR_PAD = 4.0f;
+                constexpr int HSIZE = Player::HOTBAR_SIZE;
+                float totalW = HSIZE * SLOT_SIZE + (HSIZE - 1) * SLOT_PAD + BAR_PAD * 2;
+                float barX = (windowWidth - totalW) / 2.0f;
+                float barY = windowHeight - SLOT_SIZE - BAR_PAD * 2 - 10.0f;
+
+                uiRenderer.begin(windowWidth, windowHeight);
+                // Background
+                uiRenderer.drawRect(barX, barY, totalW, SLOT_SIZE + BAR_PAD * 2,
+                                    glm::vec4(0.0f, 0.0f, 0.0f, 0.5f));
+                const block_type* hotbar = player.getHotbar();
+                int sel = player.getSelectedSlot();
+                for (int i = 0; i < HSIZE; i++) {
+                    float sx = barX + BAR_PAD + i * (SLOT_SIZE + SLOT_PAD);
+                    float sy = barY + BAR_PAD;
+                    // Slot background
+                    glm::vec4 slotColor = (i == sel) ? glm::vec4(1.0f, 1.0f, 1.0f, 0.4f)
+                                                     : glm::vec4(0.3f, 0.3f, 0.3f, 0.4f);
+                    uiRenderer.drawRect(sx, sy, SLOT_SIZE, SLOT_SIZE, slotColor);
+                    // Block icon (top face)
+                    int layer = TextureArray::layerForFace(hotbar[i], 4);
+                    GLuint tex = TextureArray::getLayerTexture2D(layer);
+                    if (tex) {
+                        uiRenderer.drawTexturedRect(sx + 4, sy + 4, SLOT_SIZE - 8, SLOT_SIZE - 8, tex, 0, 0, 1, 1);
+                    }
+                    // Slot number
+                    std::string num = std::to_string((i + 1) % 10);
+                    uiRenderer.drawTextShadow(num, sx + 2, sy + 2, 1.0f);
+                }
+                uiRenderer.end();
+            }
+
             // Pause menu overlay (rendered after the world)
             if (currentState == GameState::Paused) {
                 GameState next = menu.drawPauseMenu(uiRenderer, windowWidth, windowHeight, window);
@@ -1383,6 +1420,7 @@ cleanup:
         glDeleteTextures(1, &headlessColor);
         glDeleteRenderbuffers(1, &headlessDepth);
     }
+    TextureArray::destroyLayerTextures();
     TextureArray::destroy();
 
     glfwDestroyWindow(window);

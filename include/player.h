@@ -35,6 +35,13 @@ class Player {
 
     bool hasTargetedBlock() const { return hasHighlight; }
     glm::ivec3 getTargetedBlock() const { return targeted; }
+    glm::ivec3 getPlacementPos() const { return placementPos; }
+
+    // Hotbar
+    static constexpr int HOTBAR_SIZE = 10;
+    int getSelectedSlot() const { return selectedSlot; }
+    block_type getSelectedBlockType() const { return hotbar[selectedSlot]; }
+    const block_type* getHotbar() const { return hotbar; }
 
     bool isWalkMode() const { return camera.isWalkMode(); }
     float getPunchSwingAngle() const;
@@ -50,7 +57,13 @@ class Player {
 
     // Block targeting
     glm::ivec3 targeted = glm::ivec3(0);
+    glm::ivec3 placementPos = glm::ivec3(0);
     bool hasHighlight = false;
+
+    // Hotbar
+    block_type hotbar[HOTBAR_SIZE] = {GRASS, DIRT, STONE, WOOD, SAND, SNOW, GLOWSTONE, LEAVES, COAL_ORE, GRAVEL};
+    int selectedSlot = 0;
+    bool rightClickHeld = false;
 
     // Punch animation
     bool isPunching = false;
