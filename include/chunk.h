@@ -134,6 +134,7 @@ class Chunk {
     void markDirty() { meshDirty = true; }
     void destroy();
     void destroyBlock(int x, int y, int z);
+    void placeBlock(int x, int y, int z, block_type type);
 
     void setPendingMesh(MeshData&& m) {
         pendingMesh = std::move(m);

@@ -127,6 +127,12 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     else
         camera.resetSpeed();
 
+    // Hotbar selection: keys 1-9 = slots 0-8, key 0 = slot 9
+    for (int i = 0; i < HOTBAR_SIZE; i++) {
+        int key = (i < 9) ? (GLFW_KEY_1 + i) : GLFW_KEY_0;
+        if (glfwGetKey(window, key) == GLFW_PRESS) selectedSlot = i;
+    }
+
     // Left click: punch + break block
     bool leftDown = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
     if (leftDown && !leftClickHeld && world) {
@@ -139,6 +145,24 @@ void Player::handleInput(GLFWwindow* window, World* world) {
         }
     }
     leftClickHeld = leftDown;
+
+    // Right click: place block
+    bool rightDown = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
+    if (rightDown && !rightClickHeld && world && hasHighlight) {
+        glm::vec3 camPos = camera.getPosition();
+        int px = (int)std::floor(camPos.x);
+        int pzCoord = (int)std::floor(camPos.z);
+        int pyHead = (int)std::floor(camPos.y);
+        int pyFeet = (int)std::floor(camPos.y - PLAYER_HEIGHT);
+        // Don't place inside player body (2 blocks tall)
+        bool blocked = (placementPos.x == px && placementPos.z == pzCoord &&
+                        (placementPos.y == pyHead || placementPos.y == pyFeet));
+        if (!blocked) {
+            playBreakSound(hotbar[selectedSlot]);
+            world->placeBlock(placementPos, hotbar[selectedSlot]);
+        }
+    }
+    rightClickHeld = rightDown;
 }
 
 void Player::updateMouseLook(double xPos, double yPos, int /*windowWidth*/, int /*windowHeight*/) {
@@ -251,7 +275,7 @@ void Player::findGroundAndUpdate(World* world) {
 void Player::updateTargetedBlock(World* world) {
     glm::vec3 pos = camera.getPosition();
     glm::vec3 front = camera.getFront();
-    hasHighlight = world->raycast(pos, front, REACH, targeted);
+    hasHighlight = world->raycast(pos, front, REACH, targeted, placementPos);
 }
 
 float Player::getPunchSwingAngle() const {

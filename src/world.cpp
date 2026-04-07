@@ -33,6 +33,25 @@ World::World(unsigned int seed) {
     this->chunkManager = new ChunkManager(RENDER_DISTANCE, CHUNK_SIZE, *terrainGenerator);
 }
 
+static void markBorderNeighborsDirty(ChunkManager* cm, int chunkX, int chunkZ, int lx, int lz) {
+    if (lx == 0) {
+        Chunk* n = cm->getChunk(chunkX - 1, chunkZ);
+        if (n) n->markDirty();
+    }
+    if (lx == CHUNK_SIZE - 1) {
+        Chunk* n = cm->getChunk(chunkX + 1, chunkZ);
+        if (n) n->markDirty();
+    }
+    if (lz == 0) {
+        Chunk* n = cm->getChunk(chunkX, chunkZ - 1);
+        if (n) n->markDirty();
+    }
+    if (lz == CHUNK_SIZE - 1) {
+        Chunk* n = cm->getChunk(chunkX, chunkZ + 1);
+        if (n) n->markDirty();
+    }
+}
+
 void World::destroyBlock(glm::vec3 position) const {
     int bx = (int)std::floor(position.x);
     int by = (int)std::floor(position.y);
@@ -45,7 +64,26 @@ void World::destroyBlock(glm::vec3 position) const {
     int lz = worldToLocal(bz, chunkZ);
 
     auto chunk = this->chunkManager->getChunk(chunkX, chunkZ);
-    if (chunk) chunk->destroyBlock(lx, by, lz);
+    if (!chunk) return;
+    chunk->destroyBlock(lx, by, lz);
+    markBorderNeighborsDirty(chunkManager, chunkX, chunkZ, lx, lz);
+}
+
+void World::placeBlock(glm::ivec3 position, block_type type) const {
+    int bx = position.x;
+    int by = position.y;
+    int bz = position.z;
+    if (by < 0 || by >= CHUNK_HEIGHT) return;
+
+    int chunkX = worldToChunk(bx);
+    int chunkZ = worldToChunk(bz);
+    int lx = worldToLocal(bx, chunkX);
+    int lz = worldToLocal(bz, chunkZ);
+
+    auto chunk = this->chunkManager->getChunk(chunkX, chunkZ);
+    if (!chunk) return;
+    chunk->placeBlock(lx, by, lz, type);
+    markBorderNeighborsDirty(chunkManager, chunkX, chunkZ, lx, lz);
 }
 
 World::~World() {
@@ -134,10 +172,12 @@ void World::update(glm::vec3 cameraPosition) const {
     this->chunkManager->update(cameraPosition);
 }
 
-bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::ivec3& hitPos) const {
+bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::ivec3& hitPos,
+                    glm::ivec3& prevPos) const {
     // DDA voxel traversal
     direction = glm::normalize(direction);
     glm::ivec3 pos = glm::ivec3(std::floor(origin.x), std::floor(origin.y), std::floor(origin.z));
+    glm::ivec3 prev = pos;
     glm::ivec3 step;
     glm::vec3 tMax, tDelta;
 
@@ -168,12 +208,14 @@ bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::i
                 Cube* block = chunk->getBlock(lx, pos.y, lz);
                 if (block && block->getType() != AIR && block->getType() != WATER) {
                     hitPos = pos;
+                    prevPos = prev;
                     return true;
                 }
             }
         }
 
         // Step to next voxel boundary
+        prev = pos;
         if (tMax.x < tMax.y && tMax.x < tMax.z) {
             dist = tMax.x;
             tMax.x += tDelta.x;

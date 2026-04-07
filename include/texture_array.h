@@ -33,5 +33,9 @@ class TextureArray {
     static constexpr int SKIN_LAYER = 17;
     static constexpr int MOON_LAYER = 18;
     static constexpr int WOOD_TOP_LAYER = 19;
+    static constexpr int NUM_LAYERS = 20;
+    static void initLayerTextures();
+    static GLuint getLayerTexture2D(int layer);
+    static void destroyLayerTextures();
     static GLuint id;
 };

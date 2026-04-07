@@ -1126,7 +1126,8 @@ static void updateSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, i
             if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= CHUNK_HEIGHT || nz < 0 || nz >= CHUNK_SIZE) continue;
             if (hasFlag(blocks[idx(nx, ny, nz)].getType(), BF_OPAQUE)) continue;
 
-            uint8_t propagated = light - 1;
+            // Sky column: light=15 propagates downward without attenuation
+            uint8_t propagated = (light == 15 && d[1] == -1) ? 15 : (light - 1);
             if (skyLight[idx(nx, ny, nz)] >= propagated) continue;
             skyLight[idx(nx, ny, nz)] = propagated;
             queue.push_back({nx, ny, nz});
@@ -1137,6 +1138,95 @@ static void updateSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, i
 void Chunk::destroyBlock(int x, int y, int z) {
     blocks[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].setType(AIR);
     updateSkyLightLocal(blocks.get(), skyLight.get(), x, y, z);
+    meshDirty = true;
+}
+
+// Sky light darkening: light removal BFS when a block is placed
+static void darkenSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, int z) {
+    auto idx = [](int bx, int by, int bz) -> size_t {
+        return static_cast<size_t>(bx) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(by) * CHUNK_SIZE + bz;
+    };
+    static const int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+
+    // Phase 1: zero the placed block and any direct sky column below it
+    skyLight[idx(x, y, z)] = 0;
+
+    struct Node {
+        int x, y, z;
+        uint8_t oldLight;
+    };
+    std::vector<Node> removeQueue;
+    removeQueue.reserve(256);
+
+    // Walk column downward — block breaks the sky column
+    for (int by = y - 1; by >= 0; by--) {
+        if (hasFlag(blocks[idx(x, by, z)].getType(), BF_OPAQUE)) break;
+        if (skyLight[idx(x, by, z)] != 15) break;
+        uint8_t old = skyLight[idx(x, by, z)];
+        skyLight[idx(x, by, z)] = 0;
+        removeQueue.push_back({x, by, z, old});
+    }
+
+    // Seed removal from the placed block's neighbors too
+    for (auto& d : DIRS) {
+        int nx = x + d[0], ny = y + d[1], nz = z + d[2];
+        if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= CHUNK_HEIGHT || nz < 0 || nz >= CHUNK_SIZE) continue;
+        if (hasFlag(blocks[idx(nx, ny, nz)].getType(), BF_OPAQUE)) continue;
+        // Only seed neighbors that had less than max light (those derived from this block)
+    }
+
+    // Phase 2: BFS light removal from zeroed positions
+    std::vector<Node> relightSeeds;
+    relightSeeds.reserve(64);
+    size_t head = 0;
+    while (head < removeQueue.size()) {
+        auto [cx, cy, cz, oldLight] = removeQueue[head++];
+        for (auto& d : DIRS) {
+            int nx = cx + d[0], ny = cy + d[1], nz = cz + d[2];
+            if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= CHUNK_HEIGHT || nz < 0 || nz >= CHUNK_SIZE) continue;
+            if (hasFlag(blocks[idx(nx, ny, nz)].getType(), BF_OPAQUE)) continue;
+            uint8_t neighborLight = skyLight[idx(nx, ny, nz)];
+            if (neighborLight > 0 && neighborLight < oldLight) {
+                skyLight[idx(nx, ny, nz)] = 0;
+                removeQueue.push_back({nx, ny, nz, neighborLight});
+            } else if (neighborLight >= oldLight && neighborLight > 0) {
+                relightSeeds.push_back({nx, ny, nz, neighborLight});
+            }
+        }
+    }
+
+    // Phase 3: BFS re-propagation from boundary seeds
+    struct LightNode {
+        int x, y, z;
+    };
+    std::vector<LightNode> lightQueue;
+    lightQueue.reserve(256);
+    for (auto& s : relightSeeds) {
+        lightQueue.push_back({s.x, s.y, s.z});
+    }
+    head = 0;
+    while (head < lightQueue.size()) {
+        auto [cx, cy, cz] = lightQueue[head++];
+        uint8_t light = skyLight[idx(cx, cy, cz)];
+        if (light <= 1) continue;
+        for (auto& d : DIRS) {
+            int nx = cx + d[0], ny = cy + d[1], nz = cz + d[2];
+            if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= CHUNK_HEIGHT || nz < 0 || nz >= CHUNK_SIZE) continue;
+            if (hasFlag(blocks[idx(nx, ny, nz)].getType(), BF_OPAQUE)) continue;
+            // Sky column: light=15 propagates downward without attenuation
+            uint8_t propagated = (light == 15 && d[1] == -1) ? 15 : (light - 1);
+            if (skyLight[idx(nx, ny, nz)] >= propagated) continue;
+            skyLight[idx(nx, ny, nz)] = propagated;
+            lightQueue.push_back({nx, ny, nz});
+        }
+    }
+}
+
+void Chunk::placeBlock(int x, int y, int z, block_type type) {
+    size_t i = static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z;
+    blocks[i].setType(type);
+    if (y > maxSolidY) maxSolidY = y;
+    darkenSkyLightLocal(blocks.get(), skyLight.get(), x, y, z);
     meshDirty = true;
 }
 
