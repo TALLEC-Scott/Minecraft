@@ -1371,12 +1371,12 @@ int main(int argc, char* argv[]) {
             {
                 glm::mat4 armModel = player.getArmModelMatrix();
 
-                // Sample sky light at player position
+                // Sample sky light at player eye position
                 glm::vec3 armTint(1.0f);
                 {
-                    int bx = (int)std::floor(cameraPos.x);
-                    int bz = (int)std::floor(cameraPos.z);
-                    int by = (int)std::floor(cameraPos.y);
+                    int bx = (int)std::floor(cameraPos.x + 0.5f);
+                    int bz = (int)std::floor(cameraPos.z + 0.5f);
+                    int by = (int)std::floor(cameraPos.y + 0.5f);
                     int cx = worldToChunk(bx);
                     int cz = worldToChunk(bz);
                     Chunk* chunk = w->chunkManager->getChunk(cx, cz);

@@ -123,11 +123,9 @@ void Player::handleInput(GLFWwindow* window, World* world) {
         (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS))
         camera.down();
 
-    // Sprint — R always, Ctrl on desktop only (conflicts with browser shortcuts)
+    // Sprint — Shift in walk mode, R always
     bool sprint = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
-#ifndef __EMSCRIPTEN__
-    sprint = sprint || glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS;
-#endif
+    if (camera.isWalkMode()) sprint = sprint || glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
     if (sprint) camera.speedUp();
     else camera.resetSpeed();
 
@@ -234,11 +232,6 @@ void Player::update(World* world) {
 void Player::findGroundAndUpdate(World* world) {
     if (!camera.isWalkMode()) return;
 
-    glm::vec3 pos = camera.getPosition();
-    int bx = (int)std::floor(pos.x);
-    int bz = (int)std::floor(pos.z);
-
-    // Block check callback
     auto blockCheck = [](int bx, int by, int bz, void* ctx) -> bool {
         auto* cm = static_cast<ChunkManager*>(ctx);
         int cx = worldToChunk(bx);
@@ -249,31 +242,24 @@ void Player::findGroundAndUpdate(World* world) {
         return b && hasFlag(b->getType(), BF_SOLID);
     };
 
-    // Find ground: pre-compute chunk, scan column
+    camera.update(blockCheck, world->chunkManager);
+
+    // Footstep sounds: look up block types at player feet
+    glm::vec3 pos = camera.getPosition();
+    int bx = (int)std::floor(pos.x);
+    int bz = (int)std::floor(pos.z);
     int cx = worldToChunk(bx);
     int cz = worldToChunk(bz);
-    int lx = worldToLocal(bx, cx);
-    int lz = worldToLocal(bz, cz);
     Chunk* chunk = world->chunkManager->getChunk(cx, cz);
-    float groundY = 0;
     groundBlockType = AIR;
     feetBlockType = AIR;
     if (chunk) {
-        for (int y = std::min((int)pos.y + 1, CHUNK_HEIGHT - 1); y >= 0; y--) {
-            Cube* b = chunk->getBlock(lx, y, lz);
-            if (b && hasFlag(b->getType(), BF_SOLID)) {
-                groundY = (float)(y + 1);
-                groundBlockType = b->getType();
-                break;
-            }
-        }
-        // Check block at feet level for water
         int feetY = (int)std::floor(pos.y - PLAYER_HEIGHT);
-        Cube* fb = chunk->getBlock(lx, feetY, lz);
+        Cube* gb = chunk->getBlock(worldToLocal(bx, cx), feetY - 1, worldToLocal(bz, cz));
+        if (gb) groundBlockType = gb->getType();
+        Cube* fb = chunk->getBlock(worldToLocal(bx, cx), feetY, worldToLocal(bz, cz));
         if (fb) feetBlockType = fb->getType();
     }
-
-    camera.update(groundY, blockCheck, world->chunkManager);
 }
 
 void Player::updateTargetedBlock(World* world) {

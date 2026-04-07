@@ -82,36 +82,42 @@ void Camera::toggleWalkMode() {
     }
 }
 
-void Camera::update(float groundHeight, BlockCheck isSolid, void* ctx) {
+void Camera::update(BlockCheck isSolid, void* ctx) {
     if (!walkMode) {
         pendingMove = glm::vec3(0);
         return;
     }
 
-    // Apply pending horizontal movement with AABB collision (slide along walls)
+    auto solidCheck = [&](int bx, int by, int bz) { return isSolid(bx, by, bz, ctx); };
+    glm::vec3 feetPos = {cameraPosition.x, cameraPosition.y - PLAYER_HEIGHT, cameraPosition.z};
+
+    // Resolve horizontal movement with wall sliding
     if (glm::dot(pendingMove, pendingMove) > 0.000001f) {
-        auto solidCheck = [&](int bx, int by, int bz) { return isSolid(bx, by, bz, ctx); };
-        glm::vec3 feetPos = {cameraPosition.x, cameraPosition.y - PLAYER_HEIGHT, cameraPosition.z};
-        glm::vec3 resolved = resolveMovement(feetPos, pendingMove, solidCheck);
-        cameraPosition.x = resolved.x;
-        cameraPosition.z = resolved.z;
+        feetPos = resolveMovement(feetPos, pendingMove, solidCheck);
+        cameraPosition.x = feetPos.x;
+        cameraPosition.z = feetPos.z;
     }
     pendingMove = glm::vec3(0);
 
-    // Apply gravity with terminal velocity (also delta-time scaled)
+    // Apply gravity
     float dtScale = deltaTime * 60.0f;
     velocityY -= GRAVITY * dtScale;
     if (velocityY < TERMINAL_VELOCITY) velocityY = TERMINAL_VELOCITY;
-    cameraPosition.y += velocityY * dtScale;
+    float moveY = velocityY * dtScale;
 
-    // Ground collision
-    float feetY = groundHeight + PLAYER_HEIGHT;
-    if (cameraPosition.y <= feetY) {
-        cameraPosition.y = feetY;
+    // Resolve vertical movement with AABB (ground + ceiling)
+    feetPos = {cameraPosition.x, cameraPosition.y - PLAYER_HEIGHT, cameraPosition.z};
+    auto vResult = resolveVertical(feetPos, moveY, solidCheck);
+    cameraPosition.y = vResult.newFeetY + PLAYER_HEIGHT;
+
+    if (vResult.hitGround) {
         velocityY = 0;
         onGround = true;
     } else {
         onGround = false;
+    }
+    if (vResult.hitCeiling) {
+        velocityY = 0;
     }
 }
 
