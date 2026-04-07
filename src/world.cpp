@@ -174,9 +174,10 @@ void World::update(glm::vec3 cameraPosition) const {
 
 bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::ivec3& hitPos,
                     glm::ivec3& prevPos) const {
-    // DDA voxel traversal
+    // DDA voxel traversal (blocks are centered on integers: block n spans n-0.5 to n+0.5)
     direction = glm::normalize(direction);
-    glm::ivec3 pos = glm::ivec3(std::floor(origin.x), std::floor(origin.y), std::floor(origin.z));
+    glm::vec3 shifted = origin + glm::vec3(0.5f);
+    glm::ivec3 pos = glm::ivec3(std::floor(shifted.x), std::floor(shifted.y), std::floor(shifted.z));
     glm::ivec3 prev = pos;
     glm::ivec3 step;
     glm::vec3 tMax, tDelta;
@@ -184,10 +185,10 @@ bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::i
     for (int i = 0; i < 3; i++) {
         if (direction[i] > 0) {
             step[i] = 1;
-            tMax[i] = ((pos[i] + 1) - origin[i]) / direction[i];
+            tMax[i] = ((pos[i] + 1) - shifted[i]) / direction[i];
         } else if (direction[i] < 0) {
             step[i] = -1;
-            tMax[i] = (pos[i] - origin[i]) / direction[i];
+            tMax[i] = (pos[i] - shifted[i]) / direction[i];
         } else {
             step[i] = 0;
             tMax[i] = 1e30f;
