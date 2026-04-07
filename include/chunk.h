@@ -12,13 +12,16 @@
 #include "gl_header.h"
 #include <glm/glm.hpp>
 #include "cube.h"
+#include "chunk_section.h"
 #include "light_data.h"
 #include "shader.h"
 #include "TerrainGenerator.h"
 
+static constexpr int NUM_SECTIONS = CHUNK_HEIGHT / 16;
+
 // CPU-side chunk data — no GL resources, safe to build on worker threads
 struct ChunkData {
-    std::shared_ptr<Cube[]> blocks;
+    std::unique_ptr<ChunkSection> sections[NUM_SECTIONS];
     std::shared_ptr<uint8_t[]> skyLight; // packed: high nibble = sky, low nibble = block
     int heights[CHUNK_SIZE][CHUNK_SIZE]{};
     Biome biomes[CHUNK_SIZE][CHUNK_SIZE]{};
@@ -27,15 +30,16 @@ struct ChunkData {
 
     ChunkData() = default;
     ChunkData(ChunkData&& o) noexcept
-        : blocks(std::move(o.blocks)), skyLight(std::move(o.skyLight)),
+        : skyLight(std::move(o.skyLight)),
           chunkX(o.chunkX), chunkZ(o.chunkZ),
           maxSolidY(o.maxSolidY) {
+        for (int i = 0; i < NUM_SECTIONS; i++) sections[i] = std::move(o.sections[i]);
         std::memcpy(heights, o.heights, sizeof(heights));
         std::memcpy(biomes, o.biomes, sizeof(biomes));
     }
     ChunkData& operator=(ChunkData&& o) noexcept {
         if (this != &o) {
-            blocks = std::move(o.blocks);
+            for (int i = 0; i < NUM_SECTIONS; i++) sections[i] = std::move(o.sections[i]);
             skyLight = std::move(o.skyLight);
             chunkX = o.chunkX;
             chunkZ = o.chunkZ;
@@ -56,7 +60,6 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain);
 class Chunk {
   public:
     Chunk() {
-        blocks = std::shared_ptr<Cube[]>(new Cube[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]);
         skyLight =
             std::shared_ptr<uint8_t[]>(new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]());
         chunkX = -1;
@@ -68,12 +71,13 @@ class Chunk {
 
     // Move only
     Chunk(Chunk&& other) noexcept
-        : blocks(std::move(other.blocks)), skyLight(std::move(other.skyLight)),
+        : skyLight(std::move(other.skyLight)),
           chunkX(other.chunkX),
           chunkY(other.chunkY), chunkVAO(other.chunkVAO), chunkVBO(other.chunkVBO), chunkEBO(other.chunkEBO),
           opaqueIndexCount(other.opaqueIndexCount), waterIndexCount(other.waterIndexCount),
           waterIndexOffset(other.waterIndexOffset), meshDirty(other.meshDirty), maxSolidY(other.maxSolidY),
           pendingMesh(std::move(other.pendingMesh)), meshBuildInFlight(other.meshBuildInFlight) {
+        for (int i = 0; i < NUM_SECTIONS; i++) sections[i] = std::move(other.sections[i]);
         std::memcpy(heights, other.heights, sizeof(heights));
         other.chunkVAO = other.chunkVBO = other.chunkEBO = 0;
     }
@@ -84,7 +88,7 @@ class Chunk {
             if (chunkVBO) glDeleteBuffers(1, &chunkVBO);
             if (chunkEBO) glDeleteBuffers(1, &chunkEBO);
 
-            blocks = std::move(other.blocks);
+            for (int i = 0; i < NUM_SECTIONS; i++) sections[i] = std::move(other.sections[i]);
             skyLight = std::move(other.skyLight);
             chunkX = other.chunkX;
             chunkY = other.chunkY;
@@ -150,14 +154,49 @@ class Chunk {
     int getGlobalHeight(int x, int y);
     Cube* getBlock(int i, int j, int k);
 
+    // Section-based block access (preferred over getBlock)
+    block_type getBlockType(int x, int y, int z) const {
+        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return AIR;
+        int sy = y / 16;
+        if (!sections[sy]) return AIR;
+        return sections[sy]->getBlock(x, y % 16, z);
+    }
+
+    void setBlockType(int x, int y, int z, block_type t) {
+        int sy = y / 16;
+        if (!sections[sy]) {
+            if (t == AIR) return; // no need to create section for air
+            sections[sy] = std::make_unique<ChunkSection>();
+        }
+        sections[sy]->setBlock(x, y % 16, z, t);
+    }
+
+    // Decompress all sections into a flat Cube[] buffer (for BFS/mesh algorithms)
+    // Layout: blocks[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z]
+    std::shared_ptr<Cube[]> decompressBlocks() const {
+        auto buf = std::shared_ptr<Cube[]>(new Cube[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]);
+        for (int s = 0; s < NUM_SECTIONS; s++) {
+            if (!sections[s]) continue; // default Cube() is AIR
+            int baseY = s * 16;
+            for (int x = 0; x < CHUNK_SIZE; x++)
+                for (int ly = 0; ly < 16; ly++)
+                    for (int z = 0; z < CHUNK_SIZE; z++) {
+                        int y = baseY + ly;
+                        buf[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].setType(
+                            sections[s]->getBlock(x, ly, z));
+                    }
+        }
+        return buf;
+    }
+
     ~Chunk();
 
     uint8_t getSkyLight(int x, int y, int z) const;
     uint8_t getBlockLight(int x, int y, int z) const;
     void propagateBorderLight(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
 
-    // Shared block data — safe to capture by worker threads
-    std::shared_ptr<Cube[]> blocks;
+    // Section-based block storage — null sections mean all-air
+    std::unique_ptr<ChunkSection> sections[NUM_SECTIONS];
     std::shared_ptr<uint8_t[]> skyLight; // packed: high nibble = sky, low nibble = block
     int maxSolidY = 0;
     int chunkX = -1;

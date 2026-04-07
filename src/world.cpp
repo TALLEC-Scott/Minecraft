@@ -114,7 +114,9 @@ static void floodBlockLight(ChunkManager* cm, int sx, int sy, int sz, uint8_t em
             int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
             auto [nc, ni] = resolve(nx, ny, nz);
             if (!nc) continue;
-            block_type bt = nc->blocks.get()[ni].getType();
+            int lx = worldToLocal(nx, worldToChunk(nx));
+            int lz = worldToLocal(nz, worldToChunk(nz));
+            block_type bt = nc->getBlockType(lx, ny, lz);
             if (hasFlag(bt, BF_OPAQUE) && getBlockLightEmission(bt) == 0) continue;
             uint8_t propagated = light - 1;
             uint8_t* nlt = nc->skyLight.get();
@@ -167,6 +169,7 @@ Cube* World::getBlock(int x, int y, int z) const {
     auto res = this->chunkManager->getChunk(chunkX, chunkZ);
     if (res == nullptr) return nullptr;
 
+    // Delegate to Chunk::getBlock (uses thread-local scratch)
     return res->getBlock(x - chunkX * CHUNK_SIZE, y, z - chunkZ * CHUNK_SIZE);
 }
 
