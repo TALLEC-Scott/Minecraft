@@ -710,8 +710,8 @@ int main(int argc, char* argv[]) {
 
         // Stars: random points on a sphere, rendered as GL_POINTS at night
         {
-            constexpr int NUM_STARS = 800;
-            constexpr float STAR_DIST = 900.0f;
+            constexpr int NUM_STARS = 1500;
+            constexpr float STAR_DIST = 500.0f;
             starCount = NUM_STARS;
             std::mt19937 starRng(12345);
             std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
@@ -721,11 +721,11 @@ int main(int argc, char* argv[]) {
             std::vector<float> starVerts;
             starVerts.reserve(NUM_STARS * 10);
             for (int i = 0; i < NUM_STARS; i++) {
-                // Random point on upper hemisphere
+                // Random point on sphere, biased above horizon
                 float x, y, z;
                 do {
                     x = dist(starRng);
-                    y = std::abs(dist(starRng)); // upper hemisphere only
+                    y = dist(starRng) * 0.5f + 0.5f; // bias upward: range [0, 1]
                     z = dist(starRng);
                 } while (x * x + y * y + z * z > 1.0f || x * x + y * y + z * z < 0.01f);
                 float len = std::sqrt(x * x + y * y + z * z);
