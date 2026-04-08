@@ -163,3 +163,48 @@ TEST(HorizontalCollisionTest, WallSliding) {
     EXPECT_FLOAT_EQ(result.x, 6.0f); // X slid through
     EXPECT_FLOAT_EQ(result.z, 6.5f); // Z blocked by wall
 }
+
+// --- Water physics tests ---
+
+TEST(CollisionTest, WaterIsNotSolid) {
+    // Water blocks should NOT block movement or act as ground
+    // Simulate: solid floor at y=50, water at y=51-53, air above
+    BlockSet solids;
+    for (int x = -2; x <= 2; x++)
+        for (int z = -2; z <= 2; z++)
+            solids.insert({x, 50, z}); // solid floor
+    // Water at y=51,52,53 is NOT in the solid set (it's liquid)
+    auto check = makeSolidCheck(solids);
+
+    // Player at y=54 (above water) should fall through water and land on floor
+    float feetY = 54.0f;
+    float fallSpeed = -5.0f; // large fall
+    auto vResult = resolveVertical(glm::vec3(0.0f, feetY, 0.0f), fallSpeed, check);
+
+    // Should land on the solid floor at y=50, not on water
+    EXPECT_FLOAT_EQ(vResult.newFeetY, 50.5f); // top of block 50
+    EXPECT_TRUE(vResult.hitGround);
+}
+
+TEST(CollisionTest, PlayerFallsThroughWaterToFloor) {
+    // Simulate stepping off a cliff into deep water
+    // Cliff edge: solid blocks at y=60, water fills y=50-59
+    BlockSet solids;
+    for (int x = -2; x <= 2; x++)
+        for (int z = -2; z <= 2; z++) {
+            solids.insert({x, 49, z}); // ocean floor
+        }
+    // No solid blocks at y=50-59 (water) or y=60+ (air)
+    auto check = makeSolidCheck(solids);
+
+    // Player walks horizontally into water column — no horizontal collision
+    glm::vec3 feetPos(0.0f, 55.0f, 0.0f);
+    glm::vec3 move(1.0f, 0.0f, 0.0f);
+    glm::vec3 result = resolveMovement(feetPos, move, check);
+    EXPECT_FLOAT_EQ(result.x, 1.0f); // moved freely (water not solid)
+
+    // Player falls — should pass through water and hit ocean floor
+    auto vResult = resolveVertical(glm::vec3(0.0f, 55.0f, 0.0f), -10.0f, check);
+    EXPECT_FLOAT_EQ(vResult.newFeetY, 49.5f); // top of ocean floor
+    EXPECT_TRUE(vResult.hitGround);
+}

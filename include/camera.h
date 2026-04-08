@@ -36,7 +36,9 @@ class Camera {
     bool isOnGround() const { return onGround; }
     // isSolid: callback to check if block at (x,y,z) is solid
     using BlockCheck = bool (*)(int, int, int, void*);
-    void update(BlockCheck isSolid, void* ctx = nullptr);
+    using WaterCheck = bool (*)(int, int, int, void*);
+    void update(BlockCheck isSolid, void* ctx = nullptr, WaterCheck isWater = nullptr);
+    bool isInWater() const { return inWater; }
 
     void changeDirection(glm::vec3 direction);
     glm::vec3 getPosition() const;
@@ -48,6 +50,7 @@ class Camera {
   private:
     bool walkMode = false;
     bool onGround = false;
+    bool inWater = false;
     float velocityY = 0.0f;
     glm::vec3 pendingMove = glm::vec3(0); // accumulated walk movement, resolved in update()
     glm::vec3 cameraPosition;
