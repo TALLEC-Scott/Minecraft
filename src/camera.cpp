@@ -90,6 +90,19 @@ void Camera::toggleWalkMode() {
 }
 
 void Camera::update(BlockCheck isSolid, void* ctx, WaterCheck isWater) {
+    // Check water state always (needed for visual effects even in fly mode)
+    inWater = false;
+    eyesInWater = false;
+    if (isWater) {
+        int fx = (int)std::floor(cameraPosition.x);
+        int fz = (int)std::floor(cameraPosition.z);
+        int fy = (int)std::floor(cameraPosition.y - PLAYER_HEIGHT);
+        int ty = fy + 1;
+        int hy = (int)std::floor(cameraPosition.y);
+        eyesInWater = isWater(fx, hy, fz, ctx);
+        inWater = isWater(fx, fy, fz, ctx) || isWater(fx, ty, fz, ctx) || eyesInWater;
+    }
+
     if (!walkMode) {
         pendingMove = glm::vec3(0);
         return;
@@ -97,24 +110,14 @@ void Camera::update(BlockCheck isSolid, void* ctx, WaterCheck isWater) {
 
     auto solidCheck = [&](int bx, int by, int bz) { return isSolid(bx, by, bz, ctx); };
 
-    // Check if any part of player body is in water (feet, torso, or head)
-    inWater = false;
-    if (isWater) {
-        int fx = (int)std::floor(cameraPosition.x);
-        int fz = (int)std::floor(cameraPosition.z);
-        int fy = (int)std::floor(cameraPosition.y - PLAYER_HEIGHT);
-        int ty = fy + 1; // torso
-        int hy = (int)std::floor(cameraPosition.y); // head/eyes
-        inWater = isWater(fx, fy, fz, ctx) || isWater(fx, ty, fz, ctx) || isWater(fx, hy, fz, ctx);
-    }
-
     glm::vec3 feetPos = {cameraPosition.x, cameraPosition.y - PLAYER_HEIGHT, cameraPosition.z};
 
     glm::vec3 move = pendingMove;
     if (inWater) {
         move *= 0.5f;
-        // Apply vertical component of swim movement to velocity
-        velocityY += move.y;
+        // Apply vertical component of swim movement to velocity (clamped)
+        velocityY += move.y * 0.3f;
+        velocityY = glm::clamp(velocityY, -0.15f, 0.15f);
         move.y = 0;
     }
 

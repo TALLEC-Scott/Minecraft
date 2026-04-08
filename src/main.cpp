@@ -1006,7 +1006,18 @@ int main(int argc, char* argv[]) {
             float radius = 1000.0f;
 
             glm::vec3 skyColor = getSkyColor(timeValue);
-            glClearColor(skyColor.r, skyColor.g, skyColor.b, 1.0f);
+            constexpr float WATER_SURFACE = CHUNK_HEIGHT / 2.0f;
+            constexpr float WATER_DEPTH_RANGE = 15.0f;
+            const glm::vec3 SHALLOW_BLUE(0.15f, 0.4f, 0.7f);
+            const glm::vec3 DEEP_BLUE(0.02f, 0.05f, 0.15f);
+            bool underwater = player.getCamera().areEyesInWater();
+            float waterDepthFactor = 0.0f;
+            if (underwater) {
+                float depth = std::max(0.0f, WATER_SURFACE - player.getPosition().y);
+                waterDepthFactor = std::min(depth / WATER_DEPTH_RANGE, 1.0f);
+            }
+            glm::vec3 clearColor = underwater ? glm::mix(SHALLOW_BLUE, DEEP_BLUE, waterDepthFactor) : skyColor;
+            glClearColor(clearColor.r, clearColor.g, clearColor.b, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             // Delta time — computed before player update so movement is frame-rate independent
@@ -1061,13 +1072,19 @@ int main(int argc, char* argv[]) {
             glm::vec2 windowSize = glm::vec2(windowWidth, windowHeight);
             shaderProgram.setVec2("windowSize", windowSize);
 
-            // Fog: blend to sky color at render distance edges
+            // Fog: blend to sky color, or blue underwater fog
             float fogEnd = (float)(gameSettings.renderDistance * CHUNK_SIZE);
             float fogStart = fogEnd * 0.6f;
+            glm::vec3 fogColor = skyColor;
+            if (underwater) {
+                fogEnd = 80.0f - 64.0f * waterDepthFactor;
+                fogStart = fogEnd * 0.3f;
+                fogColor = glm::mix(SHALLOW_BLUE, DEEP_BLUE, waterDepthFactor);
+            }
             shaderProgram.setVec3("cameraPos", cameraPos);
             shaderProgram.setFloat("fogStart", fogStart);
             shaderProgram.setFloat("fogEnd", fogEnd);
-            shaderProgram.setVec3("fogColor", skyColor);
+            shaderProgram.setVec3("fogColor", fogColor);
             float gameTime = (float)glfwGetTime();
             shaderProgram.setFloat("time", gameTime);
             shaderProgram.setInt("fancyLeaves", g_fancyLeaves ? 1 : 0);
@@ -1083,6 +1100,7 @@ int main(int argc, char* argv[]) {
             glm::mat4 viewProjection = projection * player.getViewMatrix();
 
             // --- Billboard rendering (separate shader, no terrain features) ---
+            if (!underwater) {
             billboardShader.use();
             billboardShader.setMat4("projection", projection);
             billboardShader.setMat4("view", player.getViewMatrix());
@@ -1257,13 +1275,15 @@ int main(int argc, char* argv[]) {
                 glDisable(GL_BLEND);
             }
 
+            } // end !underwater sky rendering
+
             // Restore world shader after billboards
             shaderProgram.use();
             TextureArray::bind();
             chunksRendered = w->render(shaderProgram, viewProjection, player.getPosition());
 
             // Clouds: texture-based infinite tiling with 3D volume
-            {
+            if (!underwater) {
                 constexpr float CLOUD_Y_TOP = (float)(CHUNK_HEIGHT + 30) + CLOUD_DEPTH;
                 constexpr float CLOUD_Y_BOT = (float)(CHUNK_HEIGHT + 30);
                 float drift = (float)glfwGetTime() * 1.5f;

@@ -103,4 +103,12 @@ class Player {
     static constexpr float STEP_INTERVAL = 3.0f;
     void playStepSound(block_type groundBlock);
     void playBreakSound(block_type brokenBlock);
+
+    // Underwater audio
+    ma_sound underwaterAmbience{};
+    ma_sound enterSounds[3]{};
+    ma_sound exitSounds[3]{};
+    ma_sound bubbleSounds[6]{};
+    bool wasSubmerged = false;
+    double lastBubbleTime = 0.0;
 };
