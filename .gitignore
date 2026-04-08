@@ -24,3 +24,4 @@ terrain_map*.png
 scripts/mapgen
 scripts/check_biomes
 mapgen
+build_win/

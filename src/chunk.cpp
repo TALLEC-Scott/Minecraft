@@ -39,6 +39,16 @@ static const glm::vec3 FACE_VERTS[6][4] = {
 
 static const glm::vec2 FACE_UVS[4] = {{0.0f, 0.0f}, {0.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 0.0f}};
 
+#pragma pack(push, 1)
+struct PackedVertex {
+    int16_t px, py, pz;
+    uint8_t u, v;
+    uint8_t normalIdx, texLayer, ao, packedLight;
+};
+#pragma pack(pop)
+static_assert(sizeof(PackedVertex) == 12);
+static constexpr int BYTES_PER_VERT = 12;
+
 // Neighbor offsets per face (di, dj, dk)
 static const int FACE_NEIGHBORS[6][3] = {
     {0, 0, 1},  // Front
@@ -613,7 +623,7 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
         }
 
     // Greedy meshing: merge coplanar same-type adjacent faces into larger quads.
-    // Vertex layout: pos(3) + texcoord(2) + normal(3) + texLayer(1) + ao(1) = 10 floats/vertex.
+    // Packed vertex layout (12 bytes): pos(3×int16) + uv(2×uint8) + normalIdx(uint8) + texLayer(uint8) + ao(uint8) + packedLight(uint8)
 
     struct FaceDef {
         int d, u, v;                // axis indices for normal, first tangent, second tangent
@@ -633,24 +643,23 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
     static constexpr int MAX_DIM = CHUNK_HEIGHT > CHUNK_SIZE ? CHUNK_HEIGHT : CHUNK_SIZE;
 
     constexpr size_t MAX_FACES = static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * 4;
-    constexpr int FLOATS_PER_VERT = 11;
-    std::vector<float> opaqueVerts, waterVerts;
+    std::vector<uint8_t> opaqueVerts, waterVerts;
     std::vector<unsigned int> opaqueIdx, waterIdx;
-    opaqueVerts.reserve(MAX_FACES * 4 * FLOATS_PER_VERT);
+    opaqueVerts.reserve(MAX_FACES * 4 * BYTES_PER_VERT);
     opaqueIdx.reserve(MAX_FACES * 6);
-    waterVerts.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 4 * FLOATS_PER_VERT);
+    waterVerts.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 4 * BYTES_PER_VERT);
     waterIdx.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 6);
     unsigned int opaqueBase = 0, waterBase = 0;
 
     // Pre-cache packed light for fast per-vertex access (high nibble = sky, low nibble = block)
     uint8_t* lightPtr = skyLight.get();
-    auto slDirect = [lightPtr](int x, int y, int z) -> float {
-        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 15.0f;
-        return (float)unpackSky(lightPtr[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+    auto slDirect = [lightPtr](int x, int y, int z) -> int {
+        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 15;
+        return unpackSky(lightPtr[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
     };
-    auto blDirect = [lightPtr](int x, int y, int z) -> float {
-        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 0.0f;
-        return (float)unpackBlock(lightPtr[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+    auto blDirect = [lightPtr](int x, int y, int z) -> int {
+        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 0;
+        return unpackBlock(lightPtr[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
     };
 
     int mask[MAX_DIM][MAX_DIM];
@@ -749,8 +758,7 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     // Per-vertex AO: check 3 corner neighbors per vertex
                     // For each vertex, find the block at that corner and the
                     // two side + one diagonal neighbor in the face's normal direction.
-                    static const float AO_CURVE[4] = {0.55f, 0.7f, 0.85f, 1.0f};
-                    float skyLightVals[4], blockLightVals[4];
+                    int skyLightVals[4], blockLightVals[4];
                     int bu[4], bv[4], cu[4], cv[4];
                     bu[0] = bu[1] = (fd.u_sign > 0) ? u : u + w - 1;
                     bu[2] = bu[3] = (fd.u_sign > 0) ? u + w - 1 : u;
@@ -761,7 +769,7 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     cv[0] = cv[3] = -fd.v_sign;
                     cv[1] = cv[2] = fd.v_sign;
 
-                    float ao[4];
+                    int ao[4];
                     for (int vi = 0; vi < 4; vi++) {
                         int bc[3];
                         bc[fd.d] = d;
@@ -787,7 +795,7 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                                      : 0;
                         int aoVal = (s1 && s2) ? 0 : 3 - (s1 + s2 + cr);
 
-                        ao[vi] = AO_CURVE[aoVal];
+                        ao[vi] = aoVal;
 
                         skyLightVals[vi] = slDirect(bc[0] + n[0], bc[1] + n[1], bc[2] + n[2]);
                         blockLightVals[vi] = blDirect(bc[0] + n[0], bc[1] + n[1], bc[2] + n[2]);
@@ -798,24 +806,21 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     auto& idx = isWater ? waterIdx : opaqueIdx;
                     unsigned int& base = isWater ? waterBase : opaqueBase;
 
-                    // Batch-write 4 vertices at once
+                    // Batch-write 4 packed vertices at once
                     size_t off = verts.size();
-                    verts.resize(off + 4 * FLOATS_PER_VERT);
-                    float* dst = &verts[off];
+                    verts.resize(off + 4 * BYTES_PER_VERT);
+                    PackedVertex* dst = reinterpret_cast<PackedVertex*>(&verts[off]);
                     for (int vi = 0; vi < 4; vi++) {
-                        dst[0] = vp[vi][0] + worldOff[0];
-                        dst[1] = vp[vi][1] + worldOff[1];
-                        dst[2] = vp[vi][2] + worldOff[2];
-                        dst[3] = uvs[vi][0];
-                        dst[4] = uvs[vi][1];
-                        dst[5] = norm.x;
-                        dst[6] = norm.y;
-                        dst[7] = norm.z;
-                        dst[8] = layer;
-                        dst[9] = ao[vi];
-                        // Pack sky+block as raw nibbles: sky*16 + block (0-255 range)
-                        dst[10] = (float)((int)skyLightVals[vi] * 16 + (int)blockLightVals[vi]);
-                        dst += FLOATS_PER_VERT;
+                        dst->px = (int16_t)((vp[vi][0] + worldOff[0]) * 2.0f);
+                        dst->py = (int16_t)((vp[vi][1] + worldOff[1]) * 2.0f);
+                        dst->pz = (int16_t)((vp[vi][2] + worldOff[2]) * 2.0f);
+                        dst->u = (uint8_t)uvs[vi][0];
+                        dst->v = (uint8_t)uvs[vi][1];
+                        dst->normalIdx = (uint8_t)f;
+                        dst->texLayer = (uint8_t)layer;
+                        dst->ao = (uint8_t)ao[vi];
+                        dst->packedLight = (uint8_t)(skyLightVals[vi] * 16 + blockLightVals[vi]);
+                        dst++;
                     }
                     // Flip quad diagonal when AO is asymmetric to avoid interpolation artifacts
                     if (ao[0] + ao[2] > ao[1] + ao[3]) {
@@ -954,7 +959,6 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, int maxSolidY, i
     };
 
     // --- Same mesh construction as buildMeshData but using getTypeCross ---
-    constexpr int FLOATS_PER_VERT = 11;
     struct FaceDef {
         int d, u, v;
         int d_sign, u_sign, v_sign;
@@ -967,21 +971,21 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, int maxSolidY, i
     static constexpr int MAX_DIM = CHUNK_HEIGHT > CHUNK_SIZE ? CHUNK_HEIGHT : CHUNK_SIZE;
 
     constexpr size_t MAX_FACES = static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * 4;
-    std::vector<float> opaqueVerts, waterVerts;
+    std::vector<uint8_t> opaqueVerts, waterVerts;
     std::vector<unsigned int> opaqueIdx, waterIdx;
-    opaqueVerts.reserve(MAX_FACES * 4 * FLOATS_PER_VERT);
+    opaqueVerts.reserve(MAX_FACES * 4 * BYTES_PER_VERT);
     opaqueIdx.reserve(MAX_FACES * 6);
-    waterVerts.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 4 * FLOATS_PER_VERT);
+    waterVerts.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 4 * BYTES_PER_VERT);
     waterIdx.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 6);
     unsigned int opaqueBase = 0, waterBase = 0;
 
-    auto slDirect = [light](int x, int y, int z) -> float {
-        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 15.0f;
-        return (float)unpackSky(light[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+    auto slDirect = [light](int x, int y, int z) -> int {
+        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 15;
+        return unpackSky(light[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
     };
-    auto blDirect = [light](int x, int y, int z) -> float {
-        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 0.0f;
-        return (float)unpackBlock(light[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+    auto blDirect = [light](int x, int y, int z) -> int {
+        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 0;
+        return unpackBlock(light[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
     };
 
     int mask[MAX_DIM][MAX_DIM];
@@ -1066,8 +1070,7 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, int maxSolidY, i
 
                     const float uvs[4][2] = {{0.f, 0.f}, {0.f, (float)h}, {(float)w, (float)h}, {(float)w, 0.f}};
 
-                    static const float AO_CURVE[4] = {0.55f, 0.7f, 0.85f, 1.0f};
-                    float skyLightVals[4], blockLightVals[4];
+                    int skyLightVals[4], blockLightVals[4];
                     int bu[4], bv[4], cu[4], cv[4];
                     bu[0] = bu[1] = (fd.u_sign > 0) ? u : u + w - 1;
                     bu[2] = bu[3] = (fd.u_sign > 0) ? u + w - 1 : u;
@@ -1078,7 +1081,7 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, int maxSolidY, i
                     cv[0] = cv[3] = -fd.v_sign;
                     cv[1] = cv[2] = fd.v_sign;
 
-                    float ao[4];
+                    int ao[4];
                     for (int vi = 0; vi < 4; vi++) {
                         int bc[3];
                         bc[fd.d] = d;
@@ -1102,7 +1105,7 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, int maxSolidY, i
                                      ? opaq[oIdx(px + su[0] + sv[0], py + su[1] + sv[1], pz + su[2] + sv[2])]
                                      : 0;
                         int aoVal = (s1 && s2) ? 0 : 3 - (s1 + s2 + cr);
-                        ao[vi] = AO_CURVE[aoVal];
+                        ao[vi] = aoVal;
                         skyLightVals[vi] = slDirect(bc[0] + n[0], bc[1] + n[1], bc[2] + n[2]);
                         blockLightVals[vi] = blDirect(bc[0] + n[0], bc[1] + n[1], bc[2] + n[2]);
                     }
@@ -1113,22 +1116,19 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, int maxSolidY, i
                     unsigned int& base = isWater ? waterBase : opaqueBase;
 
                     size_t off = verts.size();
-                    verts.resize(off + 4 * FLOATS_PER_VERT);
-                    float* dst = &verts[off];
+                    verts.resize(off + 4 * BYTES_PER_VERT);
+                    PackedVertex* dst = reinterpret_cast<PackedVertex*>(&verts[off]);
                     for (int vi = 0; vi < 4; vi++) {
-                        dst[0] = vp[vi][0] + worldOff[0];
-                        dst[1] = vp[vi][1] + worldOff[1];
-                        dst[2] = vp[vi][2] + worldOff[2];
-                        dst[3] = uvs[vi][0];
-                        dst[4] = uvs[vi][1];
-                        dst[5] = norm.x;
-                        dst[6] = norm.y;
-                        dst[7] = norm.z;
-                        dst[8] = layer;
-                        dst[9] = ao[vi];
-                        // Pack sky+block as raw nibbles: sky*16 + block (0-255 range)
-                        dst[10] = (float)((int)skyLightVals[vi] * 16 + (int)blockLightVals[vi]);
-                        dst += FLOATS_PER_VERT;
+                        dst->px = (int16_t)((vp[vi][0] + worldOff[0]) * 2.0f);
+                        dst->py = (int16_t)((vp[vi][1] + worldOff[1]) * 2.0f);
+                        dst->pz = (int16_t)((vp[vi][2] + worldOff[2]) * 2.0f);
+                        dst->u = (uint8_t)uvs[vi][0];
+                        dst->v = (uint8_t)uvs[vi][1];
+                        dst->normalIdx = (uint8_t)f;
+                        dst->texLayer = (uint8_t)layer;
+                        dst->ao = (uint8_t)ao[vi];
+                        dst->packedLight = (uint8_t)(skyLightVals[vi] * 16 + blockLightVals[vi]);
+                        dst++;
                     }
 
                     if (ao[0] + ao[2] > ao[1] + ao[3]) {
@@ -1190,24 +1190,30 @@ void Chunk::uploadMesh() {
     glBindVertexArray(chunkVAO);
 
     glBindBuffer(GL_ARRAY_BUFFER, chunkVBO);
-    glBufferData(GL_ARRAY_BUFFER, pendingMesh.verts.size() * sizeof(float), pendingMesh.verts.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, pendingMesh.verts.size(), pendingMesh.verts.data(), GL_STATIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, chunkEBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, pendingMesh.opaqueIdx.size() * sizeof(unsigned int),
                  pendingMesh.opaqueIdx.data(), GL_STATIC_DRAW);
 
-    constexpr int STRIDE = 11 * sizeof(float);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, STRIDE, nullptr);
+    constexpr int STRIDE = 12;
+    // pos: 3 x int16 at offset 0
+    glVertexAttribPointer(0, 3, GL_SHORT, GL_FALSE, STRIDE, nullptr);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, STRIDE, (void*)(3 * sizeof(float)));
+    // uv: 2 x uint8 at offset 6
+    glVertexAttribPointer(1, 2, GL_UNSIGNED_BYTE, GL_FALSE, STRIDE, (void*)6);
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, STRIDE, (void*)(5 * sizeof(float)));
+    // normalIdx: 1 x uint8 at offset 8
+    glVertexAttribPointer(2, 1, GL_UNSIGNED_BYTE, GL_FALSE, STRIDE, (void*)8);
     glEnableVertexAttribArray(2);
-    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(8 * sizeof(float)));
+    // texLayer: 1 x uint8 at offset 9
+    glVertexAttribPointer(3, 1, GL_UNSIGNED_BYTE, GL_FALSE, STRIDE, (void*)9);
     glEnableVertexAttribArray(3);
-    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(9 * sizeof(float)));
+    // ao: 1 x uint8 at offset 10
+    glVertexAttribPointer(4, 1, GL_UNSIGNED_BYTE, GL_FALSE, STRIDE, (void*)10);
     glEnableVertexAttribArray(4);
-    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(10 * sizeof(float)));
+    // packedLight: 1 x uint8 at offset 11
+    glVertexAttribPointer(5, 1, GL_UNSIGNED_BYTE, GL_FALSE, STRIDE, (void*)11);
     glEnableVertexAttribArray(5);
 
     glBindVertexArray(0);

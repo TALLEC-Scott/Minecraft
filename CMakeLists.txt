@@ -67,20 +67,31 @@ else()
     endif()
   endif()
 
-  find_package(OpenGL REQUIRED)
-  find_package(glfw3 3.3 REQUIRED)
-  find_package(Threads REQUIRED)
-
   add_executable(minecraft ${COMMON_SOURCES} src/glad.c)
   target_include_directories(minecraft PRIVATE include Libraries/include)
-  target_compile_options(minecraft PRIVATE $<$<CONFIG:Release>:-O3 -march=native>)
 
-  target_link_libraries(minecraft
-      ${OPENGL_gl_LIBRARY}
-      glfw
-      Threads::Threads
-      dl
-  )
+  if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    # MinGW cross-compile: use bundled GLFW .lib
+    target_compile_options(minecraft PRIVATE $<$<CONFIG:Release>:-O3>)
+    target_link_libraries(minecraft
+        ${CMAKE_SOURCE_DIR}/Libraries/lib/libglfw3_mingw.a
+        opengl32
+        gdi32
+        /usr/x86_64-w64-mingw32/lib/libpthread.a
+        /usr/x86_64-w64-mingw32/lib/libwinpthread.a
+    )
+  else()
+    find_package(OpenGL REQUIRED)
+    find_package(glfw3 3.3 REQUIRED)
+    find_package(Threads REQUIRED)
+    target_compile_options(minecraft PRIVATE $<$<CONFIG:Release>:-O3 -march=native>)
+    target_link_libraries(minecraft
+        ${OPENGL_gl_LIBRARY}
+        glfw
+        Threads::Threads
+        dl
+    )
+  endif()
 
   # --- Unit Tests ---
   option(BUILD_TESTS "Build unit tests" ON)

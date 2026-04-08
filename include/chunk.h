@@ -127,7 +127,7 @@ class Chunk {
 
     // Pre-built CPU-side mesh data (can be built on any thread)
     struct MeshData {
-        std::vector<float> verts;
+        std::vector<uint8_t> verts;
         std::vector<unsigned int> opaqueIdx;
         std::vector<unsigned int> waterIdx;
         bool ready = false;
