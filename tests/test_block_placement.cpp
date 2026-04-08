@@ -510,6 +510,87 @@ TEST(BlockLightTest, NoEmissionForNonEmissiveBlocks) {
     EXPECT_EQ(getBlockLightEmission(GLOWSTONE), 15);
 }
 
+TEST(BlockLightTest, DestroyGlowstoneCrossChunkZerosLight) {
+    // Underground: two chunks, all stone except a cave. Glowstone at chunkA border.
+    // After destroying it, all block light should be 0 in both chunks.
+
+    static constexpr size_t TOTAL = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
+    Cube blocksA[TOTAL], blocksB[TOTAL];
+    uint8_t lightA[TOTAL], lightB[TOTAL];
+
+    // All stone, no sky light (underground)
+    for (size_t i = 0; i < TOTAL; i++) {
+        blocksA[i].setType(STONE); blocksB[i].setType(STONE);
+        lightA[i] = 0; lightB[i] = 0;
+    }
+    // Carve cave at y=30, z=6-10
+    for (int x = 0; x < CHUNK_SIZE; x++)
+        for (int z = 6; z <= 10; z++)
+            for (int y = 29; y <= 31; y++) {
+                blocksA[skyIdx(x, y, z)].setType(AIR);
+                blocksB[skyIdx(x, y, z)].setType(AIR);
+            }
+
+    // Place glowstone at chunkA border
+    blocksA[skyIdx(15, 30, 8)].setType(GLOWSTONE);
+
+    // World-space block light BFS (same as floodBlockLight)
+    static const int DIRS[6][3] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+    auto getChunkData = [&](int wx, int wz) -> std::pair<Cube*, uint8_t*> {
+        if (wz < 0 || wz >= CHUNK_SIZE) return {nullptr, nullptr};
+        int cx = (wx >= 0) ? wx / CHUNK_SIZE : -1;
+        if (cx == 0) return {blocksA, lightA};
+        if (cx == 1) return {blocksB, lightB};
+        return {nullptr, nullptr};
+    };
+
+    // Flood block light
+    struct Node { int x, y, z; };
+    std::vector<Node> queue;
+    lightA[skyIdx(15, 30, 8)] = packLight(0, 15);
+    queue.push_back({15, 30, 8});
+    size_t head = 0;
+    while (head < queue.size()) {
+        auto [bx, by, bz] = queue[head++];
+        auto [cblks, clgt] = getChunkData(bx, bz);
+        if (!cblks) continue;
+        int lx = bx % CHUNK_SIZE;
+        uint8_t light = unpackBlock(clgt[skyIdx(lx, by, bz)]);
+        if (light <= 1) continue;
+        for (auto& d : DIRS) {
+            int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
+            if (ny < 0 || ny >= CHUNK_HEIGHT) continue;
+            auto [nblks, nlgt] = getChunkData(nx, nz);
+            if (!nblks) continue;
+            int nlx = nx % CHUNK_SIZE;
+            if (hasFlag(nblks[skyIdx(nlx, ny, nz)].getType(), BF_OPAQUE)) continue;
+            uint8_t propagated = light - 1;
+            if (unpackBlock(nlgt[skyIdx(nlx, ny, nz)]) >= propagated) continue;
+            nlgt[skyIdx(nlx, ny, nz)] = packLight(0, propagated);
+            queue.push_back({nx, ny, nz});
+        }
+    }
+
+    // Verify light crossed into chunkB
+    EXPECT_EQ(unpackBlock(lightB[skyIdx(0, 30, 8)]), 14);
+    EXPECT_EQ(unpackBlock(lightB[skyIdx(1, 30, 8)]), 13);
+
+    // Destroy glowstone — zero all block light in both chunks
+    blocksA[skyIdx(15, 30, 8)].setType(AIR);
+    for (size_t i = 0; i < TOTAL; i++) {
+        lightA[i] = packLight(unpackSky(lightA[i]), 0);
+        lightB[i] = packLight(unpackSky(lightB[i]), 0);
+    }
+
+    // ALL block light must be 0
+    for (int x = 0; x < CHUNK_SIZE; x++)
+        for (int y = 0; y < CHUNK_HEIGHT; y++)
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                ASSERT_EQ(unpackBlock(lightA[skyIdx(x, y, z)]), 0);
+                ASSERT_EQ(unpackBlock(lightB[skyIdx(x, y, z)]), 0);
+            }
+}
+
 // --- Block Placement Coordinate Tests ---
 
 TEST(PlacementCoordTest, WorldToChunkForPlacement) {
