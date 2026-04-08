@@ -53,6 +53,148 @@ static void markBorderNeighborsDirty(ChunkManager* cm, int chunkX, int chunkZ, i
     }
 }
 
+// Shared direction array for 6-connected BFS
+static const int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+
+// Cached world-coordinate resolver: maps (wx, wy, wz) to (Chunk*, flat index).
+// Caches the last chunk pointer to avoid repeated hash lookups.
+struct WorldResolver {
+    ChunkManager* cm;
+    int cachedCX = INT_MIN, cachedCZ = INT_MIN;
+    Chunk* cachedChunk = nullptr;
+
+    WorldResolver(ChunkManager* cm) : cm(cm) {}
+
+    std::pair<Chunk*, size_t> operator()(int wx, int wy, int wz) {
+        if (wy < 0 || wy >= CHUNK_HEIGHT) return {nullptr, 0};
+        int cx = worldToChunk(wx), cz = worldToChunk(wz);
+        if (cx != cachedCX || cz != cachedCZ) {
+            cachedCX = cx; cachedCZ = cz;
+            cachedChunk = cm->getChunk(cx, cz);
+        }
+        if (!cachedChunk || !cachedChunk->skyLight) return {nullptr, 0};
+        int lx = worldToLocal(wx, cx), lz = worldToLocal(wz, cz);
+        return {cachedChunk, static_cast<size_t>(lx) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(wy) * CHUNK_SIZE + lz};
+    }
+};
+
+// World-space sky light BFS after block removal — crosses chunk boundaries.
+static void floodSkyLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
+    WorldResolver resolve(cm);
+
+    // Determine initial light from neighbors
+    uint8_t maxLight = 0;
+    for (auto& d : DIRS) {
+        auto [nc, ni] = resolve(sx + d[0], sy + d[1], sz + d[2]);
+        if (nc) {
+            uint8_t nl = unpackSky(nc->skyLight.get()[ni]);
+            if (nl > maxLight) maxLight = nl;
+        }
+    }
+    if (sy + 1 >= CHUNK_HEIGHT) maxLight = 15;
+
+    // Sky column rule
+    auto [aboveChunk, aboveIdx] = resolve(sx, sy + 1, sz);
+    uint8_t newLight = (aboveChunk && unpackSky(aboveChunk->skyLight.get()[aboveIdx]) == 15)
+                           ? 15 : (maxLight > 0 ? maxLight - 1 : 0);
+
+    auto [srcChunk, srcIdx] = resolve(sx, sy, sz);
+    if (!srcChunk) return;
+    srcChunk->skyLight.get()[srcIdx] = packLight(newLight, unpackBlock(srcChunk->skyLight.get()[srcIdx]));
+    srcChunk->markDirty();
+
+    struct Node { int x, y, z; };
+    std::vector<Node> queue;
+    queue.reserve(256);
+    queue.push_back({sx, sy, sz});
+
+    size_t head = 0;
+    while (head < queue.size()) {
+        auto [bx, by, bz] = queue[head++];
+        auto [chunk, idx] = resolve(bx, by, bz);
+        if (!chunk) continue;
+        uint8_t light = unpackSky(chunk->skyLight.get()[idx]);
+        if (light <= 1) continue;
+        for (auto& d : DIRS) {
+            int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
+            auto [nc, ni] = resolve(nx, ny, nz);
+            if (!nc) continue;
+            block_type bt = nc->getBlockType(worldToLocal(nx, worldToChunk(nx)), ny, worldToLocal(nz, worldToChunk(nz)));
+            if (hasFlag(bt, BF_OPAQUE)) continue;
+            // Sky column: light=15 propagates downward without attenuation
+            uint8_t propagated = (light == 15 && d[1] == -1) ? 15 : (light - 1);
+            if (unpackSky(nc->skyLight.get()[ni]) >= propagated) continue;
+            nc->skyLight.get()[ni] = packLight(propagated, unpackBlock(nc->skyLight.get()[ni]));
+            nc->markDirty();
+            queue.push_back({nx, ny, nz});
+        }
+    }
+}
+
+// World-space block light removal BFS — zeroes light from a destroyed emissive block,
+// then re-propagates from any remaining light sources at the boundary.
+static void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
+    WorldResolver resolve(cm);
+
+    // Phase 1: removal BFS — zero out light that was from this source
+    struct Node { int x, y, z; uint8_t oldLight; };
+    std::vector<Node> removeQueue;
+    removeQueue.reserve(4096);
+
+    auto [srcChunk, srcIdx] = resolve(sx, sy, sz);
+    if (!srcChunk) return;
+    uint8_t srcLight = unpackBlock(srcChunk->skyLight.get()[srcIdx]);
+    srcChunk->skyLight.get()[srcIdx] = packLight(unpackSky(srcChunk->skyLight.get()[srcIdx]), 0);
+    srcChunk->markDirty();
+    removeQueue.push_back({sx, sy, sz, srcLight});
+
+    struct LightNode { int x, y, z; };
+    std::vector<LightNode> relightSeeds;
+
+    size_t head = 0;
+    while (head < removeQueue.size()) {
+        auto [bx, by, bz, oldLight] = removeQueue[head++];
+        for (auto& d : DIRS) {
+            int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
+            auto [nc, ni] = resolve(nx, ny, nz);
+            if (!nc) continue;
+            uint8_t neighborLight = unpackBlock(nc->skyLight.get()[ni]);
+            if (neighborLight > 0 && neighborLight < oldLight) {
+                nc->skyLight.get()[ni] = packLight(unpackSky(nc->skyLight.get()[ni]), 0);
+                nc->markDirty();
+                removeQueue.push_back({nx, ny, nz, neighborLight});
+            } else if (neighborLight >= oldLight && neighborLight > 0) {
+                relightSeeds.push_back({nx, ny, nz});
+            }
+        }
+    }
+
+    // Phase 2: re-propagate from remaining light sources
+    std::vector<LightNode> lightQueue;
+    for (auto& s : relightSeeds) lightQueue.push_back(s);
+    head = 0;
+    while (head < lightQueue.size()) {
+        auto [bx, by, bz] = lightQueue[head++];
+        auto [chunk, idx] = resolve(bx, by, bz);
+        if (!chunk) continue;
+        uint8_t light = unpackBlock(chunk->skyLight.get()[idx]);
+        if (light <= 1) continue;
+        for (auto& d : DIRS) {
+            int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
+            auto [nc, ni] = resolve(nx, ny, nz);
+            if (!nc) continue;
+            int lx = worldToLocal(nx, worldToChunk(nx)), lz = worldToLocal(nz, worldToChunk(nz));
+            block_type bt = nc->getBlockType(lx, ny, lz);
+            if (hasFlag(bt, BF_OPAQUE) && getBlockLightEmission(bt) == 0) continue;
+            uint8_t propagated = light - 1;
+            if (unpackBlock(nc->skyLight.get()[ni]) >= propagated) continue;
+            nc->skyLight.get()[ni] = packLight(unpackSky(nc->skyLight.get()[ni]), propagated);
+            nc->markDirty();
+            lightQueue.push_back({nx, ny, nz});
+        }
+    }
+}
+
 void World::destroyBlock(glm::vec3 position) const {
     int bx = (int)std::floor(position.x);
     int by = (int)std::floor(position.y);
@@ -66,31 +208,21 @@ void World::destroyBlock(glm::vec3 position) const {
 
     auto chunk = this->chunkManager->getChunk(chunkX, chunkZ);
     if (!chunk) return;
+
+    block_type oldType = chunk->getBlockType(lx, by, lz);
     chunk->destroyBlock(lx, by, lz);
     markBorderNeighborsDirty(chunkManager, chunkX, chunkZ, lx, lz);
+
+    // World-space light updates — cross chunk boundaries
+    floodSkyLightWorld(chunkManager, bx, by, bz);
+    if (getBlockLightEmission(oldType) > 0)
+        removeBlockLightWorld(chunkManager, bx, by, bz);
 }
 
 // World-space BFS: flood block light from a source, crossing chunk boundaries.
 // Caches chunk pointer to avoid repeated hash lookups for blocks in the same chunk.
 static void floodBlockLight(ChunkManager* cm, int sx, int sy, int sz, uint8_t emission) {
-    static const int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
-    auto toIdx = [](int lx, int y, int lz) -> size_t {
-        return static_cast<size_t>(lx) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + lz;
-    };
-
-    // Resolve world coord to chunk + local, with chunk pointer cache
-    int cachedCX = INT_MIN, cachedCZ = INT_MIN;
-    Chunk* cachedChunk = nullptr;
-    auto resolve = [&](int wx, int wy, int wz) -> std::pair<Chunk*, size_t> {
-        if (wy < 0 || wy >= CHUNK_HEIGHT) return {nullptr, 0};
-        int cx = worldToChunk(wx), cz = worldToChunk(wz);
-        if (cx != cachedCX || cz != cachedCZ) {
-            cachedCX = cx; cachedCZ = cz;
-            cachedChunk = cm->getChunk(cx, cz);
-        }
-        if (!cachedChunk || !cachedChunk->skyLight) return {nullptr, 0};
-        return {cachedChunk, toIdx(worldToLocal(wx, cx), wy, worldToLocal(wz, cz))};
-    };
+    WorldResolver resolve(cm);
 
     struct Node { int x, y, z; };
     std::vector<Node> queue;
