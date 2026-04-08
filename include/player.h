@@ -110,5 +110,6 @@ class Player {
     ma_sound exitSounds[3]{};
     ma_sound bubbleSounds[6]{};
     bool wasSubmerged = false;
+    bool wasEyesUnder = false;
     double lastBubbleTime = 0.0;
 };
