@@ -232,7 +232,7 @@ void Player::update(World* world) {
     findGroundAndUpdate(world);
 
     // Movement sounds: swim sounds in water, footsteps on land
-    bool submerged = camera.isInWater();
+    bool submerged = camera.areEyesInWater();
     bool moving = camera.isWalkMode() && (submerged || camera.isOnGround());
     if (stepSoundsLoaded && moving) {
         glm::vec3 pos = camera.getPosition();
