@@ -14,7 +14,10 @@ void Player::destroyAudio() {
             for (auto& s : set.sounds) ma_sound_uninit(&s);
         for (auto& set : breakSounds)
             for (auto& s : set.sounds) ma_sound_uninit(&s);
-
+        ma_sound_uninit(&underwaterAmbience);
+        for (auto& s : enterSounds) ma_sound_uninit(&s);
+        for (auto& s : exitSounds) ma_sound_uninit(&s);
+        for (auto& s : bubbleSounds) ma_sound_uninit(&s);
         stepSoundsLoaded = false;
     }
 }
@@ -57,6 +60,25 @@ void Player::initAudio(ma_engine* engine) {
             std::string path = std::string(def.prefix) + std::to_string(i + 1) + ".wav";
             ma_sound_init_from_file(engine, path.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, &set.sounds[i]);
         }
+    }
+
+    // Underwater sounds
+    ma_sound_init_from_file(engine, "assets/Sounds/ambient/underwater/underwater_ambience.wav",
+                            MA_SOUND_FLAG_DECODE, nullptr, nullptr, &underwaterAmbience);
+    ma_sound_set_looping(&underwaterAmbience, MA_TRUE);
+    ma_sound_set_volume(&underwaterAmbience, 0.4f);
+    for (int i = 0; i < 3; i++) {
+        std::string path = "assets/Sounds/ambient/underwater/enter" + std::to_string(i + 1) + ".wav";
+        ma_sound_init_from_file(engine, path.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, &enterSounds[i]);
+    }
+    for (int i = 0; i < 3; i++) {
+        std::string path = "assets/Sounds/ambient/underwater/exit" + std::to_string(i + 1) + ".wav";
+        ma_sound_init_from_file(engine, path.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, &exitSounds[i]);
+    }
+    for (int i = 0; i < 6; i++) {
+        std::string path = "assets/Sounds/ambient/underwater/bubbles" + std::to_string(i + 1) + ".wav";
+        ma_sound_init_from_file(engine, path.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, &bubbleSounds[i]);
+        ma_sound_set_volume(&bubbleSounds[i], 0.3f);
     }
 
     stepSoundsLoaded = true;
@@ -222,10 +244,38 @@ void Player::update(World* world) {
             lastStepPos = pos;
         }
 
-        if (distSinceStep >= STEP_INTERVAL) {
+        float interval = submerged ? STEP_INTERVAL * 3.0f : STEP_INTERVAL;
+        if (distSinceStep >= interval) {
             distSinceStep = 0.0f;
             playStepSound(submerged ? WATER : groundBlockType);
         }
+    }
+
+    // Underwater audio: ambient loop, enter/exit splash, random bubbles
+    static std::mt19937 waterRng(42);
+    if (stepSoundsLoaded) {
+        if (submerged && !wasSubmerged) {
+            int idx = waterRng() % 3;
+            ma_sound_seek_to_pcm_frame(&enterSounds[idx], 0);
+            ma_sound_start(&enterSounds[idx]);
+            ma_sound_seek_to_pcm_frame(&underwaterAmbience, 0);
+            ma_sound_start(&underwaterAmbience);
+        } else if (!submerged && wasSubmerged) {
+            int idx = waterRng() % 3;
+            ma_sound_seek_to_pcm_frame(&exitSounds[idx], 0);
+            ma_sound_start(&exitSounds[idx]);
+            ma_sound_stop(&underwaterAmbience);
+        }
+        if (submerged) {
+            double now = glfwGetTime();
+            if (now - lastBubbleTime > 3.0 + (std::fmod(now * 7.3, 4.0))) {
+                lastBubbleTime = now;
+                int idx = waterRng() % 6;
+                ma_sound_seek_to_pcm_frame(&bubbleSounds[idx], 0);
+                ma_sound_start(&bubbleSounds[idx]);
+            }
+        }
+        wasSubmerged = submerged;
     }
 
     // Block targeting
@@ -233,8 +283,6 @@ void Player::update(World* world) {
 }
 
 void Player::findGroundAndUpdate(World* world) {
-    if (!camera.isWalkMode()) return;
-
     auto blockCheck = [](int bx, int by, int bz, void* ctx) -> bool {
         auto* cm = static_cast<ChunkManager*>(ctx);
         int cx = worldToChunk(bx);
@@ -255,6 +303,7 @@ void Player::findGroundAndUpdate(World* world) {
     };
 
     camera.update(blockCheck, world->chunkManager, waterCheck);
+    if (!camera.isWalkMode()) return;
 
     // Footstep sounds: look up block types at player feet
     glm::vec3 pos = camera.getPosition();

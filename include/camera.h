@@ -39,6 +39,7 @@ class Camera {
     using WaterCheck = bool (*)(int, int, int, void*);
     void update(BlockCheck isSolid, void* ctx = nullptr, WaterCheck isWater = nullptr);
     bool isInWater() const { return inWater; }
+    bool areEyesInWater() const { return eyesInWater; }
 
     void changeDirection(glm::vec3 direction);
     glm::vec3 getPosition() const;
@@ -51,6 +52,7 @@ class Camera {
     bool walkMode = false;
     bool onGround = false;
     bool inWater = false;
+    bool eyesInWater = false;
     float velocityY = 0.0f;
     glm::vec3 pendingMove = glm::vec3(0); // accumulated walk movement, resolved in update()
     glm::vec3 cameraPosition;
