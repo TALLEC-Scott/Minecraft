@@ -1,11 +1,11 @@
 #version 330 core
 
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec2 aTexCoord;
-layout (location = 2) in vec3 aNormal;
-layout (location = 3) in float aTexLayer;
-layout (location = 4) in float aAO;
-layout (location = 5) in float aPackedLight;
+layout (location = 0) in vec3 aPos;        // int16 -> auto-converted to float
+layout (location = 1) in vec2 aTexCoord;    // uint8 -> auto-converted
+layout (location = 2) in float aNormalIdx;  // uint8 -> float 0-5
+layout (location = 3) in float aTexLayer;   // uint8 -> float
+layout (location = 4) in float aAO;         // uint8 -> float 0-3
+layout (location = 5) in float aPackedLight; // uint8 -> float 0-255
 
 out vec2 TexCoord;
 out vec3 Normal;
@@ -25,17 +25,31 @@ uniform float fogEnd;
 uniform float time;
 uniform vec2 leafSway; // pre-computed (sin, cos) on CPU
 
+// Normal lookup table — matches face order in chunk.cpp FACE_NORMALS
+const vec3 NORMALS[6] = vec3[6](
+    vec3(0, 0, 1),   // Front +Z
+    vec3(0, 0, -1),  // Back -Z
+    vec3(-1, 0, 0),  // Left -X
+    vec3(1, 0, 0),   // Right +X
+    vec3(0, 1, 0),   // Top +Y
+    vec3(0, -1, 0)   // Bottom -Y
+);
+
+// AO curve lookup — matches old AO_CURVE in chunk.cpp
+const float AO_CURVE[4] = float[4](0.55, 0.7, 0.85, 1.0);
+
 void main() {
     TexCoord = aTexCoord;
     texLayer = aTexLayer;
-    ao = aAO;
+    ao = AO_CURVE[int(aAO)];
     // Unpack: aPackedLight = sky*16 + block (0-255 range, raw nibbles)
     float skyRaw = floor(aPackedLight / 16.0);
     float blkRaw = aPackedLight - skyRaw * 16.0;
     skyLight = 0.15 + 0.85 * (skyRaw / 15.0);
     blockLight = blkRaw / 15.0;
 
-    vec3 pos = aPos;
+    vec3 pos = aPos * 0.5; // undo x2 encoding
+    Normal = NORMALS[int(aNormalIdx)];
     // Leaf sway: branchless — isLeaf is 0 or 1
     float isLeaf = step(9.5, aTexLayer) * step(aTexLayer, 10.5);
     pos.x += isLeaf * leafSway.x;
@@ -44,7 +58,6 @@ void main() {
     gl_Position = projection * view * worldPos;
     gl_PointSize = 2.0; // for star rendering
     FragPos = vec3(worldPos);
-    Normal = aNormal;
 
     // Distance fog: ramp from fogStart to fogEnd
     float dist = length(FragPos.xz - cameraPos.xz);
