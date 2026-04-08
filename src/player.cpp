@@ -114,6 +114,8 @@ void Player::handleInput(GLFWwindow* window, World* world) {
             }
         } else if (spaceDown && !camera.isWalkMode()) {
             camera.up();
+        } else if (spaceDown && camera.isInWater()) {
+            camera.jump(); // continuous upward push when holding space in water
         }
         spaceWasPressed = spaceDown;
     }
@@ -207,9 +209,10 @@ void Player::update(World* world) {
     // Physics
     findGroundAndUpdate(world);
 
-    // Footstep sounds — reuses groundBlockType/feetBlockType from findGroundAndUpdate
-    bool inWater = feetBlockType == WATER;
-    if (stepSoundsLoaded && (inWater || (camera.isWalkMode() && camera.isOnGround()))) {
+    // Movement sounds: swim sounds in water, footsteps on land
+    bool submerged = camera.isInWater();
+    bool moving = camera.isWalkMode() && (submerged || camera.isOnGround());
+    if (stepSoundsLoaded && moving) {
         glm::vec3 pos = camera.getPosition();
         float dx = pos.x - lastStepPos.x;
         float dz = pos.z - lastStepPos.z;
@@ -221,7 +224,7 @@ void Player::update(World* world) {
 
         if (distSinceStep >= STEP_INTERVAL) {
             distSinceStep = 0.0f;
-            playStepSound(inWater ? WATER : groundBlockType);
+            playStepSound(submerged ? WATER : groundBlockType);
         }
     }
 
@@ -238,11 +241,20 @@ void Player::findGroundAndUpdate(World* world) {
         int cz = worldToChunk(bz);
         Chunk* chunk = cm->getChunk(cx, cz);
         if (!chunk || by < 0 || by >= CHUNK_HEIGHT) return false;
-        Cube* b = chunk->getBlock(worldToLocal(bx, cx), by, worldToLocal(bz, cz));
-        return b && hasFlag(b->getType(), BF_SOLID);
+        block_type bt = chunk->getBlockType(worldToLocal(bx, cx), by, worldToLocal(bz, cz));
+        return hasFlag(bt, BF_SOLID);
     };
 
-    camera.update(blockCheck, world->chunkManager);
+    auto waterCheck = [](int bx, int by, int bz, void* ctx) -> bool {
+        auto* cm = static_cast<ChunkManager*>(ctx);
+        int cx = worldToChunk(bx);
+        int cz = worldToChunk(bz);
+        Chunk* chunk = cm->getChunk(cx, cz);
+        if (!chunk || by < 0 || by >= CHUNK_HEIGHT) return false;
+        return chunk->getBlockType(worldToLocal(bx, cx), by, worldToLocal(bz, cz)) == WATER;
+    };
+
+    camera.update(blockCheck, world->chunkManager, waterCheck);
 
     // Footstep sounds: look up block types at player feet
     glm::vec3 pos = camera.getPosition();

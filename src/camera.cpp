@@ -13,7 +13,10 @@ Camera::Camera() {
 
 void Camera::forward() {
     float s = cameraSpeed * deltaTime * 60.0f;
-    if (walkMode) {
+    if (walkMode && inWater) {
+        // Swim in look direction (3D movement)
+        pendingMove += s * cameraFront;
+    } else if (walkMode) {
         glm::vec3 flatFront = glm::normalize(glm::vec3(cameraFront.x, 0, cameraFront.z));
         pendingMove += s * flatFront;
     } else {
@@ -23,7 +26,9 @@ void Camera::forward() {
 
 void Camera::back() {
     float s = cameraSpeed * deltaTime * 60.0f;
-    if (walkMode) {
+    if (walkMode && inWater) {
+        pendingMove -= s * cameraFront;
+    } else if (walkMode) {
         glm::vec3 flatFront = glm::normalize(glm::vec3(cameraFront.x, 0, cameraFront.z));
         pendingMove -= s * flatFront;
     } else {
@@ -44,7 +49,9 @@ void Camera::down() {
 }
 
 void Camera::jump() {
-    if (walkMode && onGround) {
+    if (walkMode && inWater) {
+        velocityY += 0.04f * deltaTime * 25.0f;
+    } else if (walkMode && onGround) {
         velocityY = JUMP_VELOCITY;
         onGround = false;
     }
@@ -82,27 +89,58 @@ void Camera::toggleWalkMode() {
     }
 }
 
-void Camera::update(BlockCheck isSolid, void* ctx) {
+void Camera::update(BlockCheck isSolid, void* ctx, WaterCheck isWater) {
     if (!walkMode) {
         pendingMove = glm::vec3(0);
         return;
     }
 
     auto solidCheck = [&](int bx, int by, int bz) { return isSolid(bx, by, bz, ctx); };
+
+    // Check if any part of player body is in water (feet, torso, or head)
+    inWater = false;
+    if (isWater) {
+        int fx = (int)std::floor(cameraPosition.x);
+        int fz = (int)std::floor(cameraPosition.z);
+        int fy = (int)std::floor(cameraPosition.y - PLAYER_HEIGHT);
+        int ty = fy + 1; // torso
+        int hy = (int)std::floor(cameraPosition.y); // head/eyes
+        inWater = isWater(fx, fy, fz, ctx) || isWater(fx, ty, fz, ctx) || isWater(fx, hy, fz, ctx);
+    }
+
     glm::vec3 feetPos = {cameraPosition.x, cameraPosition.y - PLAYER_HEIGHT, cameraPosition.z};
 
+    glm::vec3 move = pendingMove;
+    if (inWater) {
+        move *= 0.5f;
+        // Apply vertical component of swim movement to velocity
+        velocityY += move.y;
+        move.y = 0;
+    }
+
     // Resolve horizontal movement with wall sliding
-    if (glm::dot(pendingMove, pendingMove) > 0.000001f) {
-        feetPos = resolveMovement(feetPos, pendingMove, solidCheck);
+    if (glm::dot(move, move) > 0.000001f) {
+        feetPos = resolveMovement(feetPos, glm::vec3(move.x, 0, move.z), solidCheck);
         cameraPosition.x = feetPos.x;
         cameraPosition.z = feetPos.z;
     }
     pendingMove = glm::vec3(0);
 
-    // Apply gravity
     float dtScale = deltaTime * 60.0f;
-    velocityY -= GRAVITY * dtScale;
-    if (velocityY < TERMINAL_VELOCITY) velocityY = TERMINAL_VELOCITY;
+
+    if (inWater) {
+        // Water physics: drag is asymmetric — stronger when going up, weaker when falling
+        // This preserves fall momentum but prevents dolphin-jumping out
+        float drag = (velocityY > 0) ? 0.05f : 0.4f; // per-second retention: up=5%, down=40%
+        velocityY *= std::pow(drag, deltaTime);
+        velocityY -= GRAVITY * 0.25f * dtScale;
+        float waterTerminal = TERMINAL_VELOCITY * 0.15f;
+        if (velocityY < waterTerminal) velocityY = waterTerminal;
+    } else {
+        // Normal gravity
+        velocityY -= GRAVITY * dtScale;
+        if (velocityY < TERMINAL_VELOCITY) velocityY = TERMINAL_VELOCITY;
+    }
     float moveY = velocityY * dtScale;
 
     // Resolve vertical movement with AABB (ground + ceiling)
