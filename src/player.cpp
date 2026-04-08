@@ -231,9 +231,10 @@ void Player::update(World* world) {
     // Physics
     findGroundAndUpdate(world);
 
-    // Movement sounds: swim sounds in water, footsteps on land
-    bool submerged = camera.areEyesInWater();
-    bool moving = camera.isWalkMode() && (submerged || camera.isOnGround());
+    // Movement sounds: swim sounds when any body part in water, footsteps on land
+    bool inWater = camera.isInWater();
+    bool eyesUnder = camera.areEyesInWater();
+    bool moving = camera.isWalkMode() && (inWater || camera.isOnGround());
     if (stepSoundsLoaded && moving) {
         glm::vec3 pos = camera.getPosition();
         float dx = pos.x - lastStepPos.x;
@@ -244,29 +245,32 @@ void Player::update(World* world) {
             lastStepPos = pos;
         }
 
-        float interval = submerged ? STEP_INTERVAL * 3.0f : STEP_INTERVAL;
+        float interval = inWater ? STEP_INTERVAL * 3.0f : STEP_INTERVAL;
         if (distSinceStep >= interval) {
             distSinceStep = 0.0f;
-            playStepSound(submerged ? WATER : groundBlockType);
+            playStepSound(inWater ? WATER : groundBlockType);
         }
     }
 
-    // Underwater audio: ambient loop, enter/exit splash, random bubbles
+    // Underwater audio: splash on enter/exit (any body part), bubbles+ambient only when eyes under
     static std::mt19937 waterRng(42);
     if (stepSoundsLoaded) {
-        if (submerged && !wasSubmerged) {
+        if (inWater && !wasSubmerged) {
             int idx = waterRng() % 3;
             ma_sound_seek_to_pcm_frame(&enterSounds[idx], 0);
             ma_sound_start(&enterSounds[idx]);
-            ma_sound_seek_to_pcm_frame(&underwaterAmbience, 0);
-            ma_sound_start(&underwaterAmbience);
-        } else if (!submerged && wasSubmerged) {
+        } else if (!inWater && wasSubmerged) {
             int idx = waterRng() % 3;
             ma_sound_seek_to_pcm_frame(&exitSounds[idx], 0);
             ma_sound_start(&exitSounds[idx]);
+        }
+        if (eyesUnder && !wasEyesUnder) {
+            ma_sound_seek_to_pcm_frame(&underwaterAmbience, 0);
+            ma_sound_start(&underwaterAmbience);
+        } else if (!eyesUnder && wasEyesUnder) {
             ma_sound_stop(&underwaterAmbience);
         }
-        if (submerged) {
+        if (eyesUnder) {
             double now = glfwGetTime();
             if (now - lastBubbleTime > 3.0 + (std::fmod(now * 7.3, 4.0))) {
                 lastBubbleTime = now;
@@ -275,7 +279,8 @@ void Player::update(World* world) {
                 ma_sound_start(&bubbleSounds[idx]);
             }
         }
-        wasSubmerged = submerged;
+        wasSubmerged = inWater;
+        wasEyesUnder = eyesUnder;
     }
 
     // Block targeting
