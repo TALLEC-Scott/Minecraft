@@ -271,7 +271,7 @@ void Player::updateTargetedBlock(World* world) {
 float Player::getPunchSwingAngle() const {
     if (!isPunching) return 0.0f;
     float t = (float)((glfwGetTime() - punchStartTime) / PUNCH_DURATION);
-    return std::sin(t * 3.14159f) * -60.0f;
+    return std::sin(t * glm::radians(180.0f)) * -60.0f;
 }
 
 glm::mat4 Player::getArmModelMatrix() const {

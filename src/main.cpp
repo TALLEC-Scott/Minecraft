@@ -809,17 +809,14 @@ int main(int argc, char* argv[]) {
             std::vector<float> starVerts;
             starVerts.reserve(NUM_STARS * 10);
             for (int i = 0; i < NUM_STARS; i++) {
-                // Random point on sphere, biased above horizon
-                float x, y, z;
-                do {
-                    x = dist(starRng);
-                    y = dist(starRng) * 0.5f + 0.5f; // bias upward: range [0, 1]
-                    z = dist(starRng);
-                } while (x * x + y * y + z * z > 1.0f || x * x + y * y + z * z < 0.01f);
-                float len = std::sqrt(x * x + y * y + z * z);
-                x = x / len * STAR_DIST;
-                y = y / len * STAR_DIST;
-                z = z / len * STAR_DIST;
+                // Uniform distribution on upper hemisphere using spherical coords
+                // theta in [0, pi/2] (horizon to zenith), phi in [0, 2pi]
+                std::uniform_real_distribution<float> u01(0.0f, 1.0f);
+                float theta = u01(starRng) * glm::radians(120.0f); // [0, 2π/3]
+                float phi = u01(starRng) * 6.2831853f;  // [0, 2pi]
+                float x = std::sin(theta) * std::cos(phi) * STAR_DIST;
+                float y = std::cos(theta) * STAR_DIST;  // always >= 0
+                float z = std::sin(theta) * std::sin(phi) * STAR_DIST;
 
                 float b = bright(starRng);
                 float cl = (float)TextureArray::CLOUD_LAYER; // white texture
@@ -1098,7 +1095,7 @@ int main(int argc, char* argv[]) {
                 float starRotation = timeValue * 0.3f;
 
                 glm::mat4 starModel = glm::translate(glm::mat4(1.0f), cameraPos);
-                starModel = glm::rotate(starModel, starRotation, glm::vec3(0.3f, 1.0f, 0.1f));
+                starModel = glm::rotate(starModel, starRotation, glm::vec3(0.0f, 1.0f, 0.0f));
 
                 billboardShader.setMat4("model", starModel);
                 glDepthMask(GL_FALSE);

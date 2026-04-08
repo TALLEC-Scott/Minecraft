@@ -377,7 +377,7 @@ void UIRenderer::drawTextShadow(const std::string& text, float x, float y, float
 void UIRenderer::drawTextRotated(const std::string& text, float pivotX, float pivotY, float scale, float angleDeg,
                                  glm::vec4 color) {
     ensureState(true, fontTexture);
-    float rad = angleDeg * 3.14159f / 180.0f;
+    float rad = glm::radians(angleDeg);
     float cosA = std::cos(rad), sinA = std::sin(rad);
 
     float totalW = (float)text.length() * GLYPH_W * scale;
