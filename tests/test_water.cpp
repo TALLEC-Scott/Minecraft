@@ -43,11 +43,11 @@ uint8_t getWaterRaw(World& world, int x, int y, int z) {
     return c->getWaterLevel(worldToLocal(x, cx), y, worldToLocal(z, cz));
 }
 
-// Run N simulator ticks. tick() internally gates on TICK_INTERVAL, so we
-// bump frameCounter forward to fire on each call.
+// Run N simulator ticks. tick() gates on wall-clock time, so use the
+// forceNextTick flag to fire on each call regardless of elapsed time.
 void runTicks(WaterSimulator& sim, int n) {
     for (int i = 0; i < n; i++) {
-        sim.frameCounter = WaterSimulator::TICK_INTERVAL - 1;
+        sim.forceNextTick = true;
         sim.tick();
     }
 }
@@ -591,32 +591,39 @@ void testWaterTopCorners(World& world, int wx, int wy, int wz, float out[4]) {
     // After uSign=1 (no swap), vSign=-1 swap:
     int cdx[4] = {-1, -1, 1, 1};
     int cdz[4] = { 1, -1, -1, 1};
-    // Water → height, Air → 0 (counted), Solid → excluded.
     auto contribute = [&](int x, int y, int z) -> std::pair<float, bool> {
         if (y < 0 || y >= CHUNK_HEIGHT) return {0.0f, false};
         block_type t = getType(world, x, y, z);
         if (t == WATER) {
-            float h = testWaterCellHeight(world, x, y, z);
+            uint8_t raw = getWaterRaw(world, x, y, z);
+            float h = waterIsFalling(raw) ? 15.0f / 16.0f
+                                          : (15.0f - waterFlowLevel(raw) * 2.0f) / 16.0f;
             return {h, true};
         }
         if (t == AIR) return {0.0f, true};
         return {0.0f, false};
     };
+    auto fullHeight = [&](int x, int y, int z) -> bool {
+        if (y < 0 || y + 1 >= CHUNK_HEIGHT) return false;
+        return getType(world, x, y, z) == WATER && getType(world, x, y + 1, z) == WATER;
+    };
     auto cC = contribute(wx, wy, wz);
     for (int ci = 0; ci < 4; ci++) {
+        bool anyFull = fullHeight(wx, wy, wz)
+                    || fullHeight(wx + cdx[ci], wy, wz)
+                    || fullHeight(wx, wy, wz + cdz[ci])
+                    || fullHeight(wx + cdx[ci], wy, wz + cdz[ci]);
+        if (anyFull) {
+            out[ci] = (float)wy + 0.5f;
+            continue;
+        }
         std::pair<float, bool> h[4] = {cC,
             contribute(wx + cdx[ci], wy, wz),
             contribute(wx, wy, wz + cdz[ci]),
             contribute(wx + cdx[ci], wy, wz + cdz[ci])};
-        bool anyFull = false;
-        for (int i = 0; i < 4; i++) if (h[i].second && h[i].first >= 1.0f) anyFull = true;
-        if (anyFull) {
-            out[ci] = (float)wy + 0.5f;
-        } else {
-            float sum = 0; int cnt = 0;
-            for (int i = 0; i < 4; i++) if (h[i].second) { sum += h[i].first; cnt++; }
-            out[ci] = (float)wy - 0.5f + (cnt > 0 ? sum / cnt : 0.0f);
-        }
+        float sum = 0; int cnt = 0;
+        for (int i = 0; i < 4; i++) if (h[i].second) { sum += h[i].first; cnt++; }
+        out[ci] = (float)wy - 0.5f + (cnt > 0 ? sum / cnt : 0.0f);
     }
 }
 
@@ -1219,21 +1226,11 @@ TEST(WaterSimulator, VertexLevelContiguityCheck) {
                         reportErr("Z_EDGE", x, y, z, "+X/+Z corner", corners[3], nb[2]);
                 }
 
-                // CHECK 4: vertical — if water above, side face top must
-                // reach the block ceiling so it connects to the block above.
+                // CHECK 4: vertical — if water above, all corners must snap
+                // to ceiling so shared-edge averaging on adjacent cells also
+                // snaps (no gap between submerged cell and neighbors).
                 if (getType(s.world, x, y + 1, z) == WATER) {
                     float ceiling = (float)y + 0.5f;
-                    // waterCellHeight returns 1.0 when water above.
-                    // All neighbors also at same Y: if they have water
-                    // above too, they return 1.0. If not, they return their
-                    // flow level. The averaged corners should be >= 15/16
-                    // height at minimum (since center is 1.0).
-                    // The KEY check: the side face top at each corner must
-                    // reach high enough that the block above's side face
-                    // bottom (= ceiling = y+0.5) connects.
-                    // Since corners are AVERAGED, they may be < ceiling.
-                    // This means there CAN be a gap between the side face
-                    // top and the block above's floor. This is the bug!
                     for (int ci = 0; ci < 4; ci++) {
                         if (corners[ci] < ceiling - 0.001f) {
                             reportErr("VERT_GAP", x, y, z, "corner below ceiling",

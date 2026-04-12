@@ -170,33 +170,42 @@ static void computeWaterTopCornersT(int bx, int by, int bz,
         std::swap(cdx[0], cdx[1]); std::swap(cdx[2], cdx[3]);
         std::swap(cdz[0], cdz[1]); std::swap(cdz[2], cdz[3]);
     }
-    // Sample one cell contribution. Returns {height, counted}:
-    //   Water → {height, true}
-    //   Air   → {0, true}   (pulls corner down — water pours over cliffs)
-    //   Solid → {0, false}  (excluded — water against land stays flat)
+    // Sample one cell's contribution to corner averaging:
+    //   Water → {flow-level height, counted}
+    //   Air   → {0, counted} (pulls corner down — water pours over cliffs)
+    //   Solid → {0, excluded} (water against land stays flat)
     auto contribute = [&](int x, int y, int z) -> std::pair<float, bool> {
         if (y < 0 || y >= CHUNK_HEIGHT) return {0.0f, false};
         WaterCellSample s = sample(x, y, z);
         if (s.kind == CellKind::Solid) return {0.0f, false};
         if (s.kind == CellKind::Air) return {0.0f, true};
-        if (y + 1 < CHUNK_HEIGHT && sample(x, y + 1, z).isWater()) return {1.0f, true};
         return {waterHeightFromRaw(s.raw), true};
+    };
+    // Does a water cell at (x,y,z) have water directly above? If so, it
+    // extends to block ceiling visually, so any corner shared with it
+    // must snap to ceiling (otherwise a gap appears between the submerged
+    // cell and adjacent pool blocks at the same Y).
+    auto fullHeight = [&](int x, int y, int z) -> bool {
+        if (y < 0 || y + 1 >= CHUNK_HEIGHT) return false;
+        return sample(x, y, z).isWater() && sample(x, y + 1, z).isWater();
     };
     auto cC = contribute(bx, by, bz);
     for (int ci = 0; ci < 4; ci++) {
+        bool anyFull = fullHeight(bx, by, bz)
+                    || fullHeight(bx + cdx[ci], by, bz)
+                    || fullHeight(bx, by, bz + cdz[ci])
+                    || fullHeight(bx + cdx[ci], by, bz + cdz[ci]);
+        if (anyFull) {
+            out[ci] = (float)by + 0.5f;
+            continue;
+        }
         std::pair<float, bool> h[4] = {cC,
             contribute(bx + cdx[ci], by, bz),
             contribute(bx, by, bz + cdz[ci]),
             contribute(bx + cdx[ci], by, bz + cdz[ci])};
-        bool anyFull = false;
-        for (int i = 0; i < 4; i++) if (h[i].second && h[i].first >= 1.0f) anyFull = true;
-        if (anyFull) {
-            out[ci] = (float)by + 0.5f;
-        } else {
-            float sum = 0; int cnt = 0;
-            for (int i = 0; i < 4; i++) if (h[i].second) { sum += h[i].first; cnt++; }
-            out[ci] = (float)by - 0.5f + (cnt > 0 ? sum / cnt : 0.0f);
-        }
+        float sum = 0; int cnt = 0;
+        for (int i = 0; i < 4; i++) if (h[i].second) { sum += h[i].first; cnt++; }
+        out[ci] = (float)by - 0.5f + (cnt > 0 ? sum / cnt : 0.0f);
     }
 }
 
@@ -957,9 +966,6 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                     bool isWaterSide = (bt == (int)WATER && f != 4 && f != 5 && fd.v == 1);
                     if (isWaterSide && waterLevels) {
                         int bc[3]; bc[fd.d] = d; bc[fd.u] = u; bc[fd.v] = v;
-                        // Always trim side face top to corner heights —
-                        // ensures the side face edge matches the top face
-                        // edge on adjacent blocks (no gap at junctions).
                         float topCorners[4];
                         computeWaterTopCorners(blocks, waterLevels.get(), bc[0], bc[1], bc[2],
                                                1, -1, topCorners, nc);
