@@ -11,34 +11,6 @@
 #include <algorithm>
 #include <chrono>
 
-// Face definitions: 4 vertices per face, each vertex is (dx, dy, dz)
-// Order: Front(+Z), Back(-Z), Left(-X), Right(+X), Top(+Y), Bottom(-Y)
-static const glm::vec3 FACE_NORMALS[6] = {
-    {0, 0, 1},  // Front
-    {0, 0, -1}, // Back
-    {-1, 0, 0}, // Left
-    {1, 0, 0},  // Right
-    {0, 1, 0},  // Top
-    {0, -1, 0}, // Bottom
-};
-
-static const glm::vec3 FACE_VERTS[6][4] = {
-    // Front (+Z)
-    {{-0.5f, -0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, -0.5f, 0.5f}},
-    // Back (-Z)
-    {{0.5f, -0.5f, -0.5f}, {0.5f, 0.5f, -0.5f}, {-0.5f, 0.5f, -0.5f}, {-0.5f, -0.5f, -0.5f}},
-    // Left (-X)
-    {{-0.5f, -0.5f, -0.5f}, {-0.5f, 0.5f, -0.5f}, {-0.5f, 0.5f, 0.5f}, {-0.5f, -0.5f, 0.5f}},
-    // Right (+X)
-    {{0.5f, -0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, -0.5f}, {0.5f, -0.5f, -0.5f}},
-    // Top (+Y)
-    {{-0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f, -0.5f}, {0.5f, 0.5f, -0.5f}, {0.5f, 0.5f, 0.5f}},
-    // Bottom (-Y)
-    {{-0.5f, -0.5f, -0.5f}, {-0.5f, -0.5f, 0.5f}, {0.5f, -0.5f, 0.5f}, {0.5f, -0.5f, -0.5f}},
-};
-
-static const glm::vec2 FACE_UVS[4] = {{0.0f, 0.0f}, {0.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 0.0f}};
-
 #pragma pack(push, 1)
 struct PackedVertex {
     int16_t px, py, pz;
@@ -62,16 +34,6 @@ struct WaterVertex {
 #pragma pack(pop)
 static_assert(sizeof(WaterVertex) == 20);
 static constexpr int WATER_BYTES_PER_VERT = 20;
-
-// Neighbor offsets per face (di, dj, dk)
-static const int FACE_NEIGHBORS[6][3] = {
-    {0, 0, 1},  // Front
-    {0, 0, -1}, // Back
-    {-1, 0, 0}, // Left
-    {1, 0, 0},  // Right
-    {0, 1, 0},  // Top
-    {0, -1, 0}, // Bottom
-};
 
 static bool isBlockOpaque(block_type t);
 static bool isBlockFiltering(block_type t);

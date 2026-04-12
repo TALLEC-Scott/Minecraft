@@ -353,8 +353,10 @@ class Profiler {
         return (glfwGetTime() - start) * 1000.0;
     }
 
+#ifndef __EMSCRIPTEN__
     GLuint gpuQueries[2] = {};
     int queryIdx = 0;
+#endif
     double frameStart = 0, updateStart = 0, renderStart = 0, swapStart = 0;
     FrameProfile cur;
     std::vector<FrameProfile> frames;
