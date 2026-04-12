@@ -37,7 +37,10 @@ class Camera {
     // isSolid: callback to check if block at (x,y,z) is solid
     using BlockCheck = bool (*)(int, int, int, void*);
     using WaterCheck = bool (*)(int, int, int, void*);
-    void update(BlockCheck isSolid, void* ctx = nullptr, WaterCheck isWater = nullptr);
+    // getFlow: returns (fx, fy, fz) flow vector at block, zero if still
+    using WaterFlowCheck = glm::vec3 (*)(int, int, int, void*);
+    void update(BlockCheck isSolid, void* ctx = nullptr, WaterCheck isWater = nullptr,
+                WaterFlowCheck getFlow = nullptr);
     bool isInWater() const { return inWater; }
     bool areEyesInWater() const { return eyesInWater; }
 
