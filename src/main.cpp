@@ -1170,67 +1170,46 @@ int main(int argc, char* argv[]) {
             if (lightPos.y > 0) { // only when sun is above horizon
                 glm::vec3 sunDir = glm::normalize(lightPos - cameraPos);
                 glm::vec3 sunCenter = cameraPos + sunDir * SUN_DISTANCE;
-                // Avoid degenerate cross product when sun is directly overhead
                 glm::vec3 upRef = (glm::abs(sunDir.y) > 0.99f) ? glm::vec3(1, 0, 0) : glm::vec3(0, 1, 0);
-                glm::vec3 right = glm::normalize(glm::cross(sunDir, upRef)) * SUN_SIZE;
-                glm::vec3 up = glm::normalize(glm::cross(right, sunDir)) * SUN_SIZE;
 
-                float sunLayer = (float)TextureArray::SUN_LAYER;
-                float sunVerts[40] = {
-                    // pos(3) + uv(2) + normal(3) + layer(1) + ao(1)
-                    sunCenter.x - right.x - up.x,
-                    sunCenter.y - right.y - up.y,
-                    sunCenter.z - right.z - up.z,
-                    0,
-                    0,
-                    0,
-                    0,
-                    1,
-                    sunLayer,
-                    1,
-                    sunCenter.x - right.x + up.x,
-                    sunCenter.y - right.y + up.y,
-                    sunCenter.z - right.z + up.z,
-                    0,
-                    1,
-                    0,
-                    0,
-                    1,
-                    sunLayer,
-                    1,
-                    sunCenter.x + right.x + up.x,
-                    sunCenter.y + right.y + up.y,
-                    sunCenter.z + right.z + up.z,
-                    1,
-                    1,
-                    0,
-                    0,
-                    1,
-                    sunLayer,
-                    1,
-                    sunCenter.x + right.x - up.x,
-                    sunCenter.y + right.y - up.y,
-                    sunCenter.z + right.z - up.z,
-                    1,
-                    0,
-                    0,
-                    0,
-                    1,
-                    sunLayer,
-                    1,
+                // Bloom halo: two additive radial-gradient quads of increasing
+                // size give a soft glow around the sun. Outer = wider/dimmer.
+                auto drawQuad = [&](float size, const glm::vec3& tint) {
+                    glm::vec3 r = glm::normalize(glm::cross(sunDir, upRef)) * size;
+                    glm::vec3 u = glm::normalize(glm::cross(r, sunDir)) * size;
+                    float layer = (float)TextureArray::SUN_LAYER;
+                    float verts[40] = {
+                        sunCenter.x - r.x - u.x, sunCenter.y - r.y - u.y, sunCenter.z - r.z - u.z,
+                        0, 0, 0, 0, 1, layer, 1,
+                        sunCenter.x - r.x + u.x, sunCenter.y - r.y + u.y, sunCenter.z - r.z + u.z,
+                        0, 1, 0, 0, 1, layer, 1,
+                        sunCenter.x + r.x + u.x, sunCenter.y + r.y + u.y, sunCenter.z + r.z + u.z,
+                        1, 1, 0, 0, 1, layer, 1,
+                        sunCenter.x + r.x - u.x, sunCenter.y + r.y - u.y, sunCenter.z + r.z - u.z,
+                        1, 0, 0, 0, 1, layer, 1,
+                    };
+                    glBindBuffer(GL_ARRAY_BUFFER, sunVBO);
+                    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+                    billboardShader.setVec3("tintColor", tint);
+                    glBindVertexArray(sunVAO);
+                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
                 };
-
-                glBindBuffer(GL_ARRAY_BUFFER, sunVBO);
-                glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(sunVerts), sunVerts);
 
                 billboardShader.setMat4("model", glm::mat4(1.0f));
                 glDepthMask(GL_FALSE);
                 glDisable(GL_CULL_FACE);
                 glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE); // additive for glow
+                billboardShader.setFloat("glowMode", 1.0f);
+                float sunH = std::max(sunDir.y, 0.0f);
+                // Warm tint near horizon (orange), white at zenith
+                glm::vec3 haloTint = glm::mix(glm::vec3(1.2f, 0.6f, 0.3f), glm::vec3(1.0f, 0.95f, 0.85f), sunH);
+                drawQuad(SUN_SIZE * 4.5f, haloTint * 0.45f);
+                drawQuad(SUN_SIZE * 2.2f, haloTint * 0.8f);
+                billboardShader.setFloat("glowMode", 0.0f);
 
-                glBindVertexArray(sunVAO);
-                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+                // Core sun disc (opaque texture, normal alpha blending)
+                drawQuad(SUN_SIZE, glm::vec3(1.0f));
                 glBindVertexArray(0);
 
                 glDepthMask(GL_TRUE);
@@ -1244,64 +1223,45 @@ int main(int argc, char* argv[]) {
                 glm::vec3 moonCenter = cameraPos + moonDir * SUN_DISTANCE;
                 constexpr float MOON_SIZE = 45.0f;
                 glm::vec3 upRef = (glm::abs(moonDir.y) > 0.99f) ? glm::vec3(1, 0, 0) : glm::vec3(0, 1, 0);
-                glm::vec3 right = glm::normalize(glm::cross(moonDir, upRef)) * MOON_SIZE;
-                glm::vec3 up = glm::normalize(glm::cross(right, moonDir)) * MOON_SIZE;
 
-                float moonLayer = (float)TextureArray::MOON_LAYER;
-                float moonVerts[40] = {
-                    moonCenter.x - right.x - up.x,
-                    moonCenter.y - right.y - up.y,
-                    moonCenter.z - right.z - up.z,
-                    0,
-                    0,
-                    0,
-                    0,
-                    1,
-                    moonLayer,
-                    1,
-                    moonCenter.x - right.x + up.x,
-                    moonCenter.y - right.y + up.y,
-                    moonCenter.z - right.z + up.z,
-                    0,
-                    1,
-                    0,
-                    0,
-                    1,
-                    moonLayer,
-                    1,
-                    moonCenter.x + right.x + up.x,
-                    moonCenter.y + right.y + up.y,
-                    moonCenter.z + right.z + up.z,
-                    1,
-                    1,
-                    0,
-                    0,
-                    1,
-                    moonLayer,
-                    1,
-                    moonCenter.x + right.x - up.x,
-                    moonCenter.y + right.y - up.y,
-                    moonCenter.z + right.z - up.z,
-                    1,
-                    0,
-                    0,
-                    0,
-                    1,
-                    moonLayer,
-                    1,
+                auto drawMoonQuad = [&](float size, const glm::vec3& tint, int layer) {
+                    glm::vec3 r = glm::normalize(glm::cross(moonDir, upRef)) * size;
+                    glm::vec3 u = glm::normalize(glm::cross(r, moonDir)) * size;
+                    float l = (float)layer;
+                    float verts[40] = {
+                        moonCenter.x - r.x - u.x, moonCenter.y - r.y - u.y, moonCenter.z - r.z - u.z,
+                        0, 0, 0, 0, 1, l, 1,
+                        moonCenter.x - r.x + u.x, moonCenter.y - r.y + u.y, moonCenter.z - r.z + u.z,
+                        0, 1, 0, 0, 1, l, 1,
+                        moonCenter.x + r.x + u.x, moonCenter.y + r.y + u.y, moonCenter.z + r.z + u.z,
+                        1, 1, 0, 0, 1, l, 1,
+                        moonCenter.x + r.x - u.x, moonCenter.y + r.y - u.y, moonCenter.z + r.z - u.z,
+                        1, 0, 0, 0, 1, l, 1,
+                    };
+                    glBindBuffer(GL_ARRAY_BUFFER, sunVBO);
+                    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+                    billboardShader.setVec3("tintColor", tint);
+                    glBindVertexArray(sunVAO);
+                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
                 };
-
-                glBindBuffer(GL_ARRAY_BUFFER, sunVBO);
-                glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(moonVerts), moonVerts);
 
                 billboardShader.setMat4("model", glm::mat4(1.0f));
                 glDepthMask(GL_FALSE);
                 glDisable(GL_CULL_FACE);
                 glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-                glBindVertexArray(sunVAO);
-                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+                // Bloom halo: dimmer and cooler than the sun.
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+                billboardShader.setFloat("glowMode", 1.0f);
+                // Cool blue-white moonlight
+                glm::vec3 moonHalo(0.6f, 0.7f, 0.9f);
+                drawMoonQuad(MOON_SIZE * 3.5f, moonHalo * 0.2f, TextureArray::MOON_LAYER);
+                drawMoonQuad(MOON_SIZE * 1.8f, moonHalo * 0.35f, TextureArray::MOON_LAYER);
+                billboardShader.setFloat("glowMode", 0.0f);
+
+                // Core moon disc
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                drawMoonQuad(MOON_SIZE, glm::vec3(1.0f), TextureArray::MOON_LAYER);
                 glBindVertexArray(0);
 
                 glDepthMask(GL_TRUE);
