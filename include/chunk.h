@@ -135,14 +135,25 @@ class Chunk {
     struct NeighborBorder {
         block_type types[CHUNK_SIZE][CHUNK_HEIGHT]{};
         uint8_t lightBorder[CHUNK_SIZE][CHUNK_HEIGHT]{}; // packed: high nibble = sky, low nibble = block
+        uint8_t waterBorder[CHUNK_SIZE][CHUNK_HEIGHT]{}; // water level at border column
+        bool valid = false;
+    };
+
+    // Diagonal corner: a single column at one of the 4 corners of a chunk
+    struct DiagonalCorner {
+        block_type types[CHUNK_HEIGHT]{};
+        uint8_t waterBorder[CHUNK_HEIGHT]{};
         bool valid = false;
     };
 
     struct NeighborBorders {
         NeighborBorder xNeg, xPos, zNeg, zPos;
+        DiagonalCorner dNN, dNP, dPN, dPP; // (-X,-Z), (-X,+Z), (+X,-Z), (+X,+Z)
     };
 
-    static NeighborBorders snapshotBorders(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
+    static NeighborBorders snapshotBorders(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos,
+                                           Chunk* d_nn = nullptr, Chunk* d_np = nullptr,
+                                           Chunk* d_pn = nullptr, Chunk* d_pp = nullptr);
 
     // Pre-built CPU-side mesh data (can be built on any thread)
     struct MeshData {
@@ -161,11 +172,14 @@ class Chunk {
         std::vector<unsigned int> waterIdx;
     };
 
-    void buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
-    void buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
+    void buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos,
+                   Chunk* d_nn = nullptr, Chunk* d_np = nullptr, Chunk* d_pn = nullptr, Chunk* d_pp = nullptr);
+    void buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos,
+                       Chunk* d_nn = nullptr, Chunk* d_np = nullptr, Chunk* d_pn = nullptr, Chunk* d_pp = nullptr);
     void buildMeshDataAsync(const NeighborBorders& borders);
     void uploadMesh();
-    std::vector<Cube*> render(const Shader& shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
+    std::vector<Cube*> render(const Shader& shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos,
+                              Chunk* d_nn = nullptr, Chunk* d_np = nullptr, Chunk* d_pn = nullptr, Chunk* d_pp = nullptr);
     void renderWater(const Shader& shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
     void markDirty() { sectionDirty = 0xFF; }
     void markSectionDirty(int sy) {

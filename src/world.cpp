@@ -37,25 +37,25 @@ World::World(unsigned int seed) {
 }
 
 static void markBorderNeighborsDirty(ChunkManager* cm, int chunkX, int chunkZ, int lx, int y, int lz) {
-    // Only neighbor chunks whose border faces the edited block need a
-    // rebuild, and only the section at the same Y level.
+    // When an edge block changes, direct X/Z neighbor's corner averaging
+    // reads into this block. Diagonal-corner blocks change affects the
+    // diagonal chunk too (4-chunk intersection at corner vertices).
     int sy = y / 16;
-    if (lx == 0) {
-        Chunk* n = cm->getChunk(chunkX - 1, chunkZ);
+    auto mark = [&](int dx, int dz) {
+        Chunk* n = cm->getChunk(chunkX + dx, chunkZ + dz);
         if (n) n->markSectionDirty(sy);
-    }
-    if (lx == CHUNK_SIZE - 1) {
-        Chunk* n = cm->getChunk(chunkX + 1, chunkZ);
-        if (n) n->markSectionDirty(sy);
-    }
-    if (lz == 0) {
-        Chunk* n = cm->getChunk(chunkX, chunkZ - 1);
-        if (n) n->markSectionDirty(sy);
-    }
-    if (lz == CHUNK_SIZE - 1) {
-        Chunk* n = cm->getChunk(chunkX, chunkZ + 1);
-        if (n) n->markSectionDirty(sy);
-    }
+    };
+    bool onXNeg = (lx == 0), onXPos = (lx == CHUNK_SIZE - 1);
+    bool onZNeg = (lz == 0), onZPos = (lz == CHUNK_SIZE - 1);
+    if (onXNeg) mark(-1, 0);
+    if (onXPos) mark(1, 0);
+    if (onZNeg) mark(0, -1);
+    if (onZPos) mark(0, 1);
+    // Diagonal neighbors at 4-chunk corner intersections
+    if (onXNeg && onZNeg) mark(-1, -1);
+    if (onXNeg && onZPos) mark(-1, 1);
+    if (onXPos && onZNeg) mark(1, -1);
+    if (onXPos && onZPos) mark(1, 1);
 }
 
 // World-space sky light BFS after block removal — crosses chunk boundaries.
@@ -354,7 +354,11 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
         Chunk* nx_pos = chunkManager->getChunk(vc.pos.x + 1, vc.pos.y);
         Chunk* nz_neg = chunkManager->getChunk(vc.pos.x, vc.pos.y - 1);
         Chunk* nz_pos = chunkManager->getChunk(vc.pos.x, vc.pos.y + 1);
-        vc.chunk->render(shaderProgram, nx_neg, nx_pos, nz_neg, nz_pos);
+        Chunk* d_nn = chunkManager->getChunk(vc.pos.x - 1, vc.pos.y - 1);
+        Chunk* d_np = chunkManager->getChunk(vc.pos.x - 1, vc.pos.y + 1);
+        Chunk* d_pn = chunkManager->getChunk(vc.pos.x + 1, vc.pos.y - 1);
+        Chunk* d_pp = chunkManager->getChunk(vc.pos.x + 1, vc.pos.y + 1);
+        vc.chunk->render(shaderProgram, nx_neg, nx_pos, nz_neg, nz_pos, d_nn, d_np, d_pn, d_pp);
         rendered++;
         g_frame.chunksRendered++;
     }
