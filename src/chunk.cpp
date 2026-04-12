@@ -1690,17 +1690,10 @@ void Chunk::uploadMesh() {
     builtDirtyMask = 0;
     dirtyDuringBuild = 0;
 
-    // Free CPU-side data — waterVerts was being leaked here, which added
-    // up to hundreds of MB for chunks with ocean water over time.
-    pendingMesh.verts.clear();
-    pendingMesh.verts.shrink_to_fit();
-    pendingMesh.waterVerts.clear();
-    pendingMesh.waterVerts.shrink_to_fit();
-    pendingMesh.opaqueIdx.clear();
-    pendingMesh.opaqueIdx.shrink_to_fit();
-    pendingMesh.waterIdx.clear();
-    pendingMesh.waterIdx.shrink_to_fit();
-    pendingMesh.ready = false;
+    // Free all CPU-side vectors in one shot via destructor of the old
+    // MeshData. Replaces the previous manual clear()/shrink_to_fit()
+    // dance that was easy to miss fields in (waterVerts got leaked).
+    pendingMesh = MeshData{};
 }
 
 std::vector<Cube*> Chunk::render(const Shader& /*shaderProgram*/, const NeighborChunks& nc) {
