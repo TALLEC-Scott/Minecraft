@@ -40,6 +40,9 @@ class ChunkManager {
     Chunk* getChunk(int chunkX, int chunkZ);
     void setRenderDistance(int rd) { renderDistance = rd; }
     int getRenderDistance() const { return renderDistance; }
+    // Sum of Chunk::memoryUsage across all loaded chunks, in bytes.
+    size_t totalChunkMemory() const;
+    Chunk::MemBreakdown totalChunkBreakdown() const;
 
   private:
     int renderDistance;
