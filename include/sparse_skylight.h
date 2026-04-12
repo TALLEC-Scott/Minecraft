@@ -53,7 +53,10 @@ class SparseSkyLight {
                 for (int y = 0; y < 16 && isUniform; y++)
                     for (int z = 0; z < CHUNK_SIZE; z++) {
                         uint8_t v = flat[x * CHUNK_HEIGHT * CHUNK_SIZE + (baseY + y) * CHUNK_SIZE + z];
-                        if (v != first) { isUniform = false; break; }
+                        if (v != first) {
+                            isUniform = false;
+                            break;
+                        }
                     }
             if (isUniform) {
                 data[s].reset();
@@ -79,8 +82,8 @@ class SparseSkyLight {
                 // Uniform: fill 16 YZ×X slices with the single value
                 for (int x = 0; x < CHUNK_SIZE; x++)
                     for (int y = 0; y < 16; y++)
-                        std::memset(&flat[x * CHUNK_HEIGHT * CHUNK_SIZE + (baseY + y) * CHUNK_SIZE],
-                                    uniform[s], CHUNK_SIZE);
+                        std::memset(&flat[x * CHUNK_HEIGHT * CHUNK_SIZE + (baseY + y) * CHUNK_SIZE], uniform[s],
+                                    CHUNK_SIZE);
             } else {
                 for (int x = 0; x < CHUNK_SIZE; x++)
                     for (int y = 0; y < 16; y++)

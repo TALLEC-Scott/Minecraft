@@ -45,8 +45,11 @@ class SkyLightSection {
         for (int i = 0; i < VOLUME; i++) {
             uint8_t v = flat[i];
             auto it = std::find(palette.begin(), palette.end(), v);
-            if (it == palette.end()) { palette.push_back(v); idx[i] = (uint16_t)(palette.size() - 1); }
-            else idx[i] = (uint16_t)(it - palette.begin());
+            if (it == palette.end()) {
+                palette.push_back(v);
+                idx[i] = (uint16_t)(palette.size() - 1);
+            } else
+                idx[i] = (uint16_t)(it - palette.begin());
         }
         if (palette.empty()) palette.push_back(0);
         bitsPerBlock = bitsNeeded(palette.size());
@@ -80,7 +83,10 @@ class SkyLightSection {
         if (n <= 1) return 1;
         uint8_t b = 0;
         size_t v = n - 1;
-        while (v > 0) { b++; v >>= 1; }
+        while (v > 0) {
+            b++;
+            v >>= 1;
+        }
         return b;
     }
     // XZY layout for cache-friendly vertical access

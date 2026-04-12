@@ -63,8 +63,8 @@ void Player::initAudio(ma_engine* engine) {
     }
 
     // Underwater sounds
-    ma_sound_init_from_file(engine, "assets/Sounds/ambient/underwater/underwater_ambience.wav",
-                            MA_SOUND_FLAG_DECODE, nullptr, nullptr, &underwaterAmbience);
+    ma_sound_init_from_file(engine, "assets/Sounds/ambient/underwater/underwater_ambience.wav", MA_SOUND_FLAG_DECODE,
+                            nullptr, nullptr, &underwaterAmbience);
     ma_sound_set_looping(&underwaterAmbience, MA_TRUE);
     ma_sound_set_volume(&underwaterAmbience, 0.4f);
     for (int i = 0; i < 3; i++) {
@@ -150,8 +150,10 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     // Sprint — Shift in walk mode, R always
     bool sprint = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
     if (camera.isWalkMode()) sprint = sprint || glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
-    if (sprint) camera.speedUp();
-    else camera.resetSpeed();
+    if (sprint)
+        camera.speedUp();
+    else
+        camera.resetSpeed();
 
     // Hotbar selection: keys 1-9 = slots 0-8, key 0 = slot 9
     for (int i = 0; i < HOTBAR_SIZE; i++) {
@@ -325,7 +327,8 @@ void Player::findGroundAndUpdate(World* world) {
             if (y < 0 || y >= CHUNK_HEIGHT) return {STONE, 0};
             int cx = worldToChunk(x), cz = worldToChunk(z);
             if (cx != lastCx || cz != lastCz) {
-                lastCx = cx; lastCz = cz;
+                lastCx = cx;
+                lastCz = cz;
                 lastChunk = cm->getChunk(cx, cz);
             }
             if (!lastChunk) return {STONE, 0};

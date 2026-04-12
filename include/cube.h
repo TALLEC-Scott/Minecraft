@@ -15,9 +15,7 @@ inline void hashCombine(std::size_t& seed, int v) {
 // 6-connected neighbor offsets (±x, ±y, ±z). Shared by water simulation,
 // light BFS, and anywhere else that walks face neighbors.
 inline constexpr int DIRS_6[6][3] = {
-    { 1, 0, 0}, {-1, 0, 0},
-    { 0, 1, 0}, { 0,-1, 0},
-    { 0, 0, 1}, { 0, 0,-1},
+    {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1},
 };
 
 #define RENDER_DISTANCE 16
@@ -60,19 +58,25 @@ static constexpr uint8_t WATER_MAX_FLOW = 7; // cells at level 7 don't spread fu
 // directional flow" flag in bit 2 and a compass angle index (0-15) in
 // bits 3-6. Source blocks and falling water leave these bits zero
 // (gentle omnidirectional ripple in the shader).
-static constexpr uint8_t FLOW_HAS_DIR_BIT  = 0x04; // bit 2
-static constexpr uint8_t FLOW_ANGLE_SHIFT  = 3;     // bits 3-6
-static constexpr uint8_t FLOW_ANGLE_MASK   = 0x0F;  // 4 bits → 16 directions
-inline uint8_t waterFlowLevel(uint8_t raw) { return raw & WATER_LEVEL_MASK; }
-inline bool waterIsFalling(uint8_t raw) { return (raw & WATER_FALLING_FLAG) != 0; }
-inline bool waterIsSource(uint8_t raw) { return (raw & (WATER_LEVEL_MASK | WATER_FALLING_FLAG)) == 0; }
+static constexpr uint8_t FLOW_HAS_DIR_BIT = 0x04; // bit 2
+static constexpr uint8_t FLOW_ANGLE_SHIFT = 3;    // bits 3-6
+static constexpr uint8_t FLOW_ANGLE_MASK = 0x0F;  // 4 bits → 16 directions
+inline uint8_t waterFlowLevel(uint8_t raw) {
+    return raw & WATER_LEVEL_MASK;
+}
+inline bool waterIsFalling(uint8_t raw) {
+    return (raw & WATER_FALLING_FLAG) != 0;
+}
+inline bool waterIsSource(uint8_t raw) {
+    return (raw & (WATER_LEVEL_MASK | WATER_FALLING_FLAG)) == 0;
+}
 
 enum BlockFlag : uint32_t {
     BF_NONE = 0,
     BF_SOLID = 1u << 0,       // blocks movement / collision
     BF_OPAQUE = 1u << 1,      // fully blocks light
     BF_TRANSPARENT = 1u << 2, // can see through (skip face between same type)
-    BF_TRANSLUCENT = 1u << 3,  // partially see-through: reduces sky light, don't cull faces (leaves)
+    BF_TRANSLUCENT = 1u << 3, // partially see-through: reduces sky light, don't cull faces (leaves)
     BF_LIQUID = 1u << 4,      // renders with blending, no collision
 };
 

@@ -22,8 +22,7 @@ inline float waterHeightFromRaw(uint8_t raw) {
 // Per-cell water surface height, templated on a cell sampler. Returns -1
 // when the cell is out of bounds or not water. Water with water above
 // is treated as full-block-height for flush column/pool junctions.
-template <typename Sampler>
-float waterCellHeightT(int bx, int by, int bz, Sampler sample) {
+template <typename Sampler> float waterCellHeightT(int bx, int by, int bz, Sampler sample) {
     if (by < 0 || by >= CHUNK_HEIGHT) return -1.0f;
     WaterCellSample s = sample(bx, by, bz);
     if (!s.isWater()) return -1.0f;
@@ -38,18 +37,20 @@ float waterCellHeightT(int bx, int by, int bz, Sampler sample) {
 // (water against land stays flat). Any corner whose contributing cells
 // include a "full-height" water (water above) snaps to the block ceiling.
 template <typename Sampler>
-void computeWaterTopCornersT(int bx, int by, int bz,
-                             int uSign, int vSign, float out[4],
-                             Sampler sample) {
+void computeWaterTopCornersT(int bx, int by, int bz, int uSign, int vSign, float out[4], Sampler sample) {
     int cdx[4] = {-1, -1, 1, 1};
     int cdz[4] = {-1, 1, 1, -1};
     if (uSign < 0) {
-        std::swap(cdx[0], cdx[3]); std::swap(cdx[1], cdx[2]);
-        std::swap(cdz[0], cdz[3]); std::swap(cdz[1], cdz[2]);
+        std::swap(cdx[0], cdx[3]);
+        std::swap(cdx[1], cdx[2]);
+        std::swap(cdz[0], cdz[3]);
+        std::swap(cdz[1], cdz[2]);
     }
     if (vSign < 0) {
-        std::swap(cdx[0], cdx[1]); std::swap(cdx[2], cdx[3]);
-        std::swap(cdz[0], cdz[1]); std::swap(cdz[2], cdz[3]);
+        std::swap(cdx[0], cdx[1]);
+        std::swap(cdx[2], cdx[3]);
+        std::swap(cdz[0], cdz[1]);
+        std::swap(cdz[2], cdz[3]);
     }
     auto contribute = [&](int x, int y, int z) -> std::pair<float, bool> {
         if (y < 0 || y >= CHUNK_HEIGHT) return {0.0f, false};
@@ -64,20 +65,21 @@ void computeWaterTopCornersT(int bx, int by, int bz,
     };
     auto cC = contribute(bx, by, bz);
     for (int ci = 0; ci < 4; ci++) {
-        bool anyFull = fullHeight(bx, by, bz)
-                    || fullHeight(bx + cdx[ci], by, bz)
-                    || fullHeight(bx, by, bz + cdz[ci])
-                    || fullHeight(bx + cdx[ci], by, bz + cdz[ci]);
+        bool anyFull = fullHeight(bx, by, bz) || fullHeight(bx + cdx[ci], by, bz) || fullHeight(bx, by, bz + cdz[ci]) ||
+                       fullHeight(bx + cdx[ci], by, bz + cdz[ci]);
         if (anyFull) {
             out[ci] = (float)by + 0.5f;
             continue;
         }
-        std::pair<float, bool> h[4] = {cC,
-            contribute(bx + cdx[ci], by, bz),
-            contribute(bx, by, bz + cdz[ci]),
-            contribute(bx + cdx[ci], by, bz + cdz[ci])};
-        float sum = 0; int cnt = 0;
-        for (int i = 0; i < 4; i++) if (h[i].second) { sum += h[i].first; cnt++; }
+        std::pair<float, bool> h[4] = {cC, contribute(bx + cdx[ci], by, bz), contribute(bx, by, bz + cdz[ci]),
+                                       contribute(bx + cdx[ci], by, bz + cdz[ci])};
+        float sum = 0;
+        int cnt = 0;
+        for (int i = 0; i < 4; i++)
+            if (h[i].second) {
+                sum += h[i].first;
+                cnt++;
+            }
         out[ci] = (float)by - 0.5f + (cnt > 0 ? sum / cnt : 0.0f);
     }
 }
@@ -86,6 +88,5 @@ void computeWaterTopCornersT(int bx, int by, int bz,
 // sky/block light array, `waterLevels` is the per-block flow-level
 // array (may be null if no water in this chunk), `nb` is a snapshot of
 // the 4 cardinal + 4 diagonal neighbor borders. No GL calls.
-MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels,
-                           int maxSolidY, int chunkX, int chunkZ,
+MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, int maxSolidY, int chunkX, int chunkZ,
                            const NeighborBorders& nb);

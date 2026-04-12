@@ -39,6 +39,8 @@ inline int layerForFace(block_type t, int face) {
     return static_cast<int>(t);
 }
 
-inline int layerForType(block_type t) { return static_cast<int>(t); }
+inline int layerForType(block_type t) {
+    return static_cast<int>(t);
+}
 
 } // namespace block_layers

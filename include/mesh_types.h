@@ -67,8 +67,8 @@ struct NeighborBorders {
 
 // Pre-built CPU-side mesh data (can be built on any thread).
 struct MeshData {
-    std::vector<uint8_t> verts;          // opaque vertices (PackedVertex)
-    std::vector<uint8_t> waterVerts;     // water vertices (WaterVertex)
+    std::vector<uint8_t> verts;      // opaque vertices (PackedVertex)
+    std::vector<uint8_t> waterVerts; // water vertices (WaterVertex)
     std::vector<unsigned int> opaqueIdx;
     std::vector<unsigned int> waterIdx;
     bool ready = false;
