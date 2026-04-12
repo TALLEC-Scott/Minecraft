@@ -10,9 +10,12 @@
 #include <initializer_list>
 #include <algorithm>
 
+#ifdef __EMSCRIPTEN__
 static constexpr int MAX_CHUNKS_PER_FRAME = 4;
+#else
 static constexpr int MAX_INTEGRATE_PER_FRAME = 2;
 static constexpr int MAX_MESH_RESULTS_PER_FRAME = 8;
+#endif
 
 ChunkManager::ChunkManager(int renderDist, int /*chunkSize*/, TerrainGenerator& terrainGenerator)
     : renderDistance(renderDist), terrainGenerator(terrainGenerator) {

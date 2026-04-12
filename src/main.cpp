@@ -259,12 +259,15 @@ void processInput(GLFWwindow* window) {
 }
 
 int main(int argc, char* argv[]) {
+#ifndef __EMSCRIPTEN__
     bool benchmarkMode = false;
     bool headlessMode = false;
     bool stressWater = false;
+#endif
     unsigned int worldSeed = 0;
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
+#ifndef __EMSCRIPTEN__
         if (arg == "--benchmark")
             benchmarkMode = true;
         else if (arg == "--headless")
@@ -272,6 +275,9 @@ int main(int argc, char* argv[]) {
         else if (arg == "--stress-water")
             stressWater = true;
         else if (arg == "--seed" && i + 1 < argc)
+#else
+        if (arg == "--seed" && i + 1 < argc)
+#endif
             worldSeed = std::stoul(argv[++i]);
     }
     if (!glfwInit()) {
