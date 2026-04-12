@@ -48,6 +48,11 @@ class Player {
     float getPunchSwingAngle() const;
     glm::mat4 getArmModelMatrix() const;
 
+    // Block-placement "pop" effect. Progress 0→1 over PLACE_ANIM_DURATION.
+    // Returns <0 when no animation is active.
+    float getPlaceAnimProgress() const;
+    glm::ivec3 getLastPlacedPos() const { return lastPlacedPos; }
+
     Camera& getCamera() { return camera; }
 
     void resetMouseState() { firstMouse = true; }
@@ -72,6 +77,11 @@ class Player {
     double punchStartTime = 0.0;
     bool leftClickHeld = false;
     static constexpr double PUNCH_DURATION = 0.3;
+
+    // Block-placement pop animation
+    glm::ivec3 lastPlacedPos = glm::ivec3(0);
+    double placeAnimStart = -1.0;
+    static constexpr double PLACE_ANIM_DURATION = 0.22;
 
     // Double-tap space detection
     bool spaceWasPressed = false;
