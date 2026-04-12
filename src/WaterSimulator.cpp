@@ -74,9 +74,14 @@ void WaterSimulator::activateNeighbors(int x, int y, int z) {
 }
 
 void WaterSimulator::tick() {
-    frameCounter++;
-    if (frameCounter < TICK_INTERVAL) return;
-    frameCounter = 0;
+    if (!forceNextTick) {
+        auto now = std::chrono::steady_clock::now();
+        if (lastTickTime.time_since_epoch().count() == 0) { lastTickTime = now; return; }
+        double elapsed = std::chrono::duration<double>(now - lastTickTime).count();
+        if (elapsed < TICK_SECONDS) return;
+        lastTickTime = now;
+    }
+    forceNextTick = false;
     ZoneScopedN("WaterSimulator::tick");
     TracyPlot("water_active", (int64_t)activeBlocks.size());
 
@@ -176,11 +181,12 @@ void WaterSimulator::tick() {
             }
         }
 
-        // Rule 0: infinite water source. A non-source water cell with 2+
-        // horizontal source neighbors becomes a source itself. This is
-        // how oceans refill when you break a block — adjacent sources
-        // clone into the gap instead of creating flowing staircases.
-        if (!waterIsSource(raw) && landed) {
+        // Rule 0: infinite water source. A non-source, non-falling water
+        // cell with 2+ horizontal source neighbors becomes a source itself.
+        // This is how oceans refill when you break a block. Excluding falling
+        // water prevents cascading waterfalls from being upgraded to sources
+        // when they land in an existing pool.
+        if (!waterIsSource(raw) && !falling && landed) {
             int sourceCount = 0;
             for (auto& hd : HDIRS) {
                 auto n = resolver.local(x + hd[0], z + hd[1]);
@@ -196,10 +202,16 @@ void WaterSimulator::tick() {
             }
         }
 
-        // Rule 2: horizontal spread. Falling cells use effective level 0
-        // so newly-landed water fans out like a source.
+        // Rule 2: horizontal spread. Falling water spreads only when it
+        // lands on solid ground (source-like fan-out). When it lands on
+        // an existing pool, it dissipates into the pool — no extra water
+        // layer above the pool surface.
+        bool solidBelow = (y > 0) && chunk->getBlockType(lx, y - 1, lz) != AIR
+                                  && chunk->getBlockType(lx, y - 1, lz) != WATER;
+        bool canSpreadFalling = falling && solidBelow;
         uint8_t spreadLevel = falling ? 0 : level;
-        if (spreadLevel < WATER_MAX_FLOW && landed) {
+        bool allowSpread = landed && (falling ? canSpreadFalling : true);
+        if (spreadLevel < WATER_MAX_FLOW && allowSpread) {
             for (auto& hd : HDIRS) {
                 int nx = x + hd[0], nz = z + hd[1];
                 auto n = resolver.local(nx, nz);
@@ -208,16 +220,6 @@ void WaterSimulator::tick() {
                 if (nbt == AIR) {
                     world->setBlock(nx, y, nz, WATER, uint8_t(spreadLevel + 1));
                     activate(nx, y, nz);
-                    // If the block below the new water is air, immediately
-                    // place falling water so the cliff edge renders cleanly
-                    // (no diagonal slope from corner averaging).
-                    if (y > 0) {
-                        block_type belowNew = n.chunk->getBlockType(n.lx, y - 1, n.lz);
-                        if (belowNew == AIR) {
-                            world->setBlock(nx, y - 1, nz, WATER, WATER_FALLING_FLAG);
-                            activate(nx, y - 1, nz);
-                        }
-                    }
                     anyChanged = true;
                 } else if (nbt == WATER) {
                     uint8_t nraw = n.chunk->getWaterLevel(n.lx, y, n.lz);

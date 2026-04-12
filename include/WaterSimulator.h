@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include <unordered_set>
 #include <vector>
 #include <glm/glm.hpp>
@@ -41,8 +42,12 @@ class WaterSimulator {
     void activateNeighbors(int x, int y, int z);
 
     static constexpr int MAX_BLOCKS_PER_TICK = 512;
-    static constexpr int TICK_INTERVAL = 15; // ~4 ticks per second at 60fps (matches Minecraft)
-    int frameCounter = 0;
+    // Seconds between ticks — FPS-agnostic, wall-clock timed.
+    // 0.25s = 4 ticks/second (matches Minecraft's fluid tick rate).
+    static constexpr double TICK_SECONDS = 0.25;
+    // Force the next tick() call to fire (used by tests).
+    bool forceNextTick = false;
+    std::chrono::steady_clock::time_point lastTickTime;
 
   private:
     World* world;
