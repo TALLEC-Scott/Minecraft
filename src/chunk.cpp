@@ -57,10 +57,11 @@ struct WaterVertex {
     float px, py, pz;
     uint8_t u, v;
     uint8_t normalIdx, texLayer, ao, packedLight;
+    uint8_t _pad[2]; // stride must be 4-byte aligned for GL_FLOAT attribute on WebGL
 };
 #pragma pack(pop)
-static_assert(sizeof(WaterVertex) == 18);
-static constexpr int WATER_BYTES_PER_VERT = 18;
+static_assert(sizeof(WaterVertex) == 20);
+static constexpr int WATER_BYTES_PER_VERT = 20;
 
 // Neighbor offsets per face (di, dj, dk)
 static const int FACE_NEIGHBORS[6][3] = {
@@ -1613,7 +1614,7 @@ void Chunk::uploadMesh() {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, waterEBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, pendingMesh.waterIdx.size() * sizeof(unsigned int),
                  pendingMesh.waterIdx.data(), GL_STATIC_DRAW);
-    constexpr int WSTRIDE = 18;
+    constexpr int WSTRIDE = 20;
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, WSTRIDE, nullptr);       // float pos at offset 0
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_UNSIGNED_BYTE, GL_FALSE, WSTRIDE, (void*)12);
