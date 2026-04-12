@@ -19,6 +19,7 @@
 #include <random>
 
 #include "profiler.h"
+#include "tracy_shim.h"
 
 #include "shader.h"
 #include "texture.h"
@@ -260,6 +261,7 @@ void processInput(GLFWwindow* window) {
 int main(int argc, char* argv[]) {
     bool benchmarkMode = false;
     bool headlessMode = false;
+    bool stressWater = false;
     unsigned int worldSeed = 0;
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -267,6 +269,8 @@ int main(int argc, char* argv[]) {
             benchmarkMode = true;
         else if (arg == "--headless")
             headlessMode = true;
+        else if (arg == "--stress-water")
+            stressWater = true;
         else if (arg == "--seed" && i + 1 < argc)
             worldSeed = std::stoul(argv[++i]);
     }
@@ -390,6 +394,7 @@ int main(int argc, char* argv[]) {
 #endif
             World world(worldSeed);
         std::cout << "World seed: " << worldSeed << std::endl;
+        world.waterSimulator->initAudio(menuObj.getAudioEngine());
         w = &world;
 
         glEnable(GL_CULL_FACE);
@@ -877,10 +882,38 @@ int main(int argc, char* argv[]) {
                 bool measuring = (frame >= WARMUP_FRAMES);
                 if (measuring) profiler.beginFrame();
 
+                // Stress-water injection: right at the warmup→measure boundary,
+                // place a grid of water sources around the player. The sim
+                // will spend the measured phase processing flood → decay,
+                // which exercises WaterSimulator::tick + chunk mesh rebuilds
+                // (the actual hot paths the default benchmark scene misses).
+                if (stressWater && frame == WARMUP_FRAMES) {
+                    glm::vec3 pp = player.getPosition();
+                    int ox = (int)std::floor(pp.x);
+                    int oy = (int)std::floor(pp.y) + 6; // above head
+                    int oz = (int)std::floor(pp.z);
+                    int placed = 0;
+                    for (int dx = -8; dx <= 8; dx += 2) {
+                        for (int dz = -8; dz <= 8; dz += 2) {
+                            int wx = ox + dx, wz = oz + dz;
+                            if (oy < 0 || oy >= CHUNK_HEIGHT) continue;
+                            w->setBlock(wx, oy, wz, WATER, 0);
+                            w->waterSimulator->activate(wx, oy, wz);
+                            placed++;
+                        }
+                    }
+                    std::cout << "[stress-water] placed " << placed
+                              << " sources at y=" << oy << std::endl;
+                }
+
                 if (frame < WARMUP_FRAMES) {
                     // Phase 1 (warmup): spin 360° in place so surrounding chunks load
                     float angle = glm::radians((float)frame / WARMUP_FRAMES * 360.0f);
                     player.getCamera().changeDirection(glm::vec3(std::cos(angle), 0.0f, std::sin(angle)));
+                } else if (stressWater) {
+                    // Phase 2 (stress-water): stay put looking down so the
+                    // flood stays in view and its mesh rebuilds are in-frame.
+                    player.getCamera().changeDirection(glm::vec3(0.3f, -0.6f, 0.0f));
                 } else {
                     // Phase 2 (measured): move forward at fixed sprint speed
                     player.getCamera().changeDirection(glm::vec3(1.0f, 0.0f, 0.0f));
@@ -935,6 +968,7 @@ int main(int argc, char* argv[]) {
                 }
 
                 glfwPollEvents();
+                FrameMark;
                 frame++;
             }
 
@@ -1519,6 +1553,7 @@ int main(int argc, char* argv[]) {
 
             glfwSwapBuffers(window);
             glfwPollEvents();
+            FrameMark;
         }; // end mainLoopBody lambda
 
 #ifdef __EMSCRIPTEN__

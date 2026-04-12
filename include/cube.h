@@ -1,6 +1,24 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
+
+// boost::hash_combine — distributes small-coordinate keys much better
+// than xor-shift. Used by Vec2Hash, IVec3Hash, and anywhere else we
+// need to hash a structured key.
+inline void hashCombine(std::size_t& seed, int v) {
+    std::hash<int> h;
+    seed ^= h(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
+// 6-connected neighbor offsets (±x, ±y, ±z). Shared by water simulation,
+// light BFS, and anywhere else that walks face neighbors.
+inline constexpr int DIRS_6[6][3] = {
+    { 1, 0, 0}, {-1, 0, 0},
+    { 0, 1, 0}, { 0,-1, 0},
+    { 0, 0, 1}, { 0, 0,-1},
+};
 
 #define RENDER_DISTANCE 16
 #define CHUNK_SIZE 16
@@ -28,6 +46,17 @@ enum block_type : uint8_t {
 };
 
 enum Biome { BIOME_OCEAN, BIOME_BEACH, BIOME_PLAINS, BIOME_FOREST, BIOME_DESERT, BIOME_TUNDRA, BIOME_COUNT };
+
+// Water level encoding: bits 0-2 hold the flow level (0-7), bit 7 is the
+// "falling" flag. Level 0 without the flag is a source (infinite). Level 0
+// WITH the flag is a falling-water column cell — it needs water above to
+// survive and decays immediately if that chain breaks.
+static constexpr uint8_t WATER_LEVEL_MASK = 0x07;
+static constexpr uint8_t WATER_FALLING_FLAG = 0x80;
+static constexpr uint8_t WATER_MAX_FLOW = 7; // cells at level 7 don't spread further
+inline uint8_t waterFlowLevel(uint8_t raw) { return raw & WATER_LEVEL_MASK; }
+inline bool waterIsFalling(uint8_t raw) { return (raw & WATER_FALLING_FLAG) != 0; }
+inline bool waterIsSource(uint8_t raw) { return (raw & (WATER_LEVEL_MASK | WATER_FALLING_FLAG)) == 0; }
 
 enum BlockFlag : uint32_t {
     BF_NONE = 0,

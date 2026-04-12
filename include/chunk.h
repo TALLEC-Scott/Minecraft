@@ -23,6 +23,7 @@ static constexpr int NUM_SECTIONS = CHUNK_HEIGHT / 16;
 struct ChunkData {
     std::unique_ptr<ChunkSection> sections[NUM_SECTIONS];
     std::shared_ptr<uint8_t[]> skyLight; // packed: high nibble = sky, low nibble = block
+    std::shared_ptr<uint8_t[]> waterLevels; // per-block water level (0=source, 1-7=flow)
     int heights[CHUNK_SIZE][CHUNK_SIZE]{};
     Biome biomes[CHUNK_SIZE][CHUNK_SIZE]{};
     int chunkX = 0, chunkZ = 0;
@@ -31,6 +32,7 @@ struct ChunkData {
     ChunkData() = default;
     ChunkData(ChunkData&& o) noexcept
         : skyLight(std::move(o.skyLight)),
+          waterLevels(std::move(o.waterLevels)),
           chunkX(o.chunkX), chunkZ(o.chunkZ),
           maxSolidY(o.maxSolidY) {
         for (int i = 0; i < NUM_SECTIONS; i++) sections[i] = std::move(o.sections[i]);
@@ -41,6 +43,7 @@ struct ChunkData {
         if (this != &o) {
             for (int i = 0; i < NUM_SECTIONS; i++) sections[i] = std::move(o.sections[i]);
             skyLight = std::move(o.skyLight);
+            waterLevels = std::move(o.waterLevels);
             chunkX = o.chunkX;
             chunkZ = o.chunkZ;
             maxSolidY = o.maxSolidY;
@@ -72,12 +75,16 @@ class Chunk {
     // Move only
     Chunk(Chunk&& other) noexcept
         : skyLight(std::move(other.skyLight)),
+          waterLevels(std::move(other.waterLevels)),
           chunkX(other.chunkX),
           chunkY(other.chunkY), chunkVAO(other.chunkVAO), chunkVBO(other.chunkVBO), chunkEBO(other.chunkEBO),
           opaqueIndexCount(other.opaqueIndexCount), waterIndexCount(other.waterIndexCount),
-          waterIndexOffset(other.waterIndexOffset), meshDirty(other.meshDirty), maxSolidY(other.maxSolidY),
+          waterIndexOffset(other.waterIndexOffset), sectionDirty(other.sectionDirty), maxSolidY(other.maxSolidY),
           pendingMesh(std::move(other.pendingMesh)), meshBuildInFlight(other.meshBuildInFlight) {
-        for (int i = 0; i < NUM_SECTIONS; i++) sections[i] = std::move(other.sections[i]);
+        for (int i = 0; i < NUM_SECTIONS; i++) {
+            sections[i] = std::move(other.sections[i]);
+            sectionMeshes[i] = std::move(other.sectionMeshes[i]);
+        }
         std::memcpy(heights, other.heights, sizeof(heights));
         other.chunkVAO = other.chunkVBO = other.chunkEBO = 0;
     }
@@ -88,8 +95,12 @@ class Chunk {
             if (chunkVBO) glDeleteBuffers(1, &chunkVBO);
             if (chunkEBO) glDeleteBuffers(1, &chunkEBO);
 
-            for (int i = 0; i < NUM_SECTIONS; i++) sections[i] = std::move(other.sections[i]);
+            for (int i = 0; i < NUM_SECTIONS; i++) {
+                sections[i] = std::move(other.sections[i]);
+                sectionMeshes[i] = std::move(other.sectionMeshes[i]);
+            }
             skyLight = std::move(other.skyLight);
+            waterLevels = std::move(other.waterLevels);
             chunkX = other.chunkX;
             chunkY = other.chunkY;
             chunkVAO = other.chunkVAO;
@@ -98,7 +109,7 @@ class Chunk {
             opaqueIndexCount = other.opaqueIndexCount;
             waterIndexCount = other.waterIndexCount;
             waterIndexOffset = other.waterIndexOffset;
-            meshDirty = other.meshDirty;
+            sectionDirty = other.sectionDirty;
             maxSolidY = other.maxSolidY;
             pendingMesh = std::move(other.pendingMesh);
             meshBuildInFlight = other.meshBuildInFlight;
@@ -133,13 +144,26 @@ class Chunk {
         bool ready = false;
     };
 
+    // Per-section cached mesh — used for incremental rebuilds.
+    // Only dirty sections are re-meshed; clean sections reuse the cache.
+    struct SectionMesh {
+        std::vector<uint8_t> verts;
+        std::vector<unsigned int> opaqueIdx;
+        std::vector<unsigned int> waterIdx;
+    };
+
     void buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
     void buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
     void buildMeshDataAsync(const NeighborBorders& borders);
     void uploadMesh();
     std::vector<Cube*> render(const Shader& shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
     void renderWater(const Shader& shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
-    void markDirty() { meshDirty = true; }
+    void markDirty() { sectionDirty = 0xFF; }
+    void markSectionDirty(int sy) {
+        if (sy < 0 || sy >= NUM_SECTIONS) return;
+        sectionDirty |= (1u << sy);
+    }
+    bool isMeshDirty() const { return sectionDirty != 0; }
     void destroy();
     void destroyBlock(int x, int y, int z);
     void placeBlock(int x, int y, int z, block_type type);
@@ -163,12 +187,18 @@ class Chunk {
     }
 
     void setBlockType(int x, int y, int z, block_type t) {
+        if (y < 0 || y >= CHUNK_HEIGHT) return;
         int sy = y / 16;
         if (!sections[sy]) {
-            if (t == AIR) return; // no need to create section for air
+            if (t == AIR) return;
             sections[sy] = std::make_unique<ChunkSection>();
         }
         sections[sy]->setBlock(x, y % 16, z, t);
+        // Mark this section + adjacent sections at Y boundaries (face
+        // visibility across section seams depends on both sides).
+        markSectionDirty(sy);
+        if (y % 16 == 0) markSectionDirty(sy - 1);
+        if (y % 16 == 15) markSectionDirty(sy + 1);
     }
 
     // Decompress all sections into a flat Cube[] buffer (for BFS/mesh algorithms)
@@ -182,8 +212,8 @@ class Chunk {
                 for (int ly = 0; ly < 16; ly++)
                     for (int z = 0; z < CHUNK_SIZE; z++) {
                         int y = baseY + ly;
-                        buf[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].setType(
-                            sections[s]->getBlock(x, ly, z));
+                        size_t idx = static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z;
+                        buf[idx].setType(sections[s]->getBlock(x, ly, z));
                     }
         }
         return buf;
@@ -198,11 +228,34 @@ class Chunk {
     // Section-based block storage — null sections mean all-air
     std::unique_ptr<ChunkSection> sections[NUM_SECTIONS];
     std::shared_ptr<uint8_t[]> skyLight; // packed: high nibble = sky, low nibble = block
+    std::shared_ptr<uint8_t[]> waterLevels; // per-block water level (0=source, 1-7=flow)
     int maxSolidY = 0;
+
+    uint8_t getWaterLevel(int x, int y, int z) const {
+        if (!waterLevels || x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE)
+            return 0;
+        return waterLevels[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z];
+    }
+
+    void setWaterLevel(int x, int y, int z, uint8_t level) {
+        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return;
+        if (!waterLevels) {
+            waterLevels = std::shared_ptr<uint8_t[]>(
+                new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]());
+        }
+        waterLevels[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z] = level;
+    }
     int chunkX = -1;
     int chunkY = -1;
     bool meshBuildInFlight = false;
-    bool meshDirty = true;
+    // Per-section dirty bitmask: bit i is set when section i needs a
+    // mesh rebuild. Starts 0xFF (all dirty) so the initial full build
+    // happens. Cleared to 0 after uploadMesh. Block edits set only the
+    // affected bit(s) via markSectionDirty.
+    uint8_t sectionDirty = 0xFF;
+    // Cached per-section mesh data. Clean sections are reused across
+    // incremental rebuilds; only dirty sections get re-meshed.
+    SectionMesh sectionMeshes[NUM_SECTIONS];
 
   private:
     void computeSkyLight();
@@ -220,5 +273,5 @@ class Chunk {
 };
 
 // Build mesh from raw data — fully thread-safe, no GL calls
-Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, int maxSolidY, int chunkX,
+Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, int maxSolidY, int chunkX,
                                   int chunkZ, const Chunk::NeighborBorders& borders);

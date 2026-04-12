@@ -20,9 +20,8 @@
 
 struct Vec2Hash {
     std::size_t operator()(const glm::ivec2& vec) const {
-        std::hash<int> hasher;
-        std::size_t seed = hasher(vec.x);
-        seed ^= hasher(vec.y) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        std::size_t seed = std::hash<int>()(vec.x);
+        hashCombine(seed, vec.y);
         return seed;
     }
 };
@@ -66,6 +65,7 @@ class ChunkManager {
         glm::ivec2 pos;
         std::shared_ptr<Cube[]> blocks;
         std::shared_ptr<uint8_t[]> skyLight; // packed: high nibble = sky, low nibble = block
+        std::shared_ptr<uint8_t[]> waterLevels;
         int maxSolidY;
         int chunkX, chunkZ;
         Chunk::NeighborBorders borders;

@@ -25,3 +25,4 @@ scripts/mapgen
 scripts/check_biomes
 mapgen
 build_win/
+*.exe

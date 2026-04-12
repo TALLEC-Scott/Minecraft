@@ -28,6 +28,7 @@ set(COMMON_SOURCES
     src/ui_renderer.cpp
     src/menu.cpp
     src/miniaudio.cpp
+    src/WaterSimulator.cpp
 )
 
 if(EMSCRIPTEN)
@@ -67,18 +68,64 @@ else()
     endif()
   endif()
 
+  # Optional Tracy profiler. Off by default so normal builds pay nothing.
+  # Build with -DBUILD_WITH_TRACY=ON to enable; the game will listen on
+  # 127.0.0.1:8086 for the Tracy viewer to connect.
+  option(BUILD_WITH_TRACY "Build with the Tracy profiler client" OFF)
+  if(BUILD_WITH_TRACY)
+    include(FetchContent)
+    FetchContent_Declare(
+      tracy
+      GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+      GIT_TAG v0.11.1
+      GIT_SHALLOW TRUE
+    )
+    set(TRACY_ENABLE ON CACHE BOOL "" FORCE)
+    set(TRACY_ON_DEMAND ON CACHE BOOL "" FORCE)
+    # Older mingw-w64 Windows SDK headers don't have
+    # TraceSetInformation / GetProcessIdOfThread / RelationProcessorDie,
+    # so skip Tracy's system-trace path when cross-compiling.
+    set(TRACY_NO_SYSTEM_TRACING ON CACHE BOOL "" FORCE)
+    # WSL2's exposed CPU info doesn't advertise invariant TSC, so Tracy
+    # refuses to init with its default timer. Fall back to a clock-based
+    # timer that works without TSC invariance.
+    set(TRACY_TIMER_FALLBACK ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(tracy)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+      # Force-include a shim that handles mingw-w64 v10 vs Tracy quirks:
+      # orders winsock2.h correctly and provides an inline __get_cpuid
+      # since <cpuid.h> can't coexist with <intrin.h> on this toolchain.
+      target_compile_options(TracyClient PRIVATE
+          -include ${CMAKE_SOURCE_DIR}/cmake/tracy_mingw_prefix.h)
+    endif()
+  endif()
+
   add_executable(minecraft ${COMMON_SOURCES} src/glad.c)
   target_include_directories(minecraft PRIVATE include Libraries/include)
+  if(BUILD_WITH_TRACY)
+    target_link_libraries(minecraft TracyClient)
+    target_compile_definitions(minecraft PRIVATE TRACY_ENABLE=1)
+  endif()
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    # MinGW cross-compile: use bundled GLFW .lib
+    # MinGW cross-compile. libstdc++.a and libgcc_eh.a (auto-appended by
+    # gcc after our listed libs) reference winpthread symbols, which the
+    # linker only gets one pass at. Wrap everything in --start-group /
+    # --end-group so the linker does multiple resolution passes and both
+    # directions resolve.
     target_compile_options(minecraft PRIVATE $<$<CONFIG:Release>:-O3>)
+    target_link_options(minecraft PRIVATE
+        "LINKER:--start-group"
+        "LINKER:--end-group")
     target_link_libraries(minecraft
+        -Wl,--start-group
         ${CMAKE_SOURCE_DIR}/Libraries/lib/libglfw3_mingw.a
         opengl32
         gdi32
         /usr/x86_64-w64-mingw32/lib/libpthread.a
         /usr/x86_64-w64-mingw32/lib/libwinpthread.a
+        -lstdc++ -lgcc_eh -lwinpthread
+        -Wl,--end-group
     )
   else()
     find_package(OpenGL REQUIRED)
@@ -117,11 +164,18 @@ else()
         tests/test_block_placement.cpp
         tests/test_collision.cpp
         tests/test_chunk_section.cpp
+        tests/test_water.cpp
         src/TerrainGenerator.cpp
         src/perlin_noise.cpp
         src/game_state.cpp
+        src/WaterSimulator.cpp
+        src/miniaudio.cpp
     )
-    target_include_directories(tests PRIVATE include Libraries/include)
+    # tests/stubs is searched before include/ so the water-sim tests can
+    # compile src/WaterSimulator.cpp against minimal stubs of chunk.h /
+    # ChunkManager.h / world.h without dragging in OpenGL, threading, or
+    # rendering dependencies.
+    target_include_directories(tests PRIVATE tests/stubs include Libraries/include)
     target_link_libraries(tests GTest::gtest_main)
     set_target_properties(tests PROPERTIES CXX_CLANG_TIDY "")
     gtest_discover_tests(tests)

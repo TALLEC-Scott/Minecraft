@@ -63,6 +63,58 @@ static bool isBlockOpaque(block_type t);
 static bool isBlockFiltering(block_type t);
 static void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY);
 
+#include "tracy_shim.h"
+
+// Per-cell water surface height. Falling water renders full-height; otherwise
+// the height is derived from the flow level (level 0 ≈ 0.89, level 7 ≈ 0.11).
+// Returns -1 if the cell is out of bounds or not water. Water levels live in
+// a parallel uint8_t[] that tracks the `blocks` layout 1:1.
+static float waterCellHeight(const Cube* blocks, const uint8_t* waterLevels,
+                             int bx, int by, int bz) {
+    if (bx < 0 || bx >= CHUNK_SIZE || bz < 0 || bz >= CHUNK_SIZE || by < 0 || by >= CHUNK_HEIGHT)
+        return -1.0f;
+    size_t i = static_cast<size_t>(bx) * CHUNK_HEIGHT * CHUNK_SIZE + by * CHUNK_SIZE + bz;
+    if (blocks[i].getType() != WATER) return -1.0f;
+    uint8_t raw = waterLevels ? waterLevels[i] : 0;
+    if (waterIsFalling(raw)) return 8.0f / 9.0f;
+    return (8.0f - waterFlowLevel(raw)) / 9.0f;
+}
+
+// Compute the four top-face corner heights of a water block by averaging
+// this cell with the up-to-three neighbors sharing each corner. Corner
+// offsets are flipped based on the face axis signs so they match the
+// quad's vertex order (SW, NW, NE, SE when u_sign/v_sign > 0).
+static void computeWaterTopCorners(const Cube* blocks, const uint8_t* waterLevels,
+                                   int bx, int by, int bz,
+                                   int uSign, int vSign, float out[4]) {
+    int cdx[4] = {-1, -1, 1, 1};
+    int cdz[4] = {-1, 1, 1, -1};
+    if (uSign < 0) {
+        std::swap(cdx[0], cdx[3]);
+        std::swap(cdx[1], cdx[2]);
+        std::swap(cdz[0], cdz[3]);
+        std::swap(cdz[1], cdz[2]);
+    }
+    if (vSign < 0) {
+        std::swap(cdx[0], cdx[1]);
+        std::swap(cdx[2], cdx[3]);
+        std::swap(cdz[0], cdz[1]);
+        std::swap(cdz[2], cdz[3]);
+    }
+    float cH = waterCellHeight(blocks, waterLevels, bx, by, bz);
+    for (int ci = 0; ci < 4; ci++) {
+        float sum = cH;
+        int cnt = 1;
+        float h1 = waterCellHeight(blocks, waterLevels, bx + cdx[ci], by, bz);
+        float h2 = waterCellHeight(blocks, waterLevels, bx, by, bz + cdz[ci]);
+        float h3 = waterCellHeight(blocks, waterLevels, bx + cdx[ci], by, bz + cdz[ci]);
+        if (h1 >= 0) { sum += h1; cnt++; }
+        if (h2 >= 0) { sum += h2; cnt++; }
+        if (h3 >= 0) { sum += h3; cnt++; }
+        out[ci] = (float)by + sum / cnt;
+    }
+}
+
 // Helper for block access in a flat Cube[] buffer (same layout as old Chunk::getBlock)
 static Cube* getBlockFromFlat(Cube* blocks, int i, int j, int k) {
     if (i < 0 || i >= CHUNK_SIZE || j < 0 || j >= CHUNK_HEIGHT || k < 0 || k >= CHUNK_SIZE) return nullptr;
@@ -320,12 +372,13 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) : Chunk(generate
 Chunk::Chunk(ChunkData&& data) {
     for (int i = 0; i < NUM_SECTIONS; i++) sections[i] = std::move(data.sections[i]);
     skyLight = std::move(data.skyLight);
+    waterLevels = std::move(data.waterLevels);
     this->chunkX = data.chunkX;
     this->chunkY = data.chunkZ;
     maxSolidY = data.maxSolidY;
     std::memcpy(heights, data.heights, sizeof(heights));
     std::memcpy(biomes, data.biomes, sizeof(biomes));
-    meshDirty = true;
+    sectionDirty = 0xFF;
 }
 
 static bool isBlockOpaque(block_type t) {
@@ -579,6 +632,7 @@ static bool isOpaqueCross(Chunk* self, int i, int j, int k, Chunk* nx_neg, Chunk
 }
 
 void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
+    ZoneScopedN("Chunk::buildMeshData");
     double _buildStart = glfwGetTime();
 
     // Decompress sections into flat buffer for mesh building
@@ -642,15 +696,6 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
     static constexpr int DIM[3] = {CHUNK_SIZE, CHUNK_HEIGHT, CHUNK_SIZE};
     static constexpr int MAX_DIM = CHUNK_HEIGHT > CHUNK_SIZE ? CHUNK_HEIGHT : CHUNK_SIZE;
 
-    constexpr size_t MAX_FACES = static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * 4;
-    std::vector<uint8_t> opaqueVerts, waterVerts;
-    std::vector<unsigned int> opaqueIdx, waterIdx;
-    opaqueVerts.reserve(MAX_FACES * 4 * BYTES_PER_VERT);
-    opaqueIdx.reserve(MAX_FACES * 6);
-    waterVerts.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 4 * BYTES_PER_VERT);
-    waterIdx.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 6);
-    unsigned int opaqueBase = 0, waterBase = 0;
-
     // Pre-cache packed light for fast per-vertex access (high nibble = sky, low nibble = block)
     uint8_t* lightPtr = skyLight.get();
     auto slDirect = [lightPtr](int x, int y, int z) -> int {
@@ -666,7 +711,20 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
     const float worldOff[3] = {(float)(chunkX * CHUNK_SIZE), 0.0f, (float)(chunkY * CHUNK_SIZE)};
 
     // Effective dimensions capped by maxSolidY+1 (skip pure-air region above)
-    const int effDIM[3] = {CHUNK_SIZE, maxSolidY + 2, CHUNK_SIZE}; // +2: need one slice above for top faces
+    const int effDIM[3] = {CHUNK_SIZE, maxSolidY + 2, CHUNK_SIZE};
+
+    // ---- Per-section rebuild loop ----
+    // Only rebuild dirty sections; clean sections keep their cached meshes.
+    for (int sect = 0; sect < NUM_SECTIONS; sect++) {
+        if (!(sectionDirty & (1u << sect))) continue;
+        int yMin = sect * 16;
+        int yMax = std::min(yMin + 16, (int)CHUNK_HEIGHT);
+
+        auto& sm = sectionMeshes[sect];
+        sm.verts.clear();
+        sm.opaqueIdx.clear();
+        sm.waterIdx.clear();
+        unsigned int opaqueBase = 0, waterBase = 0;
 
     for (int f = 0; f < 6; f++) {
         const FaceDef& fd = FACE_DEFS[f];
@@ -675,12 +733,18 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
         const int u_dim = std::min(DIM[fd.u], effDIM[fd.u]);
         const int v_dim = std::min(DIM[fd.v], effDIM[fd.v]);
 
-        for (int d = 0; d < d_dim; d++) {
+        // Clamp the Y-related axis to the current section's range.
+        const int d_start = (fd.d == 1) ? std::max(yMin, 0) : 0;
+        const int d_end   = (fd.d == 1) ? std::min(yMax, d_dim) : d_dim;
+        const int v_start = (fd.v == 1) ? std::max(yMin, 0) : 0;
+        const int v_end   = (fd.v == 1) ? std::min(yMax, v_dim) : v_dim;
+
+        for (int d = d_start; d < d_end; d++) {
 
             // 1. Build mask for this face direction and slice
             bool anyFace = false;
             for (int u = 0; u < u_dim; u++) {
-                for (int v = 0; v < v_dim; v++) {
+                for (int v = v_start; v < v_end; v++) {
                     int c[3];
                     c[fd.d] = d;
                     c[fd.u] = u;
@@ -711,7 +775,7 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
 
             // 2. Sweep mask and emit quads
             for (int u = 0; u < u_dim; u++) {
-                for (int v = 0; v < v_dim;) {
+                for (int v = v_start; v < v_end;) {
                     int bt = mask[u][v];
                     if (bt == -1) {
                         v++;
@@ -732,6 +796,20 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
 
                     float layer = (float)TextureArray::layerForFace((block_type)bt, f);
                     float d_val = (float)d + fd.d_sign * 0.5f;
+
+                    // Greedy merge must not cross section boundary along the v
+                    // axis (which is Y for side faces).
+                    {
+                        int h_max = v_end - v;
+                        if (h > h_max) h = h_max;
+                    }
+
+                    // Water top face: per-vertex heights averaged with neighbors for a smooth surface.
+                    float waterY[4] = {d_val, d_val, d_val, d_val};
+                    if (bt == (int)WATER && f == 4) {
+                        computeWaterTopCorners(blocks, waterLevels.get(), u, d, v, fd.u_sign, fd.v_sign, waterY);
+                    }
+
                     float u_lo = (float)u - 0.5f, u_hi = (float)(u + w) - 0.5f;
                     float v_lo = (float)v - 0.5f, v_hi = (float)(v + h) - 0.5f;
                     float u0 = fd.u_sign > 0 ? u_lo : u_hi;
@@ -740,16 +818,19 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     float v1 = fd.v_sign > 0 ? v_hi : v_lo;
 
                     float vp[4][3];
-                    vp[0][fd.d] = d_val;
+                    bool isWT = (bt == (int)WATER && f == 4);
+                    // Vertex order: (u0,v0), (u0,v1), (u1,v1), (u1,v0)
+                    // Maps to corners: SW(0), NW(1), NE(2), SE(3) when u_sign>0, v_sign>0
+                    vp[0][fd.d] = isWT ? waterY[0] : d_val;
                     vp[0][fd.u] = u0;
                     vp[0][fd.v] = v0;
-                    vp[1][fd.d] = d_val;
+                    vp[1][fd.d] = isWT ? waterY[1] : d_val;
                     vp[1][fd.u] = u0;
                     vp[1][fd.v] = v1;
-                    vp[2][fd.d] = d_val;
+                    vp[2][fd.d] = isWT ? waterY[2] : d_val;
                     vp[2][fd.u] = u1;
                     vp[2][fd.v] = v1;
-                    vp[3][fd.d] = d_val;
+                    vp[3][fd.d] = isWT ? waterY[3] : d_val;
                     vp[3][fd.u] = u1;
                     vp[3][fd.v] = v0;
 
@@ -802,14 +883,13 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     }
 
                     bool isWater = (bt == (int)WATER);
-                    auto& verts = isWater ? waterVerts : opaqueVerts;
-                    auto& idx = isWater ? waterIdx : opaqueIdx;
+                    auto& idx = isWater ? sm.waterIdx : sm.opaqueIdx;
                     unsigned int& base = isWater ? waterBase : opaqueBase;
 
                     // Batch-write 4 packed vertices at once
-                    size_t off = verts.size();
-                    verts.resize(off + 4 * BYTES_PER_VERT);
-                    PackedVertex* dst = reinterpret_cast<PackedVertex*>(&verts[off]);
+                    size_t off = sm.verts.size();
+                    sm.verts.resize(off + 4 * BYTES_PER_VERT);
+                    PackedVertex* dst = reinterpret_cast<PackedVertex*>(&sm.verts[off]);
                     for (int vi = 0; vi < 4; vi++) {
                         dst->px = (int16_t)((vp[vi][0] + worldOff[0]) * 2.0f);
                         dst->py = (int16_t)((vp[vi][1] + worldOff[1]) * 2.0f);
@@ -824,7 +904,6 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     }
                     // Flip quad diagonal when AO is asymmetric to avoid interpolation artifacts
                     if (ao[0] + ao[2] > ao[1] + ao[3]) {
-                        // Default diagonal: 0-1-2, 2-3-0
                         idx.push_back(base);
                         idx.push_back(base + 1);
                         idx.push_back(base + 2);
@@ -832,7 +911,6 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                         idx.push_back(base + 3);
                         idx.push_back(base);
                     } else {
-                        // Flipped diagonal: 1-2-3, 3-0-1
                         idx.push_back(base + 1);
                         idx.push_back(base + 2);
                         idx.push_back(base + 3);
@@ -851,15 +929,46 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
             }
         }
     }
+    } // end per-section loop
 
-    // Combine into one VBO/EBO (opaque first, then water) — append in-place
-    opaqueVerts.insert(opaqueVerts.end(), waterVerts.begin(), waterVerts.end());
-    for (auto idx_val : waterIdx) opaqueIdx.push_back(idx_val + opaqueBase);
+    // ---- Stitch all section meshes into one pendingMesh ----
+    // Concatenate per-section verts and rebase indices so the GPU sees
+    // one continuous VBO/EBO with opaque triangles first, then water.
+    {
+        size_t totalVerts = 0, totalOpaque = 0, totalWater = 0;
+        for (int s = 0; s < NUM_SECTIONS; s++) {
+            totalVerts += sectionMeshes[s].verts.size();
+            totalOpaque += sectionMeshes[s].opaqueIdx.size();
+            totalWater += sectionMeshes[s].waterIdx.size();
+        }
 
-    pendingMesh.verts = std::move(opaqueVerts);
-    pendingMesh.waterIdx.resize(waterIdx.size());
-    pendingMesh.opaqueIdx = std::move(opaqueIdx);
-    pendingMesh.ready = true;
+        pendingMesh.verts.clear();
+        pendingMesh.verts.reserve(totalVerts);
+        pendingMesh.opaqueIdx.clear();
+        pendingMesh.opaqueIdx.reserve(totalOpaque + totalWater);
+        pendingMesh.waterIdx.clear();
+
+        unsigned int vertOffset = 0;
+        // Opaque indices from each section
+        for (int s = 0; s < NUM_SECTIONS; s++) {
+            auto& sm = sectionMeshes[s];
+            pendingMesh.verts.insert(pendingMesh.verts.end(), sm.verts.begin(), sm.verts.end());
+            for (auto idx_val : sm.opaqueIdx)
+                pendingMesh.opaqueIdx.push_back(idx_val + vertOffset);
+            // Water indices get a second pass (opaque first in the EBO)
+            vertOffset += (unsigned int)(sm.verts.size() / BYTES_PER_VERT);
+        }
+        // Water indices from each section (rebase with same vertex offsets)
+        unsigned int vertOffset2 = 0;
+        for (int s = 0; s < NUM_SECTIONS; s++) {
+            auto& sm = sectionMeshes[s];
+            for (auto idx_val : sm.waterIdx)
+                pendingMesh.opaqueIdx.push_back(idx_val + vertOffset2);
+            vertOffset2 += (unsigned int)(sm.verts.size() / BYTES_PER_VERT);
+        }
+        pendingMesh.waterIdx.resize(totalWater);
+        pendingMesh.ready = true;
+    }
 
     g_frame.meshBuildMs += (glfwGetTime() - _buildStart) * 1000.0;
     g_frame.meshBuilds++;
@@ -907,9 +1016,9 @@ Chunk::NeighborBorders Chunk::snapshotBorders(Chunk* nx_neg, Chunk* nx_pos, Chun
 }
 
 // Free function: build mesh from raw data — fully thread-safe, no GL calls
-Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, int maxSolidY, int chunkX,
+Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, int maxSolidY, int chunkX,
                                   int chunkZ, const Chunk::NeighborBorders& nb) {
-
+    ZoneScopedN("buildMeshFromData");
     int opaqueH = std::min(maxSolidY + 2, (int)CHUNK_HEIGHT);
     constexpr int OX = CHUNK_SIZE + 2, OZ = CHUNK_SIZE + 2;
     std::vector<uint8_t> opaq(static_cast<size_t>(OX) * opaqueH * OZ, 0);
@@ -1047,6 +1156,12 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, int maxSolidY, i
 
                     float layer = (float)TextureArray::layerForFace((block_type)bt, f);
                     float d_val = (float)d + fd.d_sign * 0.5f;
+
+                    float waterY2[4] = {d_val, d_val, d_val, d_val};
+                    if (bt == (int)WATER && f == 4) {
+                        computeWaterTopCorners(blocks, waterLevels, u, d, v, fd.u_sign, fd.v_sign, waterY2);
+                    }
+
                     float u_lo = (float)u - 0.5f, u_hi = (float)(u + w) - 0.5f;
                     float v_lo = (float)v - 0.5f, v_hi = (float)(v + h) - 0.5f;
                     float u0 = fd.u_sign > 0 ? u_lo : u_hi;
@@ -1055,16 +1170,17 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, int maxSolidY, i
                     float v1 = fd.v_sign > 0 ? v_hi : v_lo;
 
                     float vp[4][3];
-                    vp[0][fd.d] = d_val;
+                    bool isWT2 = (bt == (int)WATER && f == 4);
+                    vp[0][fd.d] = isWT2 ? waterY2[0] : d_val;
                     vp[0][fd.u] = u0;
                     vp[0][fd.v] = v0;
-                    vp[1][fd.d] = d_val;
+                    vp[1][fd.d] = isWT2 ? waterY2[1] : d_val;
                     vp[1][fd.u] = u0;
                     vp[1][fd.v] = v1;
-                    vp[2][fd.d] = d_val;
+                    vp[2][fd.d] = isWT2 ? waterY2[2] : d_val;
                     vp[2][fd.u] = u1;
                     vp[2][fd.v] = v1;
-                    vp[3][fd.d] = d_val;
+                    vp[3][fd.d] = isWT2 ? waterY2[3] : d_val;
                     vp[3][fd.u] = u1;
                     vp[3][fd.v] = v0;
 
@@ -1172,7 +1288,7 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, int maxSolidY, i
 void Chunk::buildMeshDataAsync(const NeighborBorders& borders) {
     auto start = std::chrono::steady_clock::now();
     auto flat = decompressBlocks();
-    pendingMesh = buildMeshFromData(flat.get(), skyLight.get(), maxSolidY, chunkX, chunkY, borders);
+    pendingMesh = buildMeshFromData(flat.get(), skyLight.get(), waterLevels.get(), maxSolidY, chunkX, chunkY, borders);
     auto end = std::chrono::steady_clock::now();
     g_frame.meshBuildMs += std::chrono::duration<double, std::milli>(end - start).count();
     g_frame.meshBuilds++;
@@ -1223,7 +1339,7 @@ void Chunk::uploadMesh() {
     opaqueIndexCount = totalOpaqueIdx;
     waterIndexCount = (int)pendingMesh.waterIdx.size();
     waterIndexOffset = totalOpaqueIdx * sizeof(unsigned int);
-    meshDirty = false;
+    sectionDirty = 0;
 
     // Free CPU-side data
     pendingMesh.verts.clear();
@@ -1239,7 +1355,7 @@ std::vector<Cube*> Chunk::render(const Shader& /*shaderProgram*/, Chunk* nx_neg,
                                  Chunk* nz_pos) {
     if (pendingMesh.ready) {
         uploadMesh();
-    } else if (meshDirty && !meshBuildInFlight && g_frame.meshBuildBudget > 0) {
+    } else if (isMeshDirty() && !meshBuildInFlight && g_frame.meshBuildBudget > 0) {
         // Fallback: build on main thread if not queued for async
         buildMesh(nx_neg, nx_pos, nz_neg, nz_pos);
         uploadMesh();
@@ -1267,8 +1383,8 @@ void Chunk::renderWater(const Shader& /*shaderProgram*/, Chunk* /*nx_neg*/, Chun
 }
 
 void Chunk::destroyBlock(int x, int y, int z) {
+    // setBlockType marks the affected section (+ boundary neighbors) dirty.
     setBlockType(x, y, z, AIR);
-    meshDirty = true;
 }
 
 // Sky light darkening: light removal BFS when a block is placed
@@ -1356,11 +1472,16 @@ static void darkenSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, i
 }
 
 void Chunk::placeBlock(int x, int y, int z, block_type type) {
+    // setBlockType marks the affected section (+ boundary neighbors) dirty.
     setBlockType(x, y, z, type);
+    setWaterLevel(x, y, z, 0);
     if (y > maxSolidY) maxSolidY = y;
     auto flat = decompressBlocks();
     darkenSkyLightLocal(flat.get(), skyLight.get(), x, y, z);
-    meshDirty = true;
+    // Note: darkenSkyLightLocal may modify light in adjacent sections,
+    // so mark all sections dirty for light-affected rebuilds.
+    // TODO: track which sections darkenSkyLightLocal touches for finer-grained dirtyness.
+    sectionDirty = 0xFF;
 }
 
 int Chunk::getLocalHeight(int x, int y) {

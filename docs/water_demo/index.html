@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Water Physics — Minecraft-like Cellular Automaton</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #181c23;
+    --ink: #e8eaed;
+    --dim: #9aa3af;
+    --accent: #4aa3ff;
+    --accent-dim: #1e3a5f;
+    --warn: #ffb347;
+    --bad: #ff6b6b;
+    --good: #5ddf7f;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+  }
+  main {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 48px 24px 96px;
+  }
+  h1 {
+    font-size: 2.2rem;
+    margin: 0 0 4px;
+    letter-spacing: -0.02em;
+  }
+  h2 {
+    font-size: 1.35rem;
+    margin: 40px 0 12px;
+    border-bottom: 1px solid #252a33;
+    padding-bottom: 6px;
+  }
+  h3 { font-size: 1.05rem; margin: 24px 0 8px; color: var(--accent); }
+  .subtitle { color: var(--dim); margin: 0 0 32px; font-size: 1.05rem; }
+  .video-wrap {
+    background: var(--panel);
+    border: 1px solid #252a33;
+    border-radius: 10px;
+    padding: 12px;
+    margin: 24px 0;
+  }
+  video {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 6px;
+    image-rendering: pixelated;
+    background: #89cff0;
+  }
+  .caption {
+    color: var(--dim);
+    font-size: 0.9rem;
+    margin-top: 10px;
+    text-align: center;
+  }
+  code, pre {
+    font-family: var(--mono);
+    font-size: 0.88rem;
+  }
+  code {
+    background: #252a33;
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: #ffd479;
+  }
+  pre {
+    background: var(--panel);
+    border: 1px solid #252a33;
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 14px 18px;
+    overflow-x: auto;
+    line-height: 1.45;
+  }
+  pre code { background: none; padding: 0; color: var(--ink); }
+  .rules {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px;
+    margin: 18px 0;
+  }
+  .rule {
+    background: var(--panel);
+    border: 1px solid #252a33;
+    border-radius: 8px;
+    padding: 14px 18px;
+  }
+  .rule h4 {
+    margin: 0 0 6px;
+    color: var(--accent);
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .rule p { margin: 0; color: var(--ink); font-size: 0.92rem; }
+  .findings { list-style: none; padding: 0; }
+  .findings li {
+    background: var(--panel);
+    border: 1px solid #252a33;
+    border-left: 3px solid var(--warn);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+  }
+  .findings li.crit { border-left-color: var(--bad); }
+  .findings li.info { border-left-color: var(--accent); }
+  .tag {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  .tag-crit { background: #3a1212; color: var(--bad); }
+  .tag-warn { background: #3a2a10; color: var(--warn); }
+  .tag-info { background: #10273a; color: var(--accent); }
+  .tag-good { background: #123a1e; color: var(--good); }
+  .meta {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+    color: var(--dim);
+    margin-bottom: 32px;
+  }
+  .meta span { background: var(--panel); padding: 4px 10px; border-radius: 4px; }
+  footer {
+    margin-top: 64px;
+    padding-top: 16px;
+    border-top: 1px solid #252a33;
+    color: var(--dim);
+    font-size: 0.85rem;
+  }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Water Physics</h1>
+  <p class="subtitle">Cellular-automaton water for a voxel world — source blocks, 7-level flow, gravity, decay, and drain-back on source removal.</p>
+
+  <div class="meta">
+    <span>Language: C++20</span>
+    <span>File: <code>src/WaterSimulator.cpp</code></span>
+    <span>Tests: <code>tests/test_water.cpp</code> (8 passing)</span>
+    <span>Status: Unreleased</span>
+  </div>
+
+  <div class="video-wrap">
+    <video src="water_physics.mp4" poster="poster.png" autoplay loop muted playsinline controls></video>
+    <p class="caption">2D cross-section replay of the CA rules. Source drops onto a plateau → spreads 7 cells each side → falls off both edges in thin columns → pools on the floor. Then the source is removed and every flowing cell decays back to air in reverse order.</p>
+  </div>
+
+  <h2>Interactive 3D demo</h2>
+  <p>Same cellular automaton running live in your browser. A 16×14×16 voxel grid with a central pedestal and a basin, rendered with Three.js + WebGL. The yellow arrows on flowing cells show the flow direction computed from the level gradient — sources are static, falling water points down (no arrow), and flowing cells point toward their highest-level (furthest-from-source) neighbor.</p>
+  <div class="video-wrap" style="padding: 0; overflow: hidden;">
+    <iframe src="demo3d.html" style="width: 100%; height: 560px; border: 0; display: block; border-radius: 6px;"></iframe>
+    <p class="caption" style="padding: 10px;">Drag to orbit · scroll to zoom · right-drag to pan · space to pause. Click <em>Remove source</em> to watch everything drain.</p>
+  </div>
+
+  <h3>Flow direction</h3>
+  <p>Water has three flow states beyond its level:</p>
+  <ul>
+    <li><strong>Source</strong> (level 0, no falling flag) — static, no direction. The block is immovable and fuels everything downstream.</li>
+    <li><strong>Falling</strong> (<code>WATER_FALLING_FLAG</code> set) — implicit direction is straight down. Treated as effective level 0 when it lands, so it fans out like a fresh source.</li>
+    <li><strong>Flowing</strong> (level 1–7) — horizontal direction derived from the level gradient. For each cardinal neighbor, the flow vector accumulates a contribution proportional to how much further from the source that neighbor is. Air counts as maximum drop (a cliff edge). The resulting vector points where the water is going.</li>
+  </ul>
+  <p>The real game engine uses the flow vector for entity physics (players/mobs get pushed in the flow direction) and to tilt the top face of flowing water so it visibly slopes downhill. The 3D demo above visualizes it with the yellow arrows; the render pipeline in <code>src/chunk.cpp</code> computes a per-vertex height from <code>waterFlowLevel</code> but does not yet tilt the top face based on flow direction — a worthwhile follow-up.</p>
+
+  <h2>How it works</h2>
+  <p>Water in this engine uses an 8-level cellular automaton matching Minecraft's classic model. Each block has a <code>waterLevel</code> field (stored per-chunk in a <code>uint8_t[]</code>). Level <strong>0</strong> is a <em>source</em>: it spreads forever. Levels <strong>1–7</strong> are <em>flowing</em>: each step away from a source increments the level, and level 8 doesn't exist — the block turns to air.</p>
+
+  <p>A <code>WaterSimulator</code> instance holds two <code>unordered_set&lt;ivec3&gt;</code>s (current &amp; next-active). The simulator ticks every <strong>15 frames</strong> (4 Hz, matching Minecraft's redstone tick), up to <strong>512 blocks per tick</strong>, with overflow carried to the next tick so a large flood can't stall the render loop. Neighbor activation runs on block break to wake water into newly-opened space.</p>
+
+  <h3>The three rules</h3>
+  <div class="rules">
+    <div class="rule">
+      <h4>1 · Gravity</h4>
+      <p>If the block below is air, water falls into it. The falling column keeps the source above alive as long as the chain is unbroken.</p>
+    </div>
+    <div class="rule">
+      <h4>2 · Horizontal spread</h4>
+      <p>If current level is &lt; 7, spread to each of the four horizontal neighbors at <code>level + 1</code>, overwriting higher-level water but never lower-level.</p>
+    </div>
+    <div class="rule">
+      <h4>3 · Decay</h4>
+      <p>A non-source block with no water above it and no lower-level horizontal neighbor has no support — it increments its own level each tick. At level &gt; 7 it becomes air.</p>
+    </div>
+  </div>
+
+  <h3>Rendering</h3>
+  <p>Water renders in a second pass after opaque geometry, with blending enabled and face-culling disabled so you can see both sides of the surface. Block height is computed per-vertex as <code>(8 − level) / 9</code>, giving the characteristic sloped-top look for flowing water. The water mesh is part of the same chunk VBO as opaque blocks but uses a separate index range (<code>waterIndexOffset</code>/<code>waterIndexCount</code>) so the renderer can draw it in a second pass without another upload.</p>
+
+  <h2>Review findings</h2>
+  <p>A pre-release audit of <code>src/WaterSimulator.cpp</code> and <code>tests/test_water.cpp</code> surfaced several issues. The showcase video above uses a corrected 2D replay so the intended behavior is visible — the real simulator still has the bugs below.</p>
+
+  <ul class="findings">
+    <li>
+      <span class="tag tag-good">Fixed</span>
+      <strong>Falling water becomes a source.</strong>
+      <s>In <code>WaterSimulator.cpp:68</code>, <code>world-&gt;setBlock(x, y-1, z, WATER, 0)</code> writes level 0 into the block below.</s> Fixed by introducing <code>WATER_FALLING_FLAG = 0x80</code> in <code>include/cube.h</code>: the water level byte now carries both a flow level (bits 0-2) and a "falling" flag (bit 7). Rule 1 writes <code>WATER_FALLING_FLAG</code> into the block below instead of 0, so that cell is not a source. Rule 3 was reworked to handle three distinct states — true source (never decays), falling (disappears the moment its chain above breaks), and flowing (normal decay). Chunk mesh building masks the flag when reading level for height computation; falling water renders as full-height.
+    </li>
+    <li>
+      <span class="tag tag-good">Fixed</span>
+      <strong>Period-2 oscillation near landed falling water.</strong>
+      Surfaced by running the 3D demo and noticing the <em>active</em> counter never reached zero — a single corner kept flipping between two states diagonally. A standalone Node.js replica (<code>scripts/water_ca_debug.mjs</code>) reproduced it and detected a period-2 cycle at tick 21: flowing L1 cells next to a <em>landed</em> falling column were decaying to L2 each tick, then the falling cell's Rule 2 spread (effective level 0) wrote them back to L1 the next tick. Cause: Rule 3's support scan had <code>if (isFalling) continue;</code>, excluding falling neighbors from counting as support. But since a landed falling cell spreads horizontally at level 0, it <em>is</em> effectively a source for its neighbors. Fixed by treating any falling neighbor as support — the sim now converges in 19 ticks and stays static.
+    </li>
+    <li>
+      <span class="tag tag-good">Fixed</span>
+      <strong>Flowing water sheets over cliff edges.</strong>
+      Initial version of the fix for the above introduced a <code>landed</code> check that only applied to falling cells. Flowing cells above empty space happily kept spreading sideways even though the block below was air, producing an umbrella of water hanging in mid-air off each pedestal edge. Reworked so <code>landed</code> applies to every water cell: a cell can only spread horizontally if the block below is solid, the world floor, or a non-falling water cell (pool surface). Air or falling-water below means "mid-column / over a cliff, don't fan out."
+    </li>
+    <li class="crit">
+      <span class="tag tag-crit">Critical</span>
+      <strong>The tests don't test the real code.</strong>
+      <code>tests/test_water.cpp</code> defines a parallel <code>WaterWorld</code> struct that reimplements the CA from scratch — and omits Rule 3 (decay) entirely. All 8 tests pass against this shadow implementation, so bugs in <code>WaterSimulator.cpp</code> are invisible to CI. The tests should construct a real <code>World</code>/<code>ChunkManager</code>/<code>WaterSimulator</code> and exercise <code>WaterSimulator::tick()</code> directly.
+    </li>
+    <li>
+      <span class="tag tag-good">Fixed</span>
+      <strong>"Water above = support" is too permissive.</strong>
+      Rule 3 used to treat any WATER block above as structural support regardless of that block's own level, so a random flowing cell above could prop up a cell below even though it had no path to the source. Split into two helpers: <code>hasAnyWaterAbove()</code> for falling cells (any water keeps the chain alive, and the topmost cell's decay cascades down naturally) and <code>hasUpstreamAbove(level)</code> for flowing cells (only counts as support if above is a source, a falling cell, or a flowing cell with level strictly less than ours — i.e., genuinely upstream).
+    </li>
+    <li>
+      <span class="tag tag-good">Fixed</span>
+      <strong>Manual water placement didn't wake the CA.</strong>
+      <code>World::destroyBlock</code> called <code>waterSimulator-&gt;activateNeighbors()</code> but the symmetric <code>World::placeBlock</code> path did not. Placing a water bucket on the ground could leave the new source sitting inert until something adjacent changed. Fixed: <code>placeBlock</code> now calls <code>activate()</code> on the placed cell when <code>type == WATER</code> and <code>activateNeighbors()</code> for any block placement (so adjacent water also reacts when a solid block blocks its flow). <code>Chunk::placeBlock</code> also now resets <code>waterLevel</code> at the slot so stale data from previous water doesn't bleed through.
+    </li>
+    <li>
+      <span class="tag tag-good">Fixed</span>
+      <strong>Duplicated chunk-coord computation.</strong>
+      Rule 1 and Rule 3's "look at block above" paths recomputed <code>worldToChunk(x)</code>/<code>worldToChunk(z)</code> into local <code>byCX</code>/<code>acx</code> variables that duplicated the outer <code>chunkX</code>/<code>chunkZ</code>. Cleaned up during the falling-flag refactor — Rule 1 and the landed check now use the outer <code>chunk</code> pointer and <code>lx</code>/<code>lz</code> directly. Only the neighbor loops in Rule 2 / Rule 3 still recompute, because neighbors can legitimately cross chunk boundaries.
+    </li>
+    <li>
+      <span class="tag tag-good">Fixed</span>
+      <strong><code>IVec3Hash</code> collides frequently near the origin.</strong>
+      <code>x ^ (y &lt;&lt; 10) ^ (z &lt;&lt; 20)</code> gave many collisions for small coordinates because the shifted bits were mostly zero. Replaced with a boost-style <code>hash_combine</code>: <code>seed ^= h(v.y) + 0x9e3779b9 + (seed &lt;&lt; 6) + (seed &gt;&gt; 2)</code>, applied to each component.
+    </li>
+  </ul>
+
+  <h2>Reproducing the video</h2>
+  <pre><code># Build the 2D visualizer (standalone, no OpenGL)
+g++ -O2 -std=c++20 scripts/water_demo.cpp -o build/water_demo
+
+# Run: dumps 106 binary PPM frames
+mkdir -p docs/water_demo/frames
+./build/water_demo docs/water_demo/frames
+
+# Stitch into MP4 with ffmpeg
+ffmpeg -y -framerate 15 \
+  -i docs/water_demo/frames/frame_%04d.ppm \
+  -c:v libx264 -pix_fmt yuv420p -movflags +faststart \
+  docs/water_demo/water_physics.mp4</code></pre>
+
+  <p>The 2D demo deliberately deviates from the real simulator in two places, both commented in <code>scripts/water_demo.cpp</code>:</p>
+  <ol>
+    <li>Rule 3 decay gate uses <code>!isSource</code> instead of <code>level &gt; 0</code>, so falling water can decay correctly.</li>
+    <li>Rule 2 horizontal spread is gated on having solid ground below, so a falling column stays 1 block wide until it lands.</li>
+  </ol>
+  <p>Both of these corrections are what the real simulator <em>should</em> be doing.</p>
+
+  <footer>
+    Generated from <code>scripts/water_demo.cpp</code> · Minecraft voxel engine, C++20/OpenGL 3.3
+  </footer>
+</main>
+</body>
+</html>

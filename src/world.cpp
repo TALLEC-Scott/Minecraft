@@ -1,6 +1,7 @@
 #include "world.h"
 #include "light_data.h"
 #include "profiler.h"
+#include "tracy_shim.h"
 #include <array>
 #include <algorithm>
 #include <cmath>
@@ -32,51 +33,30 @@ static bool aabbInFrustum(const std::array<glm::vec4, 6>& planes, glm::vec3 minP
 World::World(unsigned int seed) {
     this->terrainGenerator = new TerrainGenerator(seed, 0.1, 0, CHUNK_HEIGHT);
     this->chunkManager = new ChunkManager(RENDER_DISTANCE, CHUNK_SIZE, *terrainGenerator);
+    this->waterSimulator = new WaterSimulator(this);
 }
 
-static void markBorderNeighborsDirty(ChunkManager* cm, int chunkX, int chunkZ, int lx, int lz) {
+static void markBorderNeighborsDirty(ChunkManager* cm, int chunkX, int chunkZ, int lx, int y, int lz) {
+    // Only neighbor chunks whose border faces the edited block need a
+    // rebuild, and only the section at the same Y level.
+    int sy = y / 16;
     if (lx == 0) {
         Chunk* n = cm->getChunk(chunkX - 1, chunkZ);
-        if (n) n->markDirty();
+        if (n) n->markSectionDirty(sy);
     }
     if (lx == CHUNK_SIZE - 1) {
         Chunk* n = cm->getChunk(chunkX + 1, chunkZ);
-        if (n) n->markDirty();
+        if (n) n->markSectionDirty(sy);
     }
     if (lz == 0) {
         Chunk* n = cm->getChunk(chunkX, chunkZ - 1);
-        if (n) n->markDirty();
+        if (n) n->markSectionDirty(sy);
     }
     if (lz == CHUNK_SIZE - 1) {
         Chunk* n = cm->getChunk(chunkX, chunkZ + 1);
-        if (n) n->markDirty();
+        if (n) n->markSectionDirty(sy);
     }
 }
-
-// Shared direction array for 6-connected BFS
-static const int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
-
-// Cached world-coordinate resolver: maps (wx, wy, wz) to (Chunk*, flat index).
-// Caches the last chunk pointer to avoid repeated hash lookups.
-struct WorldResolver {
-    ChunkManager* cm;
-    int cachedCX = INT_MIN, cachedCZ = INT_MIN;
-    Chunk* cachedChunk = nullptr;
-
-    WorldResolver(ChunkManager* cm) : cm(cm) {}
-
-    std::pair<Chunk*, size_t> operator()(int wx, int wy, int wz) {
-        if (wy < 0 || wy >= CHUNK_HEIGHT) return {nullptr, 0};
-        int cx = worldToChunk(wx), cz = worldToChunk(wz);
-        if (cx != cachedCX || cz != cachedCZ) {
-            cachedCX = cx; cachedCZ = cz;
-            cachedChunk = cm->getChunk(cx, cz);
-        }
-        if (!cachedChunk || !cachedChunk->skyLight) return {nullptr, 0};
-        int lx = worldToLocal(wx, cx), lz = worldToLocal(wz, cz);
-        return {cachedChunk, static_cast<size_t>(lx) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(wy) * CHUNK_SIZE + lz};
-    }
-};
 
 // World-space sky light BFS after block removal — crosses chunk boundaries.
 static void floodSkyLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
@@ -84,7 +64,7 @@ static void floodSkyLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
 
     // Determine initial light from neighbors
     uint8_t maxLight = 0;
-    for (auto& d : DIRS) {
+    for (auto& d : DIRS_6) {
         auto [nc, ni] = resolve(sx + d[0], sy + d[1], sz + d[2]);
         if (nc) {
             uint8_t nl = unpackSky(nc->skyLight.get()[ni]);
@@ -101,7 +81,7 @@ static void floodSkyLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
     auto [srcChunk, srcIdx] = resolve(sx, sy, sz);
     if (!srcChunk) return;
     srcChunk->skyLight.get()[srcIdx] = packLight(newLight, unpackBlock(srcChunk->skyLight.get()[srcIdx]));
-    srcChunk->markDirty();
+    srcChunk->markSectionDirty(sy / 16);
 
     struct Node { int x, y, z; };
     std::vector<Node> queue;
@@ -115,17 +95,16 @@ static void floodSkyLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
         if (!chunk) continue;
         uint8_t light = unpackSky(chunk->skyLight.get()[idx]);
         if (light <= 1) continue;
-        for (auto& d : DIRS) {
+        for (auto& d : DIRS_6) {
             int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
             auto [nc, ni] = resolve(nx, ny, nz);
             if (!nc) continue;
             block_type bt = nc->getBlockType(worldToLocal(nx, worldToChunk(nx)), ny, worldToLocal(nz, worldToChunk(nz)));
             if (hasFlag(bt, BF_OPAQUE)) continue;
-            // Sky column: light=15 propagates downward without attenuation
             uint8_t propagated = (light == 15 && d[1] == -1) ? 15 : (light - 1);
             if (unpackSky(nc->skyLight.get()[ni]) >= propagated) continue;
             nc->skyLight.get()[ni] = packLight(propagated, unpackBlock(nc->skyLight.get()[ni]));
-            nc->markDirty();
+            nc->markSectionDirty(ny / 16);
             queue.push_back({nx, ny, nz});
         }
     }
@@ -145,7 +124,7 @@ static void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
     if (!srcChunk) return;
     uint8_t srcLight = unpackBlock(srcChunk->skyLight.get()[srcIdx]);
     srcChunk->skyLight.get()[srcIdx] = packLight(unpackSky(srcChunk->skyLight.get()[srcIdx]), 0);
-    srcChunk->markDirty();
+    srcChunk->markSectionDirty(sy / 16);
     removeQueue.push_back({sx, sy, sz, srcLight});
 
     struct LightNode { int x, y, z; };
@@ -154,14 +133,14 @@ static void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
     size_t head = 0;
     while (head < removeQueue.size()) {
         auto [bx, by, bz, oldLight] = removeQueue[head++];
-        for (auto& d : DIRS) {
+        for (auto& d : DIRS_6) {
             int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
             auto [nc, ni] = resolve(nx, ny, nz);
             if (!nc) continue;
             uint8_t neighborLight = unpackBlock(nc->skyLight.get()[ni]);
             if (neighborLight > 0 && neighborLight < oldLight) {
                 nc->skyLight.get()[ni] = packLight(unpackSky(nc->skyLight.get()[ni]), 0);
-                nc->markDirty();
+                nc->markSectionDirty(ny / 16);
                 removeQueue.push_back({nx, ny, nz, neighborLight});
             } else if (neighborLight >= oldLight && neighborLight > 0) {
                 relightSeeds.push_back({nx, ny, nz});
@@ -169,7 +148,6 @@ static void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
         }
     }
 
-    // Phase 2: re-propagate from remaining light sources
     std::vector<LightNode> lightQueue;
     for (auto& s : relightSeeds) lightQueue.push_back(s);
     head = 0;
@@ -179,7 +157,7 @@ static void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
         if (!chunk) continue;
         uint8_t light = unpackBlock(chunk->skyLight.get()[idx]);
         if (light <= 1) continue;
-        for (auto& d : DIRS) {
+        for (auto& d : DIRS_6) {
             int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
             auto [nc, ni] = resolve(nx, ny, nz);
             if (!nc) continue;
@@ -189,10 +167,29 @@ static void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
             uint8_t propagated = light - 1;
             if (unpackBlock(nc->skyLight.get()[ni]) >= propagated) continue;
             nc->skyLight.get()[ni] = packLight(unpackSky(nc->skyLight.get()[ni]), propagated);
-            nc->markDirty();
+            nc->markSectionDirty(ny / 16);
             lightQueue.push_back({nx, ny, nz});
         }
     }
+}
+
+void World::setBlock(int x, int y, int z, block_type type, uint8_t waterLevel) const {
+    if (y < 0 || y >= CHUNK_HEIGHT) return;
+
+    int cx = worldToChunk(x);
+    int cz = worldToChunk(z);
+    int lx = worldToLocal(x, cx);
+    int lz = worldToLocal(z, cz);
+
+    Chunk* chunk = chunkManager->getChunk(cx, cz);
+    if (!chunk) return;
+
+    // setBlockType marks only the affected section (+ boundary neighbors)
+    // dirty via markSectionDirty. Don't call markDirty() here — that would
+    // set ALL sections dirty and defeat the incremental rebuild.
+    chunk->setBlockType(lx, y, lz, type);
+    chunk->setWaterLevel(lx, y, lz, waterLevel);
+    markBorderNeighborsDirty(chunkManager, cx, cz, lx, y, lz);
 }
 
 void World::destroyBlock(glm::vec3 position) const {
@@ -211,12 +208,15 @@ void World::destroyBlock(glm::vec3 position) const {
 
     block_type oldType = chunk->getBlockType(lx, by, lz);
     chunk->destroyBlock(lx, by, lz);
-    markBorderNeighborsDirty(chunkManager, chunkX, chunkZ, lx, lz);
+    markBorderNeighborsDirty(chunkManager, chunkX, chunkZ, lx, by, lz);
 
     // World-space light updates — cross chunk boundaries
     floodSkyLightWorld(chunkManager, bx, by, bz);
     if (getBlockLightEmission(oldType) > 0)
         removeBlockLightWorld(chunkManager, bx, by, bz);
+
+    // Trigger water simulation for neighbors (water may flow into the gap)
+    waterSimulator->activateNeighbors(bx, by, bz);
 }
 
 // World-space BFS: flood block light from a source, crossing chunk boundaries.
@@ -232,7 +232,7 @@ static void floodBlockLight(ChunkManager* cm, int sx, int sy, int sz, uint8_t em
     if (!srcChunk) return;
     uint8_t* sl = srcChunk->skyLight.get();
     sl[srcIdx] = (sl[srcIdx] & 0xF0) | (emission & 0xF);
-    srcChunk->markDirty();
+    srcChunk->markSectionDirty(sy / 16);
     queue.push_back({sx, sy, sz});
 
     size_t head = 0;
@@ -242,7 +242,7 @@ static void floodBlockLight(ChunkManager* cm, int sx, int sy, int sz, uint8_t em
         if (!chunk) continue;
         uint8_t light = unpackBlock(chunk->skyLight.get()[idx]);
         if (light <= 1) continue;
-        for (auto& d : DIRS) {
+        for (auto& d : DIRS_6) {
             int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
             auto [nc, ni] = resolve(nx, ny, nz);
             if (!nc) continue;
@@ -254,7 +254,7 @@ static void floodBlockLight(ChunkManager* cm, int sx, int sy, int sz, uint8_t em
             uint8_t* nlt = nc->skyLight.get();
             if (unpackBlock(nlt[ni]) >= propagated) continue;
             nlt[ni] = (nlt[ni] & 0xF0) | (propagated & 0xF);
-            nc->markDirty();
+            nc->markSectionDirty(ny / 16);
             queue.push_back({nx, ny, nz});
         }
     }
@@ -274,16 +274,25 @@ void World::placeBlock(glm::ivec3 position, block_type type) const {
     auto chunk = this->chunkManager->getChunk(chunkX, chunkZ);
     if (!chunk) return;
     chunk->placeBlock(lx, by, lz, type);
-    markBorderNeighborsDirty(chunkManager, chunkX, chunkZ, lx, lz);
+    markBorderNeighborsDirty(chunkManager, chunkX, chunkZ, lx, by, lz);
 
     // Flood block light in world space, crossing chunk boundaries
     uint8_t emission = getBlockLightEmission(type);
     if (emission > 0) {
         floodBlockLight(chunkManager, bx, by, bz, emission);
     }
+
+    // Wake the water simulator so placed water sources spread, and so that
+    // any adjacent water reacts to a newly-placed solid block (it may now
+    // be blocked off from flowing). destroyBlock has the symmetric call.
+    if (type == WATER) {
+        waterSimulator->activate(bx, by, bz);
+    }
+    waterSimulator->activateNeighbors(bx, by, bz);
 }
 
 World::~World() {
+    delete this->waterSimulator;
     delete this->terrainGenerator;
     delete this->chunkManager;
 }
@@ -306,6 +315,7 @@ Cube* World::getBlock(int x, int y, int z) const {
 }
 
 int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const {
+    ZoneScopedN("World::render");
     g_frame.meshBuildBudget = 4; // reset per frame
     auto planes = extractFrustumPlanes(viewProjection);
 
@@ -367,7 +377,9 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
 }
 
 void World::update(glm::vec3 cameraPosition) const {
+    ZoneScopedN("World::update");
     this->chunkManager->update(cameraPosition);
+    this->waterSimulator->tick();
 }
 
 bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::ivec3& hitPos,

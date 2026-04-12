@@ -5,6 +5,7 @@
 #include "ChunkManager.h"
 #include <cmath>
 #include "world.h"
+#include "tracy_shim.h"
 #include <initializer_list>
 #include <algorithm>
 
@@ -35,6 +36,7 @@ ChunkManager::~ChunkManager() {
 }
 
 void ChunkManager::update(glm::vec3 cameraPosition) {
+    ZoneScopedN("ChunkManager::update");
     int cx = (int)std::floor(cameraPosition.x / CHUNK_SIZE);
     int cz = (int)std::floor(cameraPosition.z / CHUNK_SIZE);
     glm::ivec2 currentChunk = glm::ivec2(cx, cz);
@@ -153,8 +155,8 @@ void ChunkManager::workerLoop() {
                 resultQueue.push(std::move(data));
             } else if (isMeshBuild) {
                 Chunk::MeshData mesh = buildMeshFromData(meshReq.blocks.get(), meshReq.skyLight.get(),
-                                                         meshReq.maxSolidY, meshReq.chunkX,
-                                                         meshReq.chunkZ, meshReq.borders);
+                                                         meshReq.waterLevels.get(), meshReq.maxSolidY,
+                                                         meshReq.chunkX, meshReq.chunkZ, meshReq.borders);
                 std::lock_guard<std::mutex> lock(resultMutex);
                 meshResultQueue.push({meshReq.pos, std::move(mesh)});
             }
@@ -180,6 +182,7 @@ void ChunkManager::queueMeshBuild(glm::ivec2 pos) {
     req.pos = pos;
     req.blocks = chunk.decompressBlocks();  // snapshot: decompress sections into flat buffer
     req.skyLight = chunk.skyLight;     // shared_ptr copy (packed sky+block)
+    req.waterLevels = chunk.waterLevels; // shared_ptr copy of per-block flow levels
     req.maxSolidY = chunk.maxSolidY;
     req.chunkX = chunk.chunkX;
     req.chunkZ = chunk.chunkY; // chunkY is actually Z coordinate
@@ -195,11 +198,14 @@ void ChunkManager::queueMeshBuild(glm::ivec2 pos) {
 }
 
 void ChunkManager::queueDirtyMeshBuilds() {
-    // Queue mesh builds for dirty chunks that aren't already in-flight
+    // Queue mesh builds for dirty chunks that aren't already in-flight.
+    // Don't re-dirty after queueing — the dirty bits are preserved until
+    // uploadMesh clears them. New edits during the in-flight build set
+    // their own section bits, which survive the upload and trigger
+    // another rebuild next frame.
     for (auto& [pos, chunk] : chunks) {
-        if (chunk.meshDirty && !chunk.meshBuildInFlight) {
+        if (chunk.isMeshDirty() && !chunk.meshBuildInFlight) {
             queueMeshBuild(pos);
-            chunk.markDirty(); // keep dirty until result arrives
         }
     }
 }
