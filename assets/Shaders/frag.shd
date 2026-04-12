@@ -25,17 +25,21 @@ void main() {
     float isWater = float(materialType);
     vec2 uv = TexCoord;
     // Water UV animation — directional scroll for flowing water,
-    // gentle omnidirectional ripple for source blocks.
+    // downward scroll for side faces (waterfall), gentle ripple for sources.
     if (isWater > 0.5) {
-        if (length(flowDir) > 0.1) {
-            // Flowing: scroll UV in the flow direction.
-            // ~1 UV/sec ≈ 1 texture tile per second, matching Minecraft's
-            // ~1 pixel per tick (20 ticks/sec on a 16px texture).
+        bool isSideFace = abs(Normal.y) < 0.5;
+        if (isSideFace) {
+            // Waterfall: scroll texture downward on side faces
+            uv.y += time * 1.2;
+            uv += 0.015 * vec2(sin(FragPos.y * 4.0 + time * 2.0),
+                               cos(FragPos.y * 3.0 + time * 1.5));
+        } else if (length(flowDir) > 0.1) {
+            // Flowing top face: scroll UV in the flow direction
             uv -= flowDir * time * 0.8
                 + 0.02 * vec2(sin(FragPos.x * 3.0 + time * 2.0),
                               cos(FragPos.z * 3.0 + time * 1.6));
         } else {
-            // Source / falling: gentle stationary ripple
+            // Source top face: gentle stationary ripple
             uv += 0.03 * vec2(sin(FragPos.x * 2.0 + time * 1.0),
                               cos(FragPos.z * 2.0 + time * 0.8));
         }

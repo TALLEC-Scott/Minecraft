@@ -364,7 +364,6 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
     shaderProgram.setInt("materialType", 1);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDisable(GL_CULL_FACE);
     for (int i = (int)visible.size() - 1; i >= 0; i--) {
         auto& vc = visible[i];
         Chunk* nx_neg = chunkManager->getChunk(vc.pos.x - 1, vc.pos.y);
@@ -374,7 +373,6 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
         vc.chunk->renderWater(shaderProgram, nx_neg, nx_pos, nz_neg, nz_pos);
     }
     glDisable(GL_BLEND);
-    glEnable(GL_CULL_FACE);
 
     return rendered;
 }
