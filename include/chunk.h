@@ -15,6 +15,7 @@
 #include "chunk_section.h"
 #include "light_data.h"
 #include "shader.h"
+#include "skylight.h"
 #include "TerrainGenerator.h"
 
 static constexpr int NUM_SECTIONS = CHUNK_HEIGHT / 16;
@@ -270,7 +271,29 @@ class Chunk {
     std::unique_ptr<ChunkSection> sections[NUM_SECTIONS];
     std::shared_ptr<uint8_t[]> skyLight; // packed: high nibble = sky, low nibble = block
     std::shared_ptr<uint8_t[]> waterLevels; // per-block water level (0=source, 1-7=flow)
+    // Palette-encoded compressed copy. Populated by compactSkyLight() for
+    // dormant chunks (frees the 32 KB flat array to save memory).
+    // ensureSkyLightDecompressed() restores the flat array from here.
+    std::unique_ptr<SkyLight> skyLightCompressed;
     int maxSolidY = 0;
+
+    // Compress the flat skyLight into palette-encoded form and free the
+    // flat array. Safe to call on a chunk that's not actively mesh-building.
+    void compactSkyLight();
+    // Restore the flat skyLight from compressed form (no-op if already flat).
+    void ensureSkyLightDecompressed();
+    // Estimated CPU-side memory in bytes (sections + skyLight + waterLevels
+    // + cached meshes). Used for profiling/benchmark output.
+    size_t memoryUsage() const;
+    // Per-component breakdown (bytes). Useful for profiling bottlenecks.
+    struct MemBreakdown {
+        size_t sections = 0;
+        size_t skyLight = 0;
+        size_t waterLevels = 0;
+        size_t meshCache = 0;
+        size_t pendingMesh = 0;
+    };
+    MemBreakdown memoryBreakdown() const;
 
     uint8_t getWaterLevel(int x, int y, int z) const {
         if (!waterLevels || x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE)
@@ -289,6 +312,11 @@ class Chunk {
     int chunkX = -1;
     int chunkY = -1;
     bool meshBuildInFlight = false;
+    // Frames since render() was last called. Used by ChunkManager to
+    // flush pendingMesh to GPU for chunks that went invisible (otherwise
+    // their ~hundreds-of-KB mesh data would sit in CPU memory forever).
+    int framesSinceRender = 0;
+    bool hasPendingMesh() const { return pendingMesh.ready; }
     // Per-section dirty bitmask: bit i is set when section i needs a
     // mesh rebuild. Starts 0xFF (all dirty) so the initial full build
     // happens. Cleared to 0 after uploadMesh. Block edits set only the

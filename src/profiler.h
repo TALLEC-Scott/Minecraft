@@ -12,6 +12,34 @@
 #include "gl_header.h"
 #include <GLFW/glfw3.h>
 
+#if defined(_WIN32)
+#include <windows.h>
+#include <psapi.h>
+#elif defined(__linux__)
+#include <cstdio>
+#endif
+
+// Sample the current process's resident memory (bytes). Returns 0 if unsupported.
+inline size_t sampleProcessRss() {
+#if defined(_WIN32)
+    PROCESS_MEMORY_COUNTERS pmc;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) return pmc.WorkingSetSize;
+    return 0;
+#elif defined(__linux__)
+    FILE* f = std::fopen("/proc/self/status", "r");
+    if (!f) return 0;
+    char line[256];
+    size_t rss = 0;
+    while (std::fgets(line, sizeof(line), f)) {
+        if (std::sscanf(line, "VmRSS: %zu kB", &rss) == 1) { rss *= 1024; break; }
+    }
+    std::fclose(f);
+    return rss;
+#else
+    return 0;
+#endif
+}
+
 // Per-frame accumulators — set by render/buildMesh, read by profiler at end of frame.
 // Reset at the start of each frame.
 struct FrameAccum {
@@ -24,10 +52,36 @@ struct FrameAccum {
     int waterDrawCalls = 0;
     int chunksRendered = 0;
     int vertexCount = 0;
+    // Total CPU-side memory of all loaded chunks (sum of Chunk::memoryUsage).
+    // Sampled by ChunkManager::update each frame. Preserved across reset()
+    // since it's a state snapshot, not a per-frame accumulator.
+    size_t chunkMemoryBytes = 0;
+    // Per-component breakdown for debugging memory bottlenecks.
+    size_t memSectionsBytes = 0;
+    size_t memSkyLightBytes = 0;
+    size_t memWaterLevelsBytes = 0;
+    size_t memMeshCacheBytes = 0;
+    size_t memPendingMeshBytes = 0;
+    // Process RSS (resident set size) in bytes, sampled OS-side.
+    size_t processRssBytes = 0;
 
     void reset() {
+        size_t keepChunk = chunkMemoryBytes;
+        size_t keepSec = memSectionsBytes;
+        size_t keepSky = memSkyLightBytes;
+        size_t keepWater = memWaterLevelsBytes;
+        size_t keepMesh = memMeshCacheBytes;
+        size_t keepPending = memPendingMeshBytes;
+        size_t keepRss = processRssBytes;
         *this = {};
         meshBuildBudget = 4;
+        chunkMemoryBytes = keepChunk;
+        memSectionsBytes = keepSec;
+        memSkyLightBytes = keepSky;
+        memWaterLevelsBytes = keepWater;
+        memMeshCacheBytes = keepMesh;
+        memPendingMeshBytes = keepPending;
+        processRssBytes = keepRss;
     }
 };
 
@@ -229,6 +283,22 @@ class Profiler {
         out << "  triangles: " << (int)avgOpaqueTri << " opaque + " << (int)avgWaterTri
             << " water = " << (int)(avgOpaqueTri + avgWaterTri) << " total\n";
         out << "  vertices:  " << (int)avgVerts << "\n\n";
+
+        if (g_frame.chunkMemoryBytes > 0 || g_frame.processRssBytes > 0) {
+            out << "Memory:\n";
+            auto mb = [](size_t b) { return b / (1024 * 1024); };
+            if (g_frame.chunkMemoryBytes > 0) {
+                out << "  chunks (CPU): " << mb(g_frame.chunkMemoryBytes) << " MB\n";
+                out << "    sections:    " << mb(g_frame.memSectionsBytes) << " MB\n";
+                out << "    skyLight:    " << mb(g_frame.memSkyLightBytes) << " MB\n";
+                out << "    waterLevels: " << mb(g_frame.memWaterLevelsBytes) << " MB\n";
+                out << "    meshCache:   " << mb(g_frame.memMeshCacheBytes) << " MB\n";
+                out << "    pendingMesh: " << mb(g_frame.memPendingMeshBytes) << " MB\n";
+            }
+            if (g_frame.processRssBytes > 0)
+                out << "  process RSS:  " << mb(g_frame.processRssBytes) << " MB\n";
+            out << "\n";
+        }
 
         out << "Percentiles (ms):\n";
         out << "  total:  avg=" << avg(total) << "  p50=" << percentile(total, 0.50)

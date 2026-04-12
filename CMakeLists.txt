@@ -122,6 +122,7 @@ else()
         ${CMAKE_SOURCE_DIR}/Libraries/lib/libglfw3_mingw.a
         opengl32
         gdi32
+        psapi
         /usr/x86_64-w64-mingw32/lib/libpthread.a
         /usr/x86_64-w64-mingw32/lib/libwinpthread.a
         -lstdc++ -lgcc_eh -lwinpthread

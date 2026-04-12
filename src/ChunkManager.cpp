@@ -6,6 +6,7 @@
 #include <cmath>
 #include "world.h"
 #include "tracy_shim.h"
+#include "profiler.h"
 #include <initializer_list>
 #include <algorithm>
 
@@ -35,6 +36,25 @@ ChunkManager::~ChunkManager() {
 #endif
 }
 
+size_t ChunkManager::totalChunkMemory() const {
+    size_t total = 0;
+    for (const auto& [pos, chunk] : chunks) total += chunk.memoryUsage();
+    return total;
+}
+
+Chunk::MemBreakdown ChunkManager::totalChunkBreakdown() const {
+    Chunk::MemBreakdown tot;
+    for (const auto& [pos, chunk] : chunks) {
+        Chunk::MemBreakdown mb = chunk.memoryBreakdown();
+        tot.sections += mb.sections;
+        tot.skyLight += mb.skyLight;
+        tot.waterLevels += mb.waterLevels;
+        tot.meshCache += mb.meshCache;
+        tot.pendingMesh += mb.pendingMesh;
+    }
+    return tot;
+}
+
 void ChunkManager::update(glm::vec3 cameraPosition) {
     ZoneScopedN("ChunkManager::update");
     int cx = (int)std::floor(cameraPosition.x / CHUNK_SIZE);
@@ -52,6 +72,48 @@ void ChunkManager::update(glm::vec3 cameraPosition) {
 
     loadChunks(minChunk, maxChunk);
     unloadChunks(minChunk, maxChunk);
+
+    // Flush pendingMesh for chunks that haven't been rendered in a while.
+    // Without this, async mesh builds for invisible chunks leak the full
+    // combined mesh data (hundreds of MB across the world).
+    // 20 frames (~333ms at 60fps) matches common voxel-engine practice —
+    // short enough to reclaim memory, long enough to absorb camera spins
+    // and rapid-rebuild transients without redundant GPU uploads.
+    constexpr int STALE_FRAMES = 20;
+    constexpr int FLUSH_BUDGET = 16; // cap per-frame uploads to avoid stalls
+    int flushed = 0;
+    for (auto& [pos, chunk] : chunks) {
+        chunk.framesSinceRender++;
+        if (chunk.hasPendingMesh() && chunk.framesSinceRender > STALE_FRAMES && flushed < FLUSH_BUDGET) {
+            chunk.uploadMesh();
+            flushed++;
+        }
+    }
+
+    // Sample memory once per second (totalChunkMemory iterates all chunks,
+    // not cheap enough for per-frame).
+    static double lastMemSample = 0.0;
+    double now = glfwGetTime();
+    if (now - lastMemSample >= 1.0) {
+        Chunk::MemBreakdown mb = totalChunkBreakdown();
+        size_t chunkMem = mb.sections + mb.skyLight + mb.waterLevels + mb.meshCache + mb.pendingMesh;
+        size_t rss = sampleProcessRss();
+        TracyPlot("chunks.loaded", (int64_t)chunks.size());
+        TracyPlot("chunks.memory_bytes", (int64_t)chunkMem);
+        TracyPlot("mem.sections_bytes", (int64_t)mb.sections);
+        TracyPlot("mem.skylight_bytes", (int64_t)mb.skyLight);
+        TracyPlot("mem.waterlevels_bytes", (int64_t)mb.waterLevels);
+        TracyPlot("mem.meshcache_bytes", (int64_t)mb.meshCache);
+        TracyPlot("process.rss_bytes", (int64_t)rss);
+        g_frame.chunkMemoryBytes = chunkMem;
+        g_frame.memSectionsBytes = mb.sections;
+        g_frame.memSkyLightBytes = mb.skyLight;
+        g_frame.memWaterLevelsBytes = mb.waterLevels;
+        g_frame.memMeshCacheBytes = mb.meshCache;
+        g_frame.memPendingMeshBytes = mb.pendingMesh;
+        g_frame.processRssBytes = rss;
+        lastMemSample = now;
+    }
 }
 
 void ChunkManager::loadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
@@ -188,7 +250,7 @@ void ChunkManager::queueMeshBuild(glm::ivec2 pos) {
 
     MeshRequest req;
     req.pos = pos;
-    req.blocks = chunk.decompressBlocks();  // snapshot: decompress sections into flat buffer
+    req.blocks = chunk.decompressBlocks();
     req.skyLight = chunk.skyLight;     // shared_ptr copy (packed sky+block)
     req.waterLevels = chunk.waterLevels; // shared_ptr copy of per-block flow levels
     req.maxSolidY = chunk.maxSolidY;

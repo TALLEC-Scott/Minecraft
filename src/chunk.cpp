@@ -586,17 +586,67 @@ static void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY) 
 
 void Chunk::computeSkyLight() {
     auto flat = decompressBlocks();
+    ensureSkyLightDecompressed();
     computeSkyLightData(flat.get(), skyLight.get(), maxSolidY);
+}
+
+Chunk::MemBreakdown Chunk::memoryBreakdown() const {
+    MemBreakdown mb;
+    for (int s = 0; s < NUM_SECTIONS; s++) {
+        if (sections[s]) mb.sections += sizeof(ChunkSection) + sections[s]->memoryUsage();
+    }
+    if (skyLight) mb.skyLight += static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE;
+    if (skyLightCompressed) mb.skyLight += sizeof(SkyLight) + skyLightCompressed->memoryUsage();
+    if (waterLevels) mb.waterLevels += static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE;
+    for (int s = 0; s < NUM_SECTIONS; s++) {
+        mb.meshCache += sectionMeshes[s].verts.capacity();
+        mb.meshCache += sectionMeshes[s].waterVerts.capacity();
+        mb.meshCache += sectionMeshes[s].opaqueIdx.capacity() * sizeof(unsigned int);
+        mb.meshCache += sectionMeshes[s].waterIdx.capacity() * sizeof(unsigned int);
+    }
+    mb.pendingMesh += pendingMesh.verts.capacity() + pendingMesh.waterVerts.capacity();
+    mb.pendingMesh += pendingMesh.opaqueIdx.capacity() * sizeof(unsigned int);
+    mb.pendingMesh += pendingMesh.waterIdx.capacity() * sizeof(unsigned int);
+    return mb;
+}
+
+size_t Chunk::memoryUsage() const {
+    MemBreakdown mb = memoryBreakdown();
+    return mb.sections + mb.skyLight + mb.waterLevels + mb.meshCache + mb.pendingMesh;
+}
+
+void Chunk::compactSkyLight() {
+    if (!skyLight) return; // already compact
+    if (!skyLightCompressed) skyLightCompressed = std::make_unique<SkyLight>();
+    skyLightCompressed->compressAll(skyLight.get());
+    skyLight.reset(); // free the 32 KB flat array
+}
+
+void Chunk::ensureSkyLightDecompressed() {
+    if (skyLight) return; // already decompressed
+    skyLight = std::shared_ptr<uint8_t[]>(
+        new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]());
+    if (skyLightCompressed) {
+        skyLightCompressed->decompressAll(skyLight.get());
+    }
 }
 
 uint8_t Chunk::getSkyLight(int x, int y, int z) const {
     if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 15;
-    return unpackSky(skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+    if (skyLight) {
+        return unpackSky(skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+    }
+    if (skyLightCompressed) return unpackSky(skyLightCompressed->get(x, y, z));
+    return 15;
 }
 
 uint8_t Chunk::getBlockLight(int x, int y, int z) const {
     if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 0;
-    return unpackBlock(skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+    if (skyLight) {
+        return unpackBlock(skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+    }
+    if (skyLightCompressed) return unpackBlock(skyLightCompressed->get(x, y, z));
+    return 0;
 }
 
 void Chunk::propagateBorderLight(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
@@ -1640,9 +1690,12 @@ void Chunk::uploadMesh() {
     builtDirtyMask = 0;
     dirtyDuringBuild = 0;
 
-    // Free CPU-side data
+    // Free CPU-side data — waterVerts was being leaked here, which added
+    // up to hundreds of MB for chunks with ocean water over time.
     pendingMesh.verts.clear();
     pendingMesh.verts.shrink_to_fit();
+    pendingMesh.waterVerts.clear();
+    pendingMesh.waterVerts.shrink_to_fit();
     pendingMesh.opaqueIdx.clear();
     pendingMesh.opaqueIdx.shrink_to_fit();
     pendingMesh.waterIdx.clear();
@@ -1651,6 +1704,7 @@ void Chunk::uploadMesh() {
 }
 
 std::vector<Cube*> Chunk::render(const Shader& /*shaderProgram*/, const NeighborChunks& nc) {
+    framesSinceRender = 0;
     if (pendingMesh.ready) {
         uploadMesh();
     } else if (isMeshDirty() && !meshBuildInFlight && g_frame.meshBuildBudget > 0) {
