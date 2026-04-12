@@ -16,6 +16,7 @@
 #include "light_data.h"
 #include "shader.h"
 #include "skylight.h"
+#include "sparse_skylight.h"
 #include "TerrainGenerator.h"
 
 static constexpr int NUM_SECTIONS = CHUNK_HEIGHT / 16;
@@ -74,15 +75,20 @@ class Chunk {
     Chunk(ChunkData&& data);
 
     // Move only
+    // Init order matches member declaration order to satisfy -Wreorder.
     Chunk(Chunk&& other) noexcept
         : skyLight(std::move(other.skyLight)),
           waterLevels(std::move(other.waterLevels)),
-          chunkX(other.chunkX),
-          chunkY(other.chunkY), chunkVAO(other.chunkVAO), chunkVBO(other.chunkVBO), chunkEBO(other.chunkEBO),
+          sparseLight(std::move(other.sparseLight)),
+          maxSolidY(other.maxSolidY),
+          chunkX(other.chunkX), chunkY(other.chunkY),
+          meshBuildInFlight(other.meshBuildInFlight),
+          sectionDirty(other.sectionDirty),
+          chunkVAO(other.chunkVAO), chunkVBO(other.chunkVBO), chunkEBO(other.chunkEBO),
+          opaqueIndexCount(other.opaqueIndexCount),
           waterVAO(other.waterVAO), waterVBO(other.waterVBO), waterEBO(other.waterEBO),
-          opaqueIndexCount(other.opaqueIndexCount), waterIndexCount(other.waterIndexCount),
-          sectionDirty(other.sectionDirty), maxSolidY(other.maxSolidY),
-          pendingMesh(std::move(other.pendingMesh)), meshBuildInFlight(other.meshBuildInFlight) {
+          waterIndexCount(other.waterIndexCount),
+          pendingMesh(std::move(other.pendingMesh)) {
         for (int i = 0; i < NUM_SECTIONS; i++) {
             sections[i] = std::move(other.sections[i]);
             sectionMeshes[i] = std::move(other.sectionMeshes[i]);
@@ -107,6 +113,7 @@ class Chunk {
             }
             skyLight = std::move(other.skyLight);
             waterLevels = std::move(other.waterLevels);
+            sparseLight = std::move(other.sparseLight);
             chunkX = other.chunkX;
             chunkY = other.chunkY;
             chunkVAO = other.chunkVAO;
@@ -271,17 +278,19 @@ class Chunk {
     std::unique_ptr<ChunkSection> sections[NUM_SECTIONS];
     std::shared_ptr<uint8_t[]> skyLight; // packed: high nibble = sky, low nibble = block
     std::shared_ptr<uint8_t[]> waterLevels; // per-block water level (0=source, 1-7=flow)
-    // Palette-encoded compressed copy. Populated by compactSkyLight() for
-    // dormant chunks (frees the 32 KB flat array to save memory).
-    // ensureSkyLightDecompressed() restores the flat array from here.
-    std::unique_ptr<SkyLight> skyLightCompressed;
+    // Permanent sparse storage for light values (~8-12 KB per chunk vs
+    // flat 32 KB). Authoritative: skyLight flat array is a transient
+    // decompression used only during mesh builds and BFS operations,
+    // dropped by compressSkyLight() after uploadMesh.
+    SparseSkyLight sparseLight;
     int maxSolidY = 0;
 
-    // Compress the flat skyLight into palette-encoded form and free the
-    // flat array. Safe to call on a chunk that's not actively mesh-building.
-    void compactSkyLight();
-    // Restore the flat skyLight from compressed form (no-op if already flat).
-    void ensureSkyLightDecompressed();
+    // Compress flat skyLight into sparseLight and free the 32 KB buffer.
+    // Called after uploadMesh to reclaim memory; skyLight is decompressed
+    // again on the next access via ensureSkyLightFlat().
+    void compressSkyLight();
+    // Allocate skyLight and populate from sparseLight. No-op if already flat.
+    void ensureSkyLightFlat();
     // Estimated CPU-side memory in bytes (sections + skyLight + waterLevels
     // + cached meshes). Used for profiling/benchmark output.
     size_t memoryUsage() const;

@@ -24,7 +24,7 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath) {
         // convert stream into string
         vertexCode = vShaderStream.str();
         fragmentCode = fShaderStream.str();
-    } catch (std::ifstream::failure e) {
+    } catch (const std::ifstream::failure&) {
         std::cout << "ERROR::SHADER::FILE_NOT_SUCCESFULLY_READ" << std::endl;
     }
 #ifdef __EMSCRIPTEN__

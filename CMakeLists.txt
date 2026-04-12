@@ -10,6 +10,19 @@ endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Treat compiler warnings as errors. On by default (like the linter);
+# disable with -DWARNINGS_AS_ERRORS=OFF if third-party code misbehaves.
+option(WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
+if(WARNINGS_AS_ERRORS)
+  if(MSVC)
+    set(WARNING_FLAGS /W4 /WX)
+  else()
+    set(WARNING_FLAGS -Wall -Wextra -Werror)
+  endif()
+else()
+  set(WARNING_FLAGS)
+endif()
+
 set(COMMON_SOURCES
     src/main.cpp
     src/camera.cpp
@@ -34,8 +47,9 @@ set(COMMON_SOURCES
 if(EMSCRIPTEN)
   # --- Emscripten / WebAssembly build ---
   add_executable(minecraft ${COMMON_SOURCES})
-  target_include_directories(minecraft PRIVATE include Libraries/include)
-  target_compile_options(minecraft PRIVATE -O2)
+  target_include_directories(minecraft PRIVATE include)
+  target_include_directories(minecraft SYSTEM PRIVATE Libraries/include)
+  target_compile_options(minecraft PRIVATE -O2 ${WARNING_FLAGS})
   # Prevent system library paths from leaking into the Emscripten link
   set(CMAKE_EXE_LINKER_FLAGS "")
   set_property(DIRECTORY PROPERTY LINK_DIRECTORIES "")
@@ -101,7 +115,11 @@ else()
   endif()
 
   add_executable(minecraft ${COMMON_SOURCES} src/glad.c)
-  target_include_directories(minecraft PRIVATE include Libraries/include)
+  target_include_directories(minecraft PRIVATE include)
+  target_include_directories(minecraft SYSTEM PRIVATE Libraries/include)
+  # WARNING_FLAGS via generator expression so they apply only to C++ TUs
+  # (glad.c is a third-party C file that may trip warnings under -Werror).
+  target_compile_options(minecraft PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${WARNING_FLAGS}>)
   if(BUILD_WITH_TRACY)
     target_link_libraries(minecraft TracyClient)
     target_compile_definitions(minecraft PRIVATE TRACY_ENABLE=1)
@@ -176,7 +194,9 @@ else()
     # compile src/WaterSimulator.cpp against minimal stubs of chunk.h /
     # ChunkManager.h / world.h without dragging in OpenGL, threading, or
     # rendering dependencies.
-    target_include_directories(tests PRIVATE tests/stubs include Libraries/include)
+    target_include_directories(tests PRIVATE tests/stubs include)
+    target_include_directories(tests SYSTEM PRIVATE Libraries/include)
+    target_compile_options(tests PRIVATE ${WARNING_FLAGS})
     target_link_libraries(tests GTest::gtest_main)
     set_target_properties(tests PROPERTIES CXX_CLANG_TIDY "")
     gtest_discover_tests(tests)
