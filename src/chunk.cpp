@@ -1261,6 +1261,18 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLe
 
                     float vp[4][3];
                     bool isWT2 = (bt == (int)WATER && f == 4);
+
+                    // Water side faces: clamp top edge to water height
+                    bool isWaterSide2 = (bt == (int)WATER && f != 4 && f != 5 && fd.v == 1);
+                    if (isWaterSide2 && waterLevels) {
+                        size_t wi = static_cast<size_t>(u) * CHUNK_HEIGHT * CHUNK_SIZE + d * CHUNK_SIZE + v;
+                        uint8_t wraw = waterLevels[wi];
+                        float wh = waterIsFalling(wraw) ? (8.0f / 9.0f) : ((8.0f - waterFlowLevel(wraw)) / 9.0f);
+                        float waterTop = (float)v - 0.5f + wh;
+                        if (fd.v_sign > 0) v1 = waterTop;
+                        else v0 = waterTop;
+                    }
+
                     vp[0][fd.d] = isWT2 ? waterY2[0] : d_val;
                     vp[0][fd.u] = u0;
                     vp[0][fd.v] = v0;
