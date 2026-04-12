@@ -29,3 +29,5 @@ build_win*/
 *.exe
 trace.*
 tools/
+water_debug_screenshot.*
+*.tracy
