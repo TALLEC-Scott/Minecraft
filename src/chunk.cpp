@@ -635,6 +635,10 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
     ZoneScopedN("Chunk::buildMeshData");
     double _buildStart = glfwGetTime();
 
+    // Snapshot which sections we're about to rebuild so uploadMesh
+    // clears only these bits (new dirty bits set during the build survive).
+    builtDirtyMask = sectionDirty;
+
     // Decompress sections into flat buffer for mesh building
     auto flatBlocks = decompressBlocks();
     Cube* blocks = flatBlocks.get();
@@ -724,7 +728,9 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
         sm.verts.clear();
         sm.opaqueIdx.clear();
         sm.waterIdx.clear();
-        unsigned int opaqueBase = 0, waterBase = 0;
+        // Single vertex counter — opaque and water faces share sm.verts,
+        // so their indices must reference the same vertex space.
+        unsigned int vertBase = 0;
 
     for (int f = 0; f < 6; f++) {
         const FaceDef& fd = FACE_DEFS[f];
@@ -884,7 +890,6 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
 
                     bool isWater = (bt == (int)WATER);
                     auto& idx = isWater ? sm.waterIdx : sm.opaqueIdx;
-                    unsigned int& base = isWater ? waterBase : opaqueBase;
 
                     // Batch-write 4 packed vertices at once
                     size_t off = sm.verts.size();
@@ -904,21 +909,21 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     }
                     // Flip quad diagonal when AO is asymmetric to avoid interpolation artifacts
                     if (ao[0] + ao[2] > ao[1] + ao[3]) {
-                        idx.push_back(base);
-                        idx.push_back(base + 1);
-                        idx.push_back(base + 2);
-                        idx.push_back(base + 2);
-                        idx.push_back(base + 3);
-                        idx.push_back(base);
+                        idx.push_back(vertBase);
+                        idx.push_back(vertBase + 1);
+                        idx.push_back(vertBase + 2);
+                        idx.push_back(vertBase + 2);
+                        idx.push_back(vertBase + 3);
+                        idx.push_back(vertBase);
                     } else {
-                        idx.push_back(base + 1);
-                        idx.push_back(base + 2);
-                        idx.push_back(base + 3);
-                        idx.push_back(base + 3);
-                        idx.push_back(base);
-                        idx.push_back(base + 1);
+                        idx.push_back(vertBase + 1);
+                        idx.push_back(vertBase + 2);
+                        idx.push_back(vertBase + 3);
+                        idx.push_back(vertBase + 3);
+                        idx.push_back(vertBase);
+                        idx.push_back(vertBase + 1);
                     }
-                    base += 4;
+                    vertBase += 4;
 
                     if (g_greedyMeshing) {
                         for (int du = 0; du < w; du++)
@@ -1339,7 +1344,11 @@ void Chunk::uploadMesh() {
     opaqueIndexCount = totalOpaqueIdx;
     waterIndexCount = (int)pendingMesh.waterIdx.size();
     waterIndexOffset = totalOpaqueIdx * sizeof(unsigned int);
-    sectionDirty = 0;
+    // Clear only the dirty bits that the uploaded mesh was built from.
+    // New bits set since buildMeshData ran (e.g., by the water sim)
+    // survive and trigger another rebuild next frame.
+    sectionDirty &= ~builtDirtyMask;
+    builtDirtyMask = 0;
 
     // Free CPU-side data
     pendingMesh.verts.clear();

@@ -172,6 +172,9 @@ class Chunk {
         pendingMesh = std::move(m);
         pendingMesh.ready = true;
         meshBuildInFlight = false;
+        // Async builds rebuild the full chunk (all sections), so mark
+        // all bits as "built" so uploadMesh clears them properly.
+        builtDirtyMask = 0xFF;
     }
 
     int getLocalHeight(int x, int y);
@@ -253,6 +256,10 @@ class Chunk {
     // happens. Cleared to 0 after uploadMesh. Block edits set only the
     // affected bit(s) via markSectionDirty.
     uint8_t sectionDirty = 0xFF;
+    // Which dirty bits the in-flight / pending mesh was built from.
+    // uploadMesh clears only these bits so new dirty bits set during
+    // the async build (or between buildMeshData and uploadMesh) survive.
+    uint8_t builtDirtyMask = 0;
     // Cached per-section mesh data. Clean sections are reused across
     // incremental rebuilds; only dirty sections get re-meshed.
     SectionMesh sectionMeshes[NUM_SECTIONS];

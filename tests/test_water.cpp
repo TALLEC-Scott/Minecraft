@@ -183,6 +183,125 @@ TEST(WaterSimulator, FlowingWaterDoesNotSheetOverCliff) {
 
 // --- Drain is monotonic: water count strictly decreases until zero ---
 
+// --- Infinite water source rule ---
+
+TEST(WaterSimulator, TwoSourceNeighborsCreateNewSource) {
+    PedestalScene s;
+    const int y = PedestalScene::FLOOR_Y + 1;
+    // Place two source blocks with a 1-block gap between them.
+    // The gap should become a source after a few ticks (Rule 0).
+    s.world.setBlock(7, y, 8, WATER, 0);
+    s.world.setBlock(9, y, 8, WATER, 0);
+    s.sim.activate(7, y, 8);
+    s.sim.activate(9, y, 8);
+    runTicks(s.sim, 10);
+
+    // The gap at (8, y, 8) should now be a source.
+    EXPECT_EQ(getType(s.world, 8, y, 8), WATER);
+    EXPECT_TRUE(waterIsSource(getWaterRaw(s.world, 8, y, 8)))
+        << "cell between two sources should become a source";
+}
+
+TEST(WaterSimulator, SingleSourceDoesNotClone) {
+    PedestalScene s;
+    const int y = PedestalScene::FLOOR_Y + 1;
+    // Place one source. Adjacent cells should be flowing, not sources.
+    s.world.setBlock(8, y, 8, WATER, 0);
+    s.sim.activate(8, y, 8);
+    runTicks(s.sim, 10);
+
+    EXPECT_EQ(getType(s.world, 9, y, 8), WATER);
+    EXPECT_FALSE(waterIsSource(getWaterRaw(s.world, 9, y, 8)))
+        << "cell next to a single source should be flowing, not source";
+}
+
+TEST(WaterSimulator, OceanGapFillsAsSource) {
+    PedestalScene s;
+    const int y = PedestalScene::FLOOR_Y + 1;
+    // Simulate an ocean: a row of source blocks with one gap (broken block).
+    for (int x = 4; x <= 12; x++) {
+        if (x == 8) continue; // the gap
+        s.world.setBlock(x, y, 8, WATER, 0);
+        s.sim.activate(x, y, 8);
+    }
+    runTicks(s.sim, 10);
+
+    // The gap at (8, y, 8) has sources on both sides → should be source.
+    EXPECT_EQ(getType(s.world, 8, y, 8), WATER);
+    EXPECT_TRUE(waterIsSource(getWaterRaw(s.world, 8, y, 8)))
+        << "gap in ocean row should fill as source";
+}
+
+// --- Section dirty tracking ---
+
+TEST(WaterSimulator, SectionDirtyOnlyAffectedSection) {
+    // Verify that setBlockType marks only the section containing the
+    // edited block (plus boundary neighbors), not all 8 sections.
+    PedestalScene s;
+    auto& chunk = s.world.chunkManager->getOrCreate(0, 0);
+    chunk.sectionDirty = 0; // clear all
+
+    // Block in the middle of section 3 (y=56, sy=3, y%16=8).
+    chunk.setBlockType(8, 56, 8, STONE);
+    EXPECT_EQ(chunk.sectionDirty, 1u << 3)
+        << "mid-section edit should dirty only that section";
+}
+
+TEST(WaterSimulator, SectionDirtyBoundaryMarksNeighbor) {
+    PedestalScene s;
+    auto& chunk = s.world.chunkManager->getOrCreate(0, 0);
+    chunk.sectionDirty = 0;
+
+    // Block at bottom of section 4 (y=64, sy=4, y%16=0).
+    // Should mark section 4 AND section 3 (below boundary).
+    chunk.setBlockType(8, 64, 8, STONE);
+    EXPECT_TRUE(chunk.sectionDirty & (1u << 4)) << "section 4 should be dirty";
+    EXPECT_TRUE(chunk.sectionDirty & (1u << 3)) << "section 3 (boundary below) should be dirty";
+    // Other sections should be clean.
+    EXPECT_FALSE(chunk.sectionDirty & ~((1u << 3) | (1u << 4)))
+        << "non-adjacent sections should stay clean";
+}
+
+TEST(WaterSimulator, SectionDirtyTopBoundary) {
+    PedestalScene s;
+    auto& chunk = s.world.chunkManager->getOrCreate(0, 0);
+    chunk.sectionDirty = 0;
+
+    // Block at top of section 2 (y=47, sy=2, y%16=15).
+    // Should mark section 2 AND section 3 (above boundary).
+    chunk.setBlockType(8, 47, 8, STONE);
+    EXPECT_TRUE(chunk.sectionDirty & (1u << 2));
+    EXPECT_TRUE(chunk.sectionDirty & (1u << 3));
+}
+
+TEST(WaterSimulator, BuiltDirtyMaskPreservesNewBits) {
+    // Simulate the race: build clears only the bits it was built from,
+    // not new bits set during the build.
+    PedestalScene s;
+    auto& chunk = s.world.chunkManager->getOrCreate(0, 0);
+
+    // Section 3 is dirty.
+    chunk.sectionDirty = (1u << 3);
+    // Simulate buildMeshData snapshotting the dirty mask.
+    chunk.builtDirtyMask = chunk.sectionDirty;
+
+    // During the build, a new change dirties section 5.
+    chunk.markSectionDirty(5);
+    EXPECT_EQ(chunk.sectionDirty, (1u << 3) | (1u << 5));
+
+    // uploadMesh clears only the built bits.
+    chunk.sectionDirty &= ~chunk.builtDirtyMask;
+    chunk.builtDirtyMask = 0;
+
+    // Section 5 should survive.
+    EXPECT_TRUE(chunk.sectionDirty & (1u << 5))
+        << "new dirty bit set during build must survive uploadMesh";
+    EXPECT_FALSE(chunk.sectionDirty & (1u << 3))
+        << "built section should be cleared";
+}
+
+// --- Drain ---
+
 TEST(WaterSimulator, DrainCountStrictlyDecreases) {
     PedestalScene s;
     s.placeSource();
