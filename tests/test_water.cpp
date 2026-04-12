@@ -269,6 +269,102 @@ TEST(WaterSimulator, FlowDirectionPointsOutward) {
     EXPECT_TRUE(waterIsSource(getWaterRaw(s.world, 8, y, 8)));
 }
 
+// Helper: compute the flow direction vector for a water cell the same way
+// the mesh builder does (chunk.cpp buildMeshData). Returns (fx, fz).
+std::pair<float, float> computeFlowDir(World& world, int wx, int wy, int wz) {
+    uint8_t raw = getWaterRaw(world, wx, wy, wz);
+    if (waterIsSource(raw) || waterIsFalling(raw)) return {0, 0};
+    int myLvl = waterFlowLevel(raw);
+    float fx = 0, fz = 0;
+    // +X / -X
+    for (int dx : {-1, 1}) {
+        int nx = wx + dx;
+        block_type nbt = getType(world, nx, wy, wz);
+        if (nbt == AIR) { fx += dx * 8; }
+        else if (nbt == WATER) {
+            uint8_t nraw = getWaterRaw(world, nx, wy, wz);
+            int nLvl = waterIsSource(nraw) ? 0 : waterFlowLevel(nraw);
+            fx += dx * (nLvl - myLvl);
+        }
+    }
+    // +Z / -Z
+    for (int dz : {-1, 1}) {
+        int nz = wz + dz;
+        block_type nbt = getType(world, wx, wy, nz);
+        if (nbt == AIR) { fz += dz * 8; }
+        else if (nbt == WATER) {
+            uint8_t nraw = getWaterRaw(world, wx, wy, nz);
+            int nLvl = waterIsSource(nraw) ? 0 : waterFlowLevel(nraw);
+            fz += dz * (nLvl - myLvl);
+        }
+    }
+    return {fx, fz};
+}
+
+TEST(WaterSimulator, FlowVectorPointsAwayFromSource) {
+    // Place a source and let it spread. For every flowing cell, the
+    // computed flow direction vector should point AWAY from the source
+    // (i.e., the dot product of flowDir and the vector from source to
+    // the cell should be positive or zero).
+    PedestalScene s;
+    const int y = PedestalScene::FLOOR_Y + 1;
+    const int sx = 8, sz = 8;
+    s.world.setBlock(sx, y, sz, WATER, 0);
+    s.sim.activate(sx, y, sz);
+    runTicks(s.sim, 15);
+
+    int tested = 0;
+    for (int x = sx - 7; x <= sx + 7; x++) {
+        for (int z = sz - 7; z <= sz + 7; z++) {
+            if (x == sx && z == sz) continue; // skip source
+            if (getType(s.world, x, y, z) != WATER) continue;
+            uint8_t raw = getWaterRaw(s.world, x, y, z);
+            if (waterIsSource(raw) || waterIsFalling(raw)) continue;
+
+            auto [fx, fz] = computeFlowDir(s.world, x, y, z);
+            if (fx == 0 && fz == 0) continue; // no direction computed
+
+            // Vector from source to this cell
+            float toX = (float)(x - sx);
+            float toZ = (float)(z - sz);
+            // Dot product: positive means flow points outward
+            float dot = fx * toX + fz * toZ;
+            EXPECT_GT(dot, 0.0f)
+                << "Flow at (" << x << "," << z << ") = (" << fx << "," << fz
+                << ") should point away from source (" << sx << "," << sz
+                << "), dot=" << dot;
+            tested++;
+        }
+    }
+    EXPECT_GT(tested, 0) << "should have tested at least one flowing cell";
+}
+
+TEST(WaterSimulator, FlowVectorCardinalDirections) {
+    // Along each cardinal axis from source, flow should point purely
+    // along that axis (no perpendicular component).
+    PedestalScene s;
+    const int y = PedestalScene::FLOOR_Y + 1;
+    s.world.setBlock(8, y, 8, WATER, 0);
+    s.sim.activate(8, y, 8);
+    runTicks(s.sim, 15);
+
+    // +X axis: cell at (9, y, 8) — flow should have fx > 0
+    auto [fx1, fz1] = computeFlowDir(s.world, 9, y, 8);
+    EXPECT_GT(fx1, 0.0f) << "flow at +X from source should point in +X";
+
+    // -X axis: cell at (7, y, 8) — flow should have fx < 0
+    auto [fx2, fz2] = computeFlowDir(s.world, 7, y, 8);
+    EXPECT_LT(fx2, 0.0f) << "flow at -X from source should point in -X";
+
+    // +Z axis: cell at (8, y, 9) — flow should have fz > 0
+    auto [fx3, fz3] = computeFlowDir(s.world, 8, y, 9);
+    EXPECT_GT(fz3, 0.0f) << "flow at +Z from source should point in +Z";
+
+    // -Z axis: cell at (8, y, 7) — flow should have fz < 0
+    auto [fx4, fz4] = computeFlowDir(s.world, 8, y, 7);
+    EXPECT_LT(fz4, 0.0f) << "flow at -Z from source should point in -Z";
+}
+
 TEST(WaterSimulator, FallingWaterColumnHasWaterBelow) {
     // Place source above air. Falling column should form. Verify each
     // cell in the column is WATER with the falling flag set and has

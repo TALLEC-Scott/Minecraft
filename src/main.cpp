@@ -219,6 +219,7 @@ void processInput(GLFWwindow* window) {
     if (pauseDown && !escKeyPressed) {
         currentState = GameState::Paused;
         glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
+        if (g_menu) g_menu->stopMusic();
         escKeyPressed = pauseDown;
         return;
     }
@@ -1537,6 +1538,7 @@ int main(int argc, char* argv[]) {
                     glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
                     player.resetMouseState();
                     player.consumeMouseButtons();
+                    menu.startMusic();
                 }
                 if (next == GameState::Settings) {
                     gameSettings.save("settings.txt");

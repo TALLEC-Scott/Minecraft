@@ -34,8 +34,16 @@ void main() {
             uv += 0.015 * vec2(sin(FragPos.y * 4.0 + time * 2.0),
                                cos(FragPos.y * 3.0 + time * 1.5));
         } else if (length(flowDir) > 0.1) {
-            // Flowing top face: scroll UV in the flow direction
-            uv -= flowDir * time * 0.8
+            // Flowing water: use world-space UVs so the texture tiles
+            // visibly across small flow areas (per-face UVs are too
+            // zoomed in to show movement). Scroll in the flow direction.
+            vec2 fd = normalize(flowDir);
+            vec2 perp = vec2(-fd.y, fd.x);
+            vec2 worldXZ = vec2(FragPos.x, FragPos.z);
+            float para = dot(worldXZ, fd);
+            float ortho = dot(worldXZ, perp);
+            // Tile at 2x density, scroll along flow
+            uv = vec2(para - time * 0.8, ortho) * 2.0
                 + 0.02 * vec2(sin(FragPos.x * 3.0 + time * 2.0),
                               cos(FragPos.z * 3.0 + time * 1.6));
         } else {
