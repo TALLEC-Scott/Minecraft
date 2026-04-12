@@ -197,8 +197,11 @@ class Chunk {
             sections[sy] = std::make_unique<ChunkSection>();
         }
         sections[sy]->setBlock(x, y % 16, z, t);
-        // Mark this section + adjacent sections at Y boundaries (face
-        // visibility across section seams depends on both sides).
+        // Extend maxSolidY so the mesh builder's iteration range includes
+        // this block. Without this, water/blocks placed above the terrain
+        // height (e.g., falling water columns) would be outside the face
+        // loop's Y range and never get meshed.
+        if (t != AIR && y > maxSolidY) maxSolidY = y;
         markSectionDirty(sy);
         if (y % 16 == 0) markSectionDirty(sy - 1);
         if (y % 16 == 15) markSectionDirty(sy + 1);
