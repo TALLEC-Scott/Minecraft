@@ -591,19 +591,31 @@ void testWaterTopCorners(World& world, int wx, int wy, int wz, float out[4]) {
     // After uSign=1 (no swap), vSign=-1 swap:
     int cdx[4] = {-1, -1, 1, 1};
     int cdz[4] = { 1, -1, -1, 1};
+    // Water → height, Air → 0 (counted), Solid → excluded.
+    auto contribute = [&](int x, int y, int z) -> std::pair<float, bool> {
+        if (y < 0 || y >= CHUNK_HEIGHT) return {0.0f, false};
+        block_type t = getType(world, x, y, z);
+        if (t == WATER) {
+            float h = testWaterCellHeight(world, x, y, z);
+            return {h, true};
+        }
+        if (t == AIR) return {0.0f, true};
+        return {0.0f, false};
+    };
+    auto cC = contribute(wx, wy, wz);
     for (int ci = 0; ci < 4; ci++) {
-        float h[4] = {cH,
-            testWaterCellHeight(world, wx + cdx[ci], wy, wz),
-            testWaterCellHeight(world, wx, wy, wz + cdz[ci]),
-            testWaterCellHeight(world, wx + cdx[ci], wy, wz + cdz[ci])};
+        std::pair<float, bool> h[4] = {cC,
+            contribute(wx + cdx[ci], wy, wz),
+            contribute(wx, wy, wz + cdz[ci]),
+            contribute(wx + cdx[ci], wy, wz + cdz[ci])};
         bool anyFull = false;
-        for (int i = 0; i < 4; i++) if (h[i] >= 1.0f) anyFull = true;
+        for (int i = 0; i < 4; i++) if (h[i].second && h[i].first >= 1.0f) anyFull = true;
         if (anyFull) {
             out[ci] = (float)wy + 0.5f;
         } else {
             float sum = 0; int cnt = 0;
-            for (int i = 0; i < 4; i++) if (h[i] >= 0) { sum += h[i]; cnt++; }
-            out[ci] = (float)wy - 0.5f + sum / cnt;
+            for (int i = 0; i < 4; i++) if (h[i].second) { sum += h[i].first; cnt++; }
+            out[ci] = (float)wy - 0.5f + (cnt > 0 ? sum / cnt : 0.0f);
         }
     }
 }

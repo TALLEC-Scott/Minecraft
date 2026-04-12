@@ -131,15 +131,27 @@ class Chunk {
     Chunk(const Chunk&) = delete;
     Chunk& operator=(const Chunk&) = delete;
 
-    // Snapshot of one neighbor's border blocks for async mesh building
+    // 8 neighbor chunks (4 cardinal + 4 diagonal) used for cross-chunk
+    // mesh-building lookups. Diagonals are required so 4-chunk corner
+    // water-height averaging produces matching values on all sides.
+    struct NeighborChunks {
+        Chunk* nxNeg = nullptr;
+        Chunk* nxPos = nullptr;
+        Chunk* nzNeg = nullptr;
+        Chunk* nzPos = nullptr;
+        Chunk* dNN = nullptr; // (-X,-Z)
+        Chunk* dNP = nullptr; // (-X,+Z)
+        Chunk* dPN = nullptr; // (+X,-Z)
+        Chunk* dPP = nullptr; // (+X,+Z)
+    };
+
     struct NeighborBorder {
         block_type types[CHUNK_SIZE][CHUNK_HEIGHT]{};
-        uint8_t lightBorder[CHUNK_SIZE][CHUNK_HEIGHT]{}; // packed: high nibble = sky, low nibble = block
-        uint8_t waterBorder[CHUNK_SIZE][CHUNK_HEIGHT]{}; // water level at border column
+        uint8_t lightBorder[CHUNK_SIZE][CHUNK_HEIGHT]{}; // high nibble = sky, low = block
+        uint8_t waterBorder[CHUNK_SIZE][CHUNK_HEIGHT]{};
         bool valid = false;
     };
 
-    // Diagonal corner: a single column at one of the 4 corners of a chunk
     struct DiagonalCorner {
         block_type types[CHUNK_HEIGHT]{};
         uint8_t waterBorder[CHUNK_HEIGHT]{};
@@ -148,12 +160,10 @@ class Chunk {
 
     struct NeighborBorders {
         NeighborBorder xNeg, xPos, zNeg, zPos;
-        DiagonalCorner dNN, dNP, dPN, dPP; // (-X,-Z), (-X,+Z), (+X,-Z), (+X,+Z)
+        DiagonalCorner dNN, dNP, dPN, dPP;
     };
 
-    static NeighborBorders snapshotBorders(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos,
-                                           Chunk* d_nn = nullptr, Chunk* d_np = nullptr,
-                                           Chunk* d_pn = nullptr, Chunk* d_pp = nullptr);
+    static NeighborBorders snapshotBorders(const NeighborChunks& nc);
 
     // Pre-built CPU-side mesh data (can be built on any thread)
     struct MeshData {
@@ -172,14 +182,11 @@ class Chunk {
         std::vector<unsigned int> waterIdx;
     };
 
-    void buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos,
-                   Chunk* d_nn = nullptr, Chunk* d_np = nullptr, Chunk* d_pn = nullptr, Chunk* d_pp = nullptr);
-    void buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos,
-                       Chunk* d_nn = nullptr, Chunk* d_np = nullptr, Chunk* d_pn = nullptr, Chunk* d_pp = nullptr);
+    void buildMesh(const NeighborChunks& nc);
+    void buildMeshData(const NeighborChunks& nc);
     void buildMeshDataAsync(const NeighborBorders& borders);
     void uploadMesh();
-    std::vector<Cube*> render(const Shader& shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos,
-                              Chunk* d_nn = nullptr, Chunk* d_np = nullptr, Chunk* d_pn = nullptr, Chunk* d_pp = nullptr);
+    std::vector<Cube*> render(const Shader& shaderProgram, const NeighborChunks& nc);
     void renderWater(const Shader& shaderProgram, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos);
     void markDirty() { sectionDirty = 0xFF; }
     void markSectionDirty(int sy) {
