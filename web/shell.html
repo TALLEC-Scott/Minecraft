@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <link rel="icon" type="image/png" href="favicon.png?v=0.6.0">
+    <link rel="icon" type="image/png" href="favicon.png?v=0.6.1">
     <title>Minecraft Clone — WebGL</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -50,7 +50,7 @@
     <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
     <div id="info">Click to capture mouse — TAB pause — R sprint — Double-Space toggle fly — Shift descend</div>
     <script>
-        var APP_VERSION = "0.6.0";
+        var APP_VERSION = "0.6.1";
         var Module = {
             locateFile: function(path) { return path + '?v=' + APP_VERSION; },
             canvas: (function() {

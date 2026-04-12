@@ -276,7 +276,7 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
 
     // Version text
     float verScale = 1.0f;
-    ui.drawTextShadow("v0.6.0", 4.0f, (float)windowH - 12.0f, verScale, glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
+    ui.drawTextShadow("v0.6.1", 4.0f, (float)windowH - 12.0f, verScale, glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
 
     ui.end();
     return next;
