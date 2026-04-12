@@ -6,36 +6,13 @@
 // include/ for the tests target.
 #pragma once
 
-#include <climits>
 #include "chunk.h"
 #include "ChunkManager.h"
 #include "cube.h"
 #include "WaterSimulator.h"
+#include "world_resolver.h"
 
-struct WorldResolver {
-    ChunkManager* cm;
-    int cachedCX = INT_MIN;
-    int cachedCZ = INT_MIN;
-    Chunk* cachedChunk = nullptr;
-
-    explicit WorldResolver(ChunkManager* cm) : cm(cm) {}
-
-    struct Local {
-        Chunk* chunk;
-        int lx;
-        int lz;
-    };
-
-    Local local(int wx, int wz) {
-        int cx = worldToChunk(wx), cz = worldToChunk(wz);
-        if (cx != cachedCX || cz != cachedCZ) {
-            cachedCX = cx;
-            cachedCZ = cz;
-            cachedChunk = cm->getChunk(cx, cz);
-        }
-        return {cachedChunk, worldToLocal(wx, cx), worldToLocal(wz, cz)};
-    }
-};
+using WorldResolver = WorldResolverT<ChunkManager, Chunk>;
 
 class World {
   public:

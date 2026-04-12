@@ -67,6 +67,7 @@ static void floodSkyLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
     for (auto& d : DIRS_6) {
         auto [nc, ni] = resolve(sx + d[0], sy + d[1], sz + d[2]);
         if (nc) {
+            nc->ensureSkyLightFlat();
             uint8_t nl = unpackSky(nc->skyLight.get()[ni]);
             if (nl > maxLight) maxLight = nl;
         }
@@ -75,11 +76,13 @@ static void floodSkyLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
 
     // Sky column rule
     auto [aboveChunk, aboveIdx] = resolve(sx, sy + 1, sz);
+    if (aboveChunk) aboveChunk->ensureSkyLightFlat();
     uint8_t newLight = (aboveChunk && unpackSky(aboveChunk->skyLight.get()[aboveIdx]) == 15)
                            ? 15 : (maxLight > 0 ? maxLight - 1 : 0);
 
     auto [srcChunk, srcIdx] = resolve(sx, sy, sz);
     if (!srcChunk) return;
+    srcChunk->ensureSkyLightFlat();
     srcChunk->skyLight.get()[srcIdx] = packLight(newLight, unpackBlock(srcChunk->skyLight.get()[srcIdx]));
     srcChunk->markSectionDirty(sy / 16);
 
@@ -100,6 +103,7 @@ static void floodSkyLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
             int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
             auto [nc, ni] = resolve(nx, ny, nz);
             if (!nc) continue;
+            nc->ensureSkyLightFlat();
             block_type bt = nc->getBlockType(worldToLocal(nx, worldToChunk(nx)), ny, worldToLocal(nz, worldToChunk(nz)));
             if (hasFlag(bt, BF_OPAQUE)) continue;
             uint8_t propagated = (light == 15 && d[1] == -1) ? 15 : (light - 1);
@@ -123,6 +127,7 @@ static void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
 
     auto [srcChunk, srcIdx] = resolve(sx, sy, sz);
     if (!srcChunk) return;
+    srcChunk->ensureSkyLightFlat();
     uint8_t srcLight = unpackBlock(srcChunk->skyLight.get()[srcIdx]);
     srcChunk->skyLight.get()[srcIdx] = packLight(unpackSky(srcChunk->skyLight.get()[srcIdx]), 0);
     srcChunk->markSectionDirty(sy / 16);
@@ -138,6 +143,7 @@ static void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
             int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
             auto [nc, ni] = resolve(nx, ny, nz);
             if (!nc) continue;
+            nc->ensureSkyLightFlat();
             uint8_t neighborLight = unpackBlock(nc->skyLight.get()[ni]);
             if (neighborLight > 0 && neighborLight < oldLight) {
                 nc->skyLight.get()[ni] = packLight(unpackSky(nc->skyLight.get()[ni]), 0);
@@ -233,6 +239,7 @@ static void floodBlockLight(ChunkManager* cm, int sx, int sy, int sz, uint8_t em
 
     auto [srcChunk, srcIdx] = resolve(sx, sy, sz);
     if (!srcChunk) return;
+    srcChunk->ensureSkyLightFlat();
     uint8_t* sl = srcChunk->skyLight.get();
     sl[srcIdx] = (sl[srcIdx] & 0xF0) | (emission & 0xF);
     srcChunk->markSectionDirty(sy / 16);
