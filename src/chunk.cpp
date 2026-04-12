@@ -49,6 +49,19 @@ struct PackedVertex {
 static_assert(sizeof(PackedVertex) == 12);
 static constexpr int BYTES_PER_VERT = 12;
 
+// Water vertices use float32 positions for sub-block precision (thin
+// water edges at level 7 = 0.11 blocks). Same ×2 encoding as PackedVertex
+// so the vertex shader's ×0.5 undo still works.
+#pragma pack(push, 1)
+struct WaterVertex {
+    float px, py, pz;
+    uint8_t u, v;
+    uint8_t normalIdx, texLayer, ao, packedLight;
+};
+#pragma pack(pop)
+static_assert(sizeof(WaterVertex) == 18);
+static constexpr int WATER_BYTES_PER_VERT = 18;
+
 // Neighbor offsets per face (di, dj, dk)
 static const int FACE_NEIGHBORS[6][3] = {
     {0, 0, 1},  // Front
@@ -69,15 +82,34 @@ static void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY);
 // the height is derived from the flow level (level 0 ≈ 0.89, level 7 ≈ 0.11).
 // Returns -1 if the cell is out of bounds or not water. Water levels live in
 // a parallel uint8_t[] that tracks the `blocks` layout 1:1.
+// Water surface height as a fraction of the block (0 to 1).
+// Minecraft renders sources at 15/16 ("last pixel missing") and
+// flowing water scales down by 2/16 per level.
+static float waterHeightFromRaw(uint8_t raw) {
+    if (waterIsFalling(raw)) return 15.0f / 16.0f;
+    return (15.0f - waterFlowLevel(raw) * 2.0f) / 16.0f;
+}
+
 static float waterCellHeight(const Cube* blocks, const uint8_t* waterLevels,
-                             int bx, int by, int bz) {
-    if (bx < 0 || bx >= CHUNK_SIZE || bz < 0 || bz >= CHUNK_SIZE || by < 0 || by >= CHUNK_HEIGHT)
-        return -1.0f;
+                             int bx, int by, int bz,
+                             Chunk* nx_neg = nullptr, Chunk* nx_pos = nullptr,
+                             Chunk* nz_neg = nullptr, Chunk* nz_pos = nullptr) {
+    if (by < 0 || by >= CHUNK_HEIGHT) return -1.0f;
+    // Cross-chunk lookup for water height at chunk boundaries
+    if (bx < 0 || bx >= CHUNK_SIZE || bz < 0 || bz >= CHUNK_SIZE) {
+        Chunk* nc = nullptr;
+        int nlx = bx, nlz = bz;
+        if (bx < 0) { nc = nx_neg; nlx = CHUNK_SIZE - 1; }
+        else if (bx >= CHUNK_SIZE) { nc = nx_pos; nlx = 0; }
+        else if (bz < 0) { nc = nz_neg; nlz = CHUNK_SIZE - 1; }
+        else if (bz >= CHUNK_SIZE) { nc = nz_pos; nlz = 0; }
+        if (!nc || nc->getBlockType(nlx, by, nlz) != WATER) return -1.0f;
+        return waterHeightFromRaw(nc->getWaterLevel(nlx, by, nlz));
+    }
     size_t i = static_cast<size_t>(bx) * CHUNK_HEIGHT * CHUNK_SIZE + by * CHUNK_SIZE + bz;
     if (blocks[i].getType() != WATER) return -1.0f;
     uint8_t raw = waterLevels ? waterLevels[i] : 0;
-    if (waterIsFalling(raw)) return 8.0f / 9.0f;
-    return (8.0f - waterFlowLevel(raw)) / 9.0f;
+    return waterHeightFromRaw(raw);
 }
 
 // Compute the four top-face corner heights of a water block by averaging
@@ -86,7 +118,9 @@ static float waterCellHeight(const Cube* blocks, const uint8_t* waterLevels,
 // quad's vertex order (SW, NW, NE, SE when u_sign/v_sign > 0).
 static void computeWaterTopCorners(const Cube* blocks, const uint8_t* waterLevels,
                                    int bx, int by, int bz,
-                                   int uSign, int vSign, float out[4]) {
+                                   int uSign, int vSign, float out[4],
+                                   Chunk* nx_neg = nullptr, Chunk* nx_pos = nullptr,
+                                   Chunk* nz_neg = nullptr, Chunk* nz_pos = nullptr) {
     int cdx[4] = {-1, -1, 1, 1};
     int cdz[4] = {-1, 1, 1, -1};
     if (uSign < 0) {
@@ -101,17 +135,19 @@ static void computeWaterTopCorners(const Cube* blocks, const uint8_t* waterLevel
         std::swap(cdz[0], cdz[1]);
         std::swap(cdz[2], cdz[3]);
     }
-    float cH = waterCellHeight(blocks, waterLevels, bx, by, bz);
+    float cH = waterCellHeight(blocks, waterLevels, bx, by, bz, nx_neg, nx_pos, nz_neg, nz_pos);
     for (int ci = 0; ci < 4; ci++) {
         float sum = cH;
         int cnt = 1;
-        float h1 = waterCellHeight(blocks, waterLevels, bx + cdx[ci], by, bz);
-        float h2 = waterCellHeight(blocks, waterLevels, bx, by, bz + cdz[ci]);
-        float h3 = waterCellHeight(blocks, waterLevels, bx + cdx[ci], by, bz + cdz[ci]);
+        float h1 = waterCellHeight(blocks, waterLevels, bx + cdx[ci], by, bz, nx_neg, nx_pos, nz_neg, nz_pos);
+        float h2 = waterCellHeight(blocks, waterLevels, bx, by, bz + cdz[ci], nx_neg, nx_pos, nz_neg, nz_pos);
+        float h3 = waterCellHeight(blocks, waterLevels, bx + cdx[ci], by, bz + cdz[ci], nx_neg, nx_pos, nz_neg, nz_pos);
         if (h1 >= 0) { sum += h1; cnt++; }
         if (h2 >= 0) { sum += h2; cnt++; }
         if (h3 >= 0) { sum += h3; cnt++; }
-        out[ci] = (float)by + sum / cnt;
+        // Block spans [by-0.5, by+0.5]. Water height is a fraction of the
+        // block, so the surface is at block_bottom + averaged_height.
+        out[ci] = (float)by - 0.5f + sum / cnt;
     }
 }
 
@@ -718,6 +754,14 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
     const int effDIM[3] = {CHUNK_SIZE, maxSolidY + 2, CHUNK_SIZE};
 
     // ---- Per-section rebuild loop ----
+    // On the first sync rebuild after an async load, sectionMeshes[] are
+    // empty because the async path doesn't populate them. Force a full
+    // rebuild to fill all caches. This fires once per chunk, not every frame.
+    if (!sectionCachesPopulated) {
+        sectionDirty = 0xFF;
+        sectionCachesPopulated = true;
+    }
+
     // Only rebuild dirty sections; clean sections keep their cached meshes.
     for (int sect = 0; sect < NUM_SECTIONS; sect++) {
         if (!(sectionDirty & (1u << sect))) continue;
@@ -726,11 +770,10 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
 
         auto& sm = sectionMeshes[sect];
         sm.verts.clear();
+        sm.waterVerts.clear();
         sm.opaqueIdx.clear();
         sm.waterIdx.clear();
-        // Single vertex counter — opaque and water faces share sm.verts,
-        // so their indices must reference the same vertex space.
-        unsigned int vertBase = 0;
+        unsigned int opaqueBase = 0, waterBase = 0;
 
     for (int f = 0; f < 6; f++) {
         const FaceDef& fd = FACE_DEFS[f];
@@ -769,11 +812,10 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
 
                     bool show;
                     if (hasFlag(bt, BF_LIQUID)) {
-                        // Water renders top face (f==4) always if neighbor
-                        // above is air. Side faces render where water meets
-                        // air — this gives the visible "edge" of flowing water.
-                        // Skip face between two water blocks (no visible boundary).
-                        show = (nbType == AIR);
+                        // Water: top + 4 sides, skip bottom (never visible
+                        // from above). Side/top face renders where neighbor
+                        // is air. Skip faces between two water blocks.
+                        show = (f != 5) && (nbType == AIR);
                     } else {
                         show = (nbType == AIR) ||
                                (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
@@ -782,7 +824,8 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     int val = show ? (int)bt : -1;
                     mask[u][v] = val;
                     if (val != -1) anyFace = true;
-                }
+
+}
             }
 
             if (!anyFace) continue; // entire slice is air, skip greedy sweep
@@ -821,7 +864,8 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     // Water top face: per-vertex heights averaged with neighbors for a smooth surface.
                     float waterY[4] = {d_val, d_val, d_val, d_val};
                     if (bt == (int)WATER && f == 4) {
-                        computeWaterTopCorners(blocks, waterLevels.get(), u, d, v, fd.u_sign, fd.v_sign, waterY);
+                        computeWaterTopCorners(blocks, waterLevels.get(), u, d, v, fd.u_sign, fd.v_sign, waterY,
+                                               nx_neg, nx_pos, nz_neg, nz_pos);
                     }
 
                     float u_lo = (float)u - 0.5f, u_hi = (float)(u + w) - 0.5f;
@@ -833,23 +877,6 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
 
                     float vp[4][3];
                     bool isWT = (bt == (int)WATER && f == 4);
-
-                    // Water side faces: clamp the top edge (high-v vertices)
-                    // to the water surface height so sides aren't full-block.
-                    // fd.v==1 means the v axis is Y (true for all side faces).
-                    bool isWaterSide = (bt == (int)WATER && f != 4 && f != 5 && fd.v == 1);
-                    if (isWaterSide && waterLevels) {
-                        size_t wi = static_cast<size_t>(u) * CHUNK_HEIGHT * CHUNK_SIZE + d * CHUNK_SIZE + v;
-                        uint8_t wraw = waterLevels.get()[wi];
-                        // Falling water: full-height sides (column is continuous).
-                        // Flowing water: clamp top edge to water surface height.
-                        if (!waterIsFalling(wraw)) {
-                            float wh = (8.0f - waterFlowLevel(wraw)) / 9.0f;
-                            float waterTop = (float)v - 0.5f + wh;
-                            if (fd.v_sign > 0) v1 = waterTop;
-                            else v0 = waterTop;
-                        }
-                    }
 
                     // Vertex order: (u0,v0), (u0,v1), (u1,v1), (u1,v0)
                     vp[0][fd.d] = isWT ? waterY[0] : d_val;
@@ -864,6 +891,26 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     vp[3][fd.d] = isWT ? waterY[3] : d_val;
                     vp[3][fd.u] = u1;
                     vp[3][fd.v] = v0;
+
+                    // Water side faces: trim the top edge to the cell's
+                    // water height. Falling water stays full-height.
+                    bool isWaterSide = (bt == (int)WATER && f != 4 && f != 5 && fd.v == 1);
+                    if (isWaterSide && waterLevels) {
+                        int bc[3]; bc[fd.d] = d; bc[fd.u] = u; bc[fd.v] = v;
+                        size_t wi = static_cast<size_t>(bc[0]) * CHUNK_HEIGHT * CHUNK_SIZE + bc[1] * CHUNK_SIZE + bc[2];
+                        uint8_t wraw = waterLevels.get()[wi];
+                        if (!waterIsFalling(wraw)) {
+                            float wh = waterHeightFromRaw(wraw);
+                            float waterTop = (float)v - 0.5f + wh;
+                            if (fd.v_sign > 0) {
+                                vp[1][fd.v] = waterTop;
+                                vp[2][fd.v] = waterTop;
+                            } else {
+                                vp[0][fd.v] = waterTop;
+                                vp[3][fd.v] = waterTop;
+                            }
+                        }
+                    }
 
                     const float uvs[4][2] = {{0.f, 0.f}, {0.f, (float)h}, {(float)w, (float)h}, {(float)w, 0.f}};
 
@@ -973,44 +1020,62 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     }
 
                     auto& idx = isWater ? sm.waterIdx : sm.opaqueIdx;
+                    unsigned int& base = isWater ? waterBase : opaqueBase;
 
-                    // Batch-write 4 packed vertices at once
-                    size_t off = sm.verts.size();
-                    sm.verts.resize(off + 4 * BYTES_PER_VERT);
-                    PackedVertex* dst = reinterpret_cast<PackedVertex*>(&sm.verts[off]);
-                    for (int vi = 0; vi < 4; vi++) {
-                        dst->px = (int16_t)((vp[vi][0] + worldOff[0]) * 2.0f);
-                        dst->py = (int16_t)((vp[vi][1] + worldOff[1]) * 2.0f);
-                        dst->pz = (int16_t)((vp[vi][2] + worldOff[2]) * 2.0f);
-                        dst->u = (uint8_t)uvs[vi][0];
-                        dst->v = (uint8_t)uvs[vi][1];
-                        dst->normalIdx = (uint8_t)f;
-                        dst->texLayer = (uint8_t)layer;
-                        dst->ao = (uint8_t)(ao[vi] & 0x03) | flowBits;
-                        dst->packedLight = (uint8_t)(skyLightVals[vi] * 16 + blockLightVals[vi]);
-                        dst++;
+                    if (isWater) {
+                        // Water: float32 positions for sub-block precision
+                        size_t off = sm.waterVerts.size();
+                        sm.waterVerts.resize(off + 4 * WATER_BYTES_PER_VERT);
+                        WaterVertex* wdst = reinterpret_cast<WaterVertex*>(&sm.waterVerts[off]);
+                        for (int vi = 0; vi < 4; vi++) {
+                            wdst->px = (vp[vi][0] + worldOff[0]) * 2.0f;
+                            wdst->py = (vp[vi][1] + worldOff[1]) * 2.0f;
+                            wdst->pz = (vp[vi][2] + worldOff[2]) * 2.0f;
+                            wdst->u = (uint8_t)uvs[vi][0];
+                            wdst->v = (uint8_t)uvs[vi][1];
+                            wdst->normalIdx = (uint8_t)f;
+                            wdst->texLayer = (uint8_t)layer;
+                            wdst->ao = (uint8_t)(ao[vi] & 0x03) | flowBits;
+                            wdst->packedLight = (uint8_t)(skyLightVals[vi] * 16 + blockLightVals[vi]);
+                            wdst++;
+                        }
+                    } else {
+                        // Opaque: int16 positions (standard packed format)
+                        size_t off = sm.verts.size();
+                        sm.verts.resize(off + 4 * BYTES_PER_VERT);
+                        PackedVertex* dst = reinterpret_cast<PackedVertex*>(&sm.verts[off]);
+                        for (int vi = 0; vi < 4; vi++) {
+                            dst->px = (int16_t)((vp[vi][0] + worldOff[0]) * 2.0f);
+                            dst->py = (int16_t)((vp[vi][1] + worldOff[1]) * 2.0f);
+                            dst->pz = (int16_t)((vp[vi][2] + worldOff[2]) * 2.0f);
+                            dst->u = (uint8_t)uvs[vi][0];
+                            dst->v = (uint8_t)uvs[vi][1];
+                            dst->normalIdx = (uint8_t)f;
+                            dst->texLayer = (uint8_t)layer;
+                            dst->ao = (uint8_t)ao[vi];
+                            dst->packedLight = (uint8_t)(skyLightVals[vi] * 16 + blockLightVals[vi]);
+                            dst++;
+                        }
                     }
                     // Flip quad diagonal when AO is asymmetric to avoid
-                    // interpolation artifacts. Skip flip for water — the
-                    // corner-height averaging already handles smooth surfaces
-                    // and the flip creates visible diamond seams on flat water.
-                    bool flipDiag = !isWater && (ao[0] + ao[2] > ao[1] + ao[3]);
+                    // interpolation artifacts.
+                    bool flipDiag = (ao[0] + ao[2] > ao[1] + ao[3]);
                     if (flipDiag) {
-                        idx.push_back(vertBase);
-                        idx.push_back(vertBase + 1);
-                        idx.push_back(vertBase + 2);
-                        idx.push_back(vertBase + 2);
-                        idx.push_back(vertBase + 3);
-                        idx.push_back(vertBase);
+                        idx.push_back(base);
+                        idx.push_back(base + 1);
+                        idx.push_back(base + 2);
+                        idx.push_back(base + 2);
+                        idx.push_back(base + 3);
+                        idx.push_back(base);
                     } else {
-                        idx.push_back(vertBase + 1);
-                        idx.push_back(vertBase + 2);
-                        idx.push_back(vertBase + 3);
-                        idx.push_back(vertBase + 3);
-                        idx.push_back(vertBase);
-                        idx.push_back(vertBase + 1);
+                        idx.push_back(base + 1);
+                        idx.push_back(base + 2);
+                        idx.push_back(base + 3);
+                        idx.push_back(base + 3);
+                        idx.push_back(base);
+                        idx.push_back(base + 1);
                     }
-                    vertBase += 4;
+                    base += 4;
 
                     if (g_greedyMeshing) {
                         for (int du = 0; du < w; du++)
@@ -1023,42 +1088,29 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
     }
     } // end per-section loop
 
-    // ---- Stitch all section meshes into one pendingMesh ----
-    // Concatenate per-section verts and rebase indices so the GPU sees
-    // one continuous VBO/EBO with opaque triangles first, then water.
+    // ---- Stitch section meshes into pendingMesh ----
+    // Opaque and water are now separate: opaque uses PackedVertex (int16),
+    // water uses WaterVertex (float32). Each gets its own VBO.
     {
-        size_t totalVerts = 0, totalOpaque = 0, totalWater = 0;
-        for (int s = 0; s < NUM_SECTIONS; s++) {
-            totalVerts += sectionMeshes[s].verts.size();
-            totalOpaque += sectionMeshes[s].opaqueIdx.size();
-            totalWater += sectionMeshes[s].waterIdx.size();
-        }
-
         pendingMesh.verts.clear();
-        pendingMesh.verts.reserve(totalVerts);
+        pendingMesh.waterVerts.clear();
         pendingMesh.opaqueIdx.clear();
-        pendingMesh.opaqueIdx.reserve(totalOpaque + totalWater);
         pendingMesh.waterIdx.clear();
 
-        unsigned int vertOffset = 0;
-        // Opaque indices from each section
+        unsigned int opaqueVertOff = 0, waterVertOff = 0;
         for (int s = 0; s < NUM_SECTIONS; s++) {
             auto& sm = sectionMeshes[s];
+            // Opaque
             pendingMesh.verts.insert(pendingMesh.verts.end(), sm.verts.begin(), sm.verts.end());
             for (auto idx_val : sm.opaqueIdx)
-                pendingMesh.opaqueIdx.push_back(idx_val + vertOffset);
-            // Water indices get a second pass (opaque first in the EBO)
-            vertOffset += (unsigned int)(sm.verts.size() / BYTES_PER_VERT);
-        }
-        // Water indices from each section (rebase with same vertex offsets)
-        unsigned int vertOffset2 = 0;
-        for (int s = 0; s < NUM_SECTIONS; s++) {
-            auto& sm = sectionMeshes[s];
+                pendingMesh.opaqueIdx.push_back(idx_val + opaqueVertOff);
+            opaqueVertOff += (unsigned int)(sm.verts.size() / BYTES_PER_VERT);
+            // Water
+            pendingMesh.waterVerts.insert(pendingMesh.waterVerts.end(), sm.waterVerts.begin(), sm.waterVerts.end());
             for (auto idx_val : sm.waterIdx)
-                pendingMesh.opaqueIdx.push_back(idx_val + vertOffset2);
-            vertOffset2 += (unsigned int)(sm.verts.size() / BYTES_PER_VERT);
+                pendingMesh.waterIdx.push_back(idx_val + waterVertOff);
+            waterVertOff += (unsigned int)(sm.waterVerts.size() / WATER_BYTES_PER_VERT);
         }
-        pendingMesh.waterIdx.resize(totalWater);
         pendingMesh.ready = true;
     }
 
@@ -1218,7 +1270,7 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLe
                     block_type nbType = getTypeCross(nc[0], nc[1], nc[2]);
                     bool show;
                     if (hasFlag(bt, BF_LIQUID)) {
-                        show = (nbType == AIR);
+                        show = (f != 5) && (nbType == AIR);
                     } else {
                         show = (nbType == AIR) ||
                                (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
@@ -1269,9 +1321,11 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLe
                     float vp[4][3];
                     bool isWT2 = (bt == (int)WATER && f == 4);
 
+                    // Water side faces: clamp top edge to water level height
                     bool isWaterSide2 = (bt == (int)WATER && f != 4 && f != 5 && fd.v == 1);
                     if (isWaterSide2 && waterLevels) {
-                        size_t wi = static_cast<size_t>(u) * CHUNK_HEIGHT * CHUNK_SIZE + d * CHUNK_SIZE + v;
+                        int bc[3]; bc[fd.d] = d; bc[fd.u] = u; bc[fd.v] = v;
+                        size_t wi = static_cast<size_t>(bc[0]) * CHUNK_HEIGHT * CHUNK_SIZE + bc[1] * CHUNK_SIZE + bc[2];
                         uint8_t wraw = waterLevels[wi];
                         if (!waterIsFalling(wraw)) {
                             float wh = (8.0f - waterFlowLevel(wraw)) / 9.0f;
@@ -1337,24 +1391,41 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLe
                     }
 
                     bool isWater = (bt == (int)WATER);
-                    auto& verts = isWater ? waterVerts : opaqueVerts;
                     auto& idx = isWater ? waterIdx : opaqueIdx;
                     unsigned int& base = isWater ? waterBase : opaqueBase;
 
-                    size_t off = verts.size();
-                    verts.resize(off + 4 * BYTES_PER_VERT);
-                    PackedVertex* dst = reinterpret_cast<PackedVertex*>(&verts[off]);
-                    for (int vi = 0; vi < 4; vi++) {
-                        dst->px = (int16_t)((vp[vi][0] + worldOff[0]) * 2.0f);
-                        dst->py = (int16_t)((vp[vi][1] + worldOff[1]) * 2.0f);
-                        dst->pz = (int16_t)((vp[vi][2] + worldOff[2]) * 2.0f);
-                        dst->u = (uint8_t)uvs[vi][0];
-                        dst->v = (uint8_t)uvs[vi][1];
-                        dst->normalIdx = (uint8_t)f;
-                        dst->texLayer = (uint8_t)layer;
-                        dst->ao = (uint8_t)ao[vi];
-                        dst->packedLight = (uint8_t)(skyLightVals[vi] * 16 + blockLightVals[vi]);
-                        dst++;
+                    if (isWater) {
+                        size_t off = waterVerts.size();
+                        waterVerts.resize(off + 4 * WATER_BYTES_PER_VERT);
+                        WaterVertex* wdst = reinterpret_cast<WaterVertex*>(&waterVerts[off]);
+                        for (int vi = 0; vi < 4; vi++) {
+                            wdst->px = (vp[vi][0] + worldOff[0]) * 2.0f;
+                            wdst->py = (vp[vi][1] + worldOff[1]) * 2.0f;
+                            wdst->pz = (vp[vi][2] + worldOff[2]) * 2.0f;
+                            wdst->u = (uint8_t)uvs[vi][0];
+                            wdst->v = (uint8_t)uvs[vi][1];
+                            wdst->normalIdx = (uint8_t)f;
+                            wdst->texLayer = (uint8_t)layer;
+                            wdst->ao = (uint8_t)ao[vi];
+                            wdst->packedLight = (uint8_t)(skyLightVals[vi] * 16 + blockLightVals[vi]);
+                            wdst++;
+                        }
+                    } else {
+                        size_t off = opaqueVerts.size();
+                        opaqueVerts.resize(off + 4 * BYTES_PER_VERT);
+                        PackedVertex* dst = reinterpret_cast<PackedVertex*>(&opaqueVerts[off]);
+                        for (int vi = 0; vi < 4; vi++) {
+                            dst->px = (int16_t)((vp[vi][0] + worldOff[0]) * 2.0f);
+                            dst->py = (int16_t)((vp[vi][1] + worldOff[1]) * 2.0f);
+                            dst->pz = (int16_t)((vp[vi][2] + worldOff[2]) * 2.0f);
+                            dst->u = (uint8_t)uvs[vi][0];
+                            dst->v = (uint8_t)uvs[vi][1];
+                            dst->normalIdx = (uint8_t)f;
+                            dst->texLayer = (uint8_t)layer;
+                            dst->ao = (uint8_t)ao[vi];
+                            dst->packedLight = (uint8_t)(skyLightVals[vi] * 16 + blockLightVals[vi]);
+                            dst++;
+                        }
                     }
 
                     if (ao[0] + ao[2] > ao[1] + ao[3]) {
@@ -1384,13 +1455,11 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLe
         }
     }
 
-    opaqueVerts.insert(opaqueVerts.end(), waterVerts.begin(), waterVerts.end());
-    for (auto idx_val : waterIdx) opaqueIdx.push_back(idx_val + opaqueBase);
-
     Chunk::MeshData result;
     result.verts = std::move(opaqueVerts);
-    result.waterIdx.resize(waterIdx.size());
+    result.waterVerts = std::move(waterVerts);
     result.opaqueIdx = std::move(opaqueIdx);
+    result.waterIdx = std::move(waterIdx);
     result.ready = true;
     return result;
 }
@@ -1407,53 +1476,70 @@ void Chunk::buildMeshDataAsync(const NeighborBorders& borders) {
 void Chunk::uploadMesh() {
     if (!pendingMesh.ready) return;
 
+    // --- Opaque VBO/VAO (int16 positions, 12-byte PackedVertex) ---
     if (chunkVAO == 0) {
         glGenVertexArrays(1, &chunkVAO);
         glGenBuffers(1, &chunkVBO);
         glGenBuffers(1, &chunkEBO);
     }
-
     glBindVertexArray(chunkVAO);
-
     glBindBuffer(GL_ARRAY_BUFFER, chunkVBO);
     glBufferData(GL_ARRAY_BUFFER, pendingMesh.verts.size(), pendingMesh.verts.data(), GL_STATIC_DRAW);
-
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, chunkEBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, pendingMesh.opaqueIdx.size() * sizeof(unsigned int),
                  pendingMesh.opaqueIdx.data(), GL_STATIC_DRAW);
-
     constexpr int STRIDE = 12;
-    // pos: 3 x int16 at offset 0
     glVertexAttribPointer(0, 3, GL_SHORT, GL_FALSE, STRIDE, nullptr);
     glEnableVertexAttribArray(0);
-    // uv: 2 x uint8 at offset 6
     glVertexAttribPointer(1, 2, GL_UNSIGNED_BYTE, GL_FALSE, STRIDE, (void*)6);
     glEnableVertexAttribArray(1);
-    // normalIdx: 1 x uint8 at offset 8
     glVertexAttribPointer(2, 1, GL_UNSIGNED_BYTE, GL_FALSE, STRIDE, (void*)8);
     glEnableVertexAttribArray(2);
-    // texLayer: 1 x uint8 at offset 9
     glVertexAttribPointer(3, 1, GL_UNSIGNED_BYTE, GL_FALSE, STRIDE, (void*)9);
     glEnableVertexAttribArray(3);
-    // ao: 1 x uint8 at offset 10
     glVertexAttribPointer(4, 1, GL_UNSIGNED_BYTE, GL_FALSE, STRIDE, (void*)10);
     glEnableVertexAttribArray(4);
-    // packedLight: 1 x uint8 at offset 11
     glVertexAttribPointer(5, 1, GL_UNSIGNED_BYTE, GL_FALSE, STRIDE, (void*)11);
     glEnableVertexAttribArray(5);
-
     glBindVertexArray(0);
 
-    // Track counts before clearing
-    int totalOpaqueIdx = (int)pendingMesh.opaqueIdx.size() - (int)pendingMesh.waterIdx.size();
-    opaqueIndexCount = totalOpaqueIdx;
+    // --- Water VBO/VAO (float32 positions, 18-byte WaterVertex) ---
+    if (waterVAO == 0) {
+        glGenVertexArrays(1, &waterVAO);
+        glGenBuffers(1, &waterVBO);
+        glGenBuffers(1, &waterEBO);
+    }
+    glBindVertexArray(waterVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, waterVBO);
+    glBufferData(GL_ARRAY_BUFFER, pendingMesh.waterVerts.size(), pendingMesh.waterVerts.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, waterEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, pendingMesh.waterIdx.size() * sizeof(unsigned int),
+                 pendingMesh.waterIdx.data(), GL_STATIC_DRAW);
+    constexpr int WSTRIDE = 18;
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, WSTRIDE, nullptr);       // float pos at offset 0
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_UNSIGNED_BYTE, GL_FALSE, WSTRIDE, (void*)12);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 1, GL_UNSIGNED_BYTE, GL_FALSE, WSTRIDE, (void*)14);
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(3, 1, GL_UNSIGNED_BYTE, GL_FALSE, WSTRIDE, (void*)15);
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(4, 1, GL_UNSIGNED_BYTE, GL_FALSE, WSTRIDE, (void*)16);
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(5, 1, GL_UNSIGNED_BYTE, GL_FALSE, WSTRIDE, (void*)17);
+    glEnableVertexAttribArray(5);
+    glBindVertexArray(0);
+
+    opaqueIndexCount = (int)pendingMesh.opaqueIdx.size();
     waterIndexCount = (int)pendingMesh.waterIdx.size();
-    waterIndexOffset = totalOpaqueIdx * sizeof(unsigned int);
-    // Clear only the dirty bits that the uploaded mesh was built from.
-    // New bits set since buildMeshData ran (e.g., by the water sim)
-    // survive and trigger another rebuild next frame.
+    // Clear the bits that the uploaded mesh was built from, then restore
+    // any bits that were re-set during the build (e.g., by the water sim
+    // creating new cells in the same section). Without the restore, rapid
+    // changes in the same section get silently dropped.
     sectionDirty &= ~builtDirtyMask;
+    sectionDirty |= dirtyDuringBuild;
     builtDirtyMask = 0;
+    dirtyDuringBuild = 0;
 
     // Free CPU-side data
     pendingMesh.verts.clear();
@@ -1489,8 +1575,8 @@ std::vector<Cube*> Chunk::render(const Shader& /*shaderProgram*/, Chunk* nx_neg,
 void Chunk::renderWater(const Shader& /*shaderProgram*/, Chunk* /*nx_neg*/, Chunk* /*nx_pos*/, Chunk* /*nz_neg*/,
                         Chunk* /*nz_pos*/) {
     if (waterIndexCount > 0) {
-        glBindVertexArray(chunkVAO);
-        glDrawElements(GL_TRIANGLES, waterIndexCount, GL_UNSIGNED_INT, (void*)waterIndexOffset);
+        glBindVertexArray(waterVAO);
+        glDrawElements(GL_TRIANGLES, waterIndexCount, GL_UNSIGNED_INT, nullptr);
         g_frame.waterTriangles += waterIndexCount / 3;
         g_frame.waterDrawCalls++;
     }
@@ -1609,18 +1695,12 @@ int Chunk::getGlobalHeight(int x, int y) {
 }
 
 void Chunk::destroy() {
-    if (chunkVAO) {
-        glDeleteVertexArrays(1, &chunkVAO);
-        chunkVAO = 0;
-    }
-    if (chunkVBO) {
-        glDeleteBuffers(1, &chunkVBO);
-        chunkVBO = 0;
-    }
-    if (chunkEBO) {
-        glDeleteBuffers(1, &chunkEBO);
-        chunkEBO = 0;
-    }
+    if (chunkVAO) { glDeleteVertexArrays(1, &chunkVAO); chunkVAO = 0; }
+    if (chunkVBO) { glDeleteBuffers(1, &chunkVBO); chunkVBO = 0; }
+    if (chunkEBO) { glDeleteBuffers(1, &chunkEBO); chunkEBO = 0; }
+    if (waterVAO) { glDeleteVertexArrays(1, &waterVAO); waterVAO = 0; }
+    if (waterVBO) { glDeleteBuffers(1, &waterVBO); waterVBO = 0; }
+    if (waterEBO) { glDeleteBuffers(1, &waterEBO); waterEBO = 0; }
     for (int i = 0; i < NUM_SECTIONS; i++) sections[i].reset();
     skyLight.reset();
 }

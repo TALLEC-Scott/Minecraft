@@ -890,7 +890,7 @@ int main(int argc, char* argv[]) {
                 if (stressWater && frame == WARMUP_FRAMES) {
                     glm::vec3 pp = player.getPosition();
                     int ox = (int)std::floor(pp.x);
-                    int oy = (int)std::floor(pp.y) + 6; // above head
+                    int oy = (int)std::floor(pp.y) + 6;
                     int oz = (int)std::floor(pp.z);
                     int placed = 0;
                     for (int dx = -8; dx <= 8; dx += 2) {
@@ -911,8 +911,7 @@ int main(int argc, char* argv[]) {
                     float angle = glm::radians((float)frame / WARMUP_FRAMES * 360.0f);
                     player.getCamera().changeDirection(glm::vec3(std::cos(angle), 0.0f, std::sin(angle)));
                 } else if (stressWater) {
-                    // Phase 2 (stress-water): stay put looking down so the
-                    // flood stays in view and its mesh rebuilds are in-frame.
+                    // Stay put looking down at the flood
                     player.getCamera().changeDirection(glm::vec3(0.3f, -0.6f, 0.0f));
                 } else {
                     // Phase 2 (measured): move forward at fixed sprint speed

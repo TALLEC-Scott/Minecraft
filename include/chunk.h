@@ -78,8 +78,9 @@ class Chunk {
           waterLevels(std::move(other.waterLevels)),
           chunkX(other.chunkX),
           chunkY(other.chunkY), chunkVAO(other.chunkVAO), chunkVBO(other.chunkVBO), chunkEBO(other.chunkEBO),
+          waterVAO(other.waterVAO), waterVBO(other.waterVBO), waterEBO(other.waterEBO),
           opaqueIndexCount(other.opaqueIndexCount), waterIndexCount(other.waterIndexCount),
-          waterIndexOffset(other.waterIndexOffset), sectionDirty(other.sectionDirty), maxSolidY(other.maxSolidY),
+          sectionDirty(other.sectionDirty), maxSolidY(other.maxSolidY),
           pendingMesh(std::move(other.pendingMesh)), meshBuildInFlight(other.meshBuildInFlight) {
         for (int i = 0; i < NUM_SECTIONS; i++) {
             sections[i] = std::move(other.sections[i]);
@@ -87,6 +88,7 @@ class Chunk {
         }
         std::memcpy(heights, other.heights, sizeof(heights));
         other.chunkVAO = other.chunkVBO = other.chunkEBO = 0;
+        other.waterVAO = other.waterVBO = other.waterEBO = 0;
     }
 
     Chunk& operator=(Chunk&& other) noexcept {
@@ -94,6 +96,9 @@ class Chunk {
             if (chunkVAO) glDeleteVertexArrays(1, &chunkVAO);
             if (chunkVBO) glDeleteBuffers(1, &chunkVBO);
             if (chunkEBO) glDeleteBuffers(1, &chunkEBO);
+            if (waterVAO) glDeleteVertexArrays(1, &waterVAO);
+            if (waterVBO) glDeleteBuffers(1, &waterVBO);
+            if (waterEBO) glDeleteBuffers(1, &waterEBO);
 
             for (int i = 0; i < NUM_SECTIONS; i++) {
                 sections[i] = std::move(other.sections[i]);
@@ -106,9 +111,11 @@ class Chunk {
             chunkVAO = other.chunkVAO;
             chunkVBO = other.chunkVBO;
             chunkEBO = other.chunkEBO;
+            waterVAO = other.waterVAO;
+            waterVBO = other.waterVBO;
+            waterEBO = other.waterEBO;
             opaqueIndexCount = other.opaqueIndexCount;
             waterIndexCount = other.waterIndexCount;
-            waterIndexOffset = other.waterIndexOffset;
             sectionDirty = other.sectionDirty;
             maxSolidY = other.maxSolidY;
             pendingMesh = std::move(other.pendingMesh);
@@ -116,6 +123,7 @@ class Chunk {
             std::memcpy(heights, other.heights, sizeof(heights));
 
             other.chunkVAO = other.chunkVBO = other.chunkEBO = 0;
+            other.waterVAO = other.waterVBO = other.waterEBO = 0;
         }
         return *this;
     }
@@ -138,16 +146,17 @@ class Chunk {
 
     // Pre-built CPU-side mesh data (can be built on any thread)
     struct MeshData {
-        std::vector<uint8_t> verts;
+        std::vector<uint8_t> verts;       // opaque vertices (PackedVertex)
+        std::vector<uint8_t> waterVerts;  // water vertices (WaterVertex, float32 positions)
         std::vector<unsigned int> opaqueIdx;
         std::vector<unsigned int> waterIdx;
         bool ready = false;
     };
 
     // Per-section cached mesh — used for incremental rebuilds.
-    // Only dirty sections are re-meshed; clean sections reuse the cache.
     struct SectionMesh {
-        std::vector<uint8_t> verts;
+        std::vector<uint8_t> verts;       // opaque (PackedVertex)
+        std::vector<uint8_t> waterVerts;  // water (WaterVertex)
         std::vector<unsigned int> opaqueIdx;
         std::vector<unsigned int> waterIdx;
     };
@@ -162,6 +171,11 @@ class Chunk {
     void markSectionDirty(int sy) {
         if (sy < 0 || sy >= NUM_SECTIONS) return;
         sectionDirty |= (1u << sy);
+        // If a build is in flight or pending upload, also record this
+        // bit so uploadMesh can restore it — otherwise the upload's
+        // builtDirtyMask clear wipes changes made after the snapshot.
+        if (meshBuildInFlight || builtDirtyMask != 0)
+            dirtyDuringBuild |= (1u << sy);
     }
     bool isMeshDirty() const { return sectionDirty != 0; }
     void destroy();
@@ -172,9 +186,9 @@ class Chunk {
         pendingMesh = std::move(m);
         pendingMesh.ready = true;
         meshBuildInFlight = false;
-        // Async builds rebuild the full chunk (all sections), so mark
-        // all bits as "built" so uploadMesh clears them properly.
-        builtDirtyMask = 0xFF;
+        // The async mesh replaces the sync mesh, so invalidate
+        // section caches — the next sync rebuild must repopulate them.
+        sectionCachesPopulated = false;
     }
 
     int getLocalHeight(int x, int y);
@@ -259,10 +273,12 @@ class Chunk {
     // happens. Cleared to 0 after uploadMesh. Block edits set only the
     // affected bit(s) via markSectionDirty.
     uint8_t sectionDirty = 0xFF;
+    bool sectionCachesPopulated = false; // set after first sync full rebuild
     // Which dirty bits the in-flight / pending mesh was built from.
     // uploadMesh clears only these bits so new dirty bits set during
     // the async build (or between buildMeshData and uploadMesh) survive.
     uint8_t builtDirtyMask = 0;
+    uint8_t dirtyDuringBuild = 0;
     // Cached per-section mesh data. Clean sections are reused across
     // incremental rebuilds; only dirty sections get re-meshed.
     SectionMesh sectionMeshes[NUM_SECTIONS];
@@ -272,13 +288,16 @@ class Chunk {
     int heights[CHUNK_SIZE][CHUNK_SIZE]{};
     Biome biomes[CHUNK_SIZE][CHUNK_SIZE]{};
 
-    // Chunk-level GPU mesh
+    // Chunk-level GPU mesh — opaque geometry
     GLuint chunkVAO = 0;
     GLuint chunkVBO = 0;
     GLuint chunkEBO = 0;
     int opaqueIndexCount = 0;
+    // Water geometry — separate VBO with float32 positions for sub-block precision
+    GLuint waterVAO = 0;
+    GLuint waterVBO = 0;
+    GLuint waterEBO = 0;
     int waterIndexCount = 0;
-    size_t waterIndexOffset = 0;
     MeshData pendingMesh;
 };
 

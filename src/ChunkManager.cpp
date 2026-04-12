@@ -188,6 +188,9 @@ void ChunkManager::queueMeshBuild(glm::ivec2 pos) {
     req.chunkZ = chunk.chunkY; // chunkY is actually Z coordinate
     req.borders = borders;
 
+    // Snapshot which dirty bits this build covers, so uploadMesh only
+    // clears THOSE bits — not bits set by the water sim after the snapshot.
+    chunk.builtDirtyMask = chunk.sectionDirty;
     chunk.meshBuildInFlight = true;
 
     {
@@ -205,6 +208,12 @@ void ChunkManager::queueDirtyMeshBuilds() {
     // another rebuild next frame.
     for (auto& [pos, chunk] : chunks) {
         if (chunk.isMeshDirty() && !chunk.meshBuildInFlight) {
+            // Chunks that have been sync-rebuilt (sectionCachesPopulated)
+            // use the sync path in render() for incremental per-section
+            // updates. Don't re-queue them async — the async path builds
+            // the full chunk from a snapshot and would overwrite the
+            // carefully-maintained section caches with stale data.
+            if (chunk.sectionCachesPopulated) continue;
             queueMeshBuild(pos);
         }
     }

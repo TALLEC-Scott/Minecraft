@@ -290,6 +290,82 @@ TEST(WaterSimulator, FallingWaterColumnHasWaterBelow) {
     }
 }
 
+TEST(WaterSimulator, FallingColumnHasNoGaps) {
+    // Build a tall falling column and verify there are NO air gaps.
+    // Check every single Y level between source and floor.
+    PedestalScene s;
+    // Place source at y=20 (higher up for a longer column)
+    const int srcY = 20;
+    s.world.setBlock(s.SRC_X, srcY, s.SRC_Z, WATER, 0);
+    s.sim.activate(s.SRC_X, srcY, s.SRC_Z);
+
+    // Run many ticks so the column reaches the floor
+    runTicks(s.sim, 100);
+
+    // Check every Y from source down to floor
+    int waterCount = 0, airGaps = 0, fallingCount = 0;
+    for (int y = PedestalScene::FLOOR_Y + 1; y <= srcY; y++) {
+        block_type bt = getType(s.world, s.SRC_X, y, s.SRC_Z);
+        if (bt == WATER) {
+            waterCount++;
+            uint8_t raw = getWaterRaw(s.world, s.SRC_X, y, s.SRC_Z);
+            if (waterIsFalling(raw)) fallingCount++;
+        } else {
+            airGaps++;
+        }
+    }
+    int expectedCells = srcY - PedestalScene::FLOOR_Y;
+    EXPECT_EQ(waterCount, expectedCells)
+        << "column should have " << expectedCells << " water cells, got " << waterCount
+        << " (" << airGaps << " air gaps)";
+    EXPECT_EQ(airGaps, 0) << "column should have NO air gaps";
+
+    // Check all 4 sides of every mid-column cell are AIR
+    int missingFaces = 0;
+    for (int y = PedestalScene::FLOOR_Y + 2; y < srcY; y++) {
+        if (getType(s.world, s.SRC_X, y, s.SRC_Z) != WATER) continue;
+        int dirs[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
+        for (auto& d : dirs) {
+            block_type nb = getType(s.world, s.SRC_X + d[0], y, s.SRC_Z + d[1]);
+            if (nb != AIR) missingFaces++;
+        }
+    }
+    EXPECT_EQ(missingFaces, 0)
+        << "mid-column cells should have AIR on all 4 sides";
+}
+
+TEST(WaterSimulator, FallingColumnGrowsOnePerTick) {
+    // Verify the column extends by exactly one cell per tick.
+    PedestalScene s;
+    const int srcY = 15;
+    s.world.setBlock(s.SRC_X, srcY, s.SRC_Z, WATER, 0);
+    s.sim.activate(s.SRC_X, srcY, s.SRC_Z);
+
+    auto columnBottom = [&]() -> int {
+        for (int y = PedestalScene::FLOOR_Y + 1; y <= srcY; y++)
+            if (getType(s.world, s.SRC_X, y, s.SRC_Z) == WATER) return y;
+        return srcY + 1;
+    };
+
+    // After 1 tick: source at srcY, falling at srcY-1
+    runTicks(s.sim, 1);
+    EXPECT_EQ(columnBottom(), srcY - 1);
+
+    // After 2 ticks: extends to srcY-2
+    runTicks(s.sim, 1);
+    EXPECT_EQ(columnBottom(), srcY - 2);
+
+    // After 5 more ticks: extends to srcY-7
+    runTicks(s.sim, 5);
+    EXPECT_EQ(columnBottom(), srcY - 7);
+
+    // Verify NO gaps in the column
+    for (int y = columnBottom(); y <= srcY; y++) {
+        EXPECT_EQ(getType(s.world, s.SRC_X, y, s.SRC_Z), WATER)
+            << "gap at y=" << y;
+    }
+}
+
 // --- Section dirty tracking ---
 
 TEST(WaterSimulator, SectionDirtyOnlyAffectedSection) {
