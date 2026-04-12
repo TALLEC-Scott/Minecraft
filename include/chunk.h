@@ -14,6 +14,8 @@
 #include "cube.h"
 #include "chunk_section.h"
 #include "light_data.h"
+#include "mesh_types.h"
+#include "chunk_mesh.h"
 #include "shader.h"
 #include "skylight.h"
 #include "sparse_skylight.h"
@@ -153,34 +155,16 @@ class Chunk {
         Chunk* dPP = nullptr; // (+X,+Z)
     };
 
-    struct NeighborBorder {
-        block_type types[CHUNK_SIZE][CHUNK_HEIGHT]{};
-        uint8_t lightBorder[CHUNK_SIZE][CHUNK_HEIGHT]{}; // high nibble = sky, low = block
-        uint8_t waterBorder[CHUNK_SIZE][CHUNK_HEIGHT]{};
-        bool valid = false;
-    };
-
-    struct DiagonalCorner {
-        block_type types[CHUNK_HEIGHT]{};
-        uint8_t waterBorder[CHUNK_HEIGHT]{};
-        bool valid = false;
-    };
-
-    struct NeighborBorders {
-        NeighborBorder xNeg, xPos, zNeg, zPos;
-        DiagonalCorner dNN, dNP, dPN, dPP;
-    };
+    // Neighbor-border / mesh-data types live at namespace scope in
+    // mesh_types.h so chunk_mesh.cpp can depend on them without pulling
+    // in class Chunk. These aliases preserve the existing
+    // `Chunk::NeighborBorders` call sites.
+    using NeighborBorder = ::NeighborBorder;
+    using DiagonalCorner = ::DiagonalCorner;
+    using NeighborBorders = ::NeighborBorders;
+    using MeshData = ::MeshData;
 
     static NeighborBorders snapshotBorders(const NeighborChunks& nc);
-
-    // Pre-built CPU-side mesh data (can be built on any thread)
-    struct MeshData {
-        std::vector<uint8_t> verts;       // opaque vertices (PackedVertex)
-        std::vector<uint8_t> waterVerts;  // water vertices (WaterVertex, float32 positions)
-        std::vector<unsigned int> opaqueIdx;
-        std::vector<unsigned int> waterIdx;
-        bool ready = false;
-    };
 
     // Per-section cached mesh — used for incremental rebuilds.
     struct SectionMesh {
