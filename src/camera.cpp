@@ -94,11 +94,12 @@ void Camera::update(BlockCheck isSolid, void* ctx, WaterCheck isWater) {
     inWater = false;
     eyesInWater = false;
     if (isWater) {
-        int fx = (int)std::floor(cameraPosition.x);
-        int fz = (int)std::floor(cameraPosition.z);
-        int fy = (int)std::floor(cameraPosition.y - PLAYER_HEIGHT);
+        // +0.5 shift for block-centered coordinates (block N spans N-0.5 to N+0.5)
+        int fx = (int)std::floor(cameraPosition.x + 0.5f);
+        int fz = (int)std::floor(cameraPosition.z + 0.5f);
+        int fy = (int)std::floor(cameraPosition.y - PLAYER_HEIGHT + 0.5f);
         int ty = fy + 1;
-        int hy = (int)std::floor(cameraPosition.y);
+        int hy = (int)std::floor(cameraPosition.y + 0.5f);
         eyesInWater = isWater(fx, hy, fz, ctx);
         inWater = isWater(fx, fy, fz, ctx) || isWater(fx, ty, fz, ctx) || eyesInWater;
     }

@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Water Physics 3D — Interactive Demo</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #0f1115;
+    color: #e8eaed;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  #canvas-root {
+    position: fixed;
+    inset: 0;
+  }
+  #ui {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    background: rgba(24, 28, 35, 0.92);
+    border: 1px solid #2a3140;
+    border-radius: 10px;
+    padding: 14px 16px;
+    min-width: 220px;
+    backdrop-filter: blur(8px);
+    z-index: 10;
+  }
+  #ui h3 { margin: 0 0 10px; font-size: 0.95rem; color: #4aa3ff; font-weight: 600; }
+  #ui button {
+    display: block;
+    width: 100%;
+    margin: 5px 0;
+    padding: 8px 12px;
+    background: #252a33;
+    border: 1px solid #2a3140;
+    color: #e8eaed;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  #ui button:hover { background: #2e3540; }
+  #ui button.active { background: #1e3a5f; border-color: #4aa3ff; }
+  #ui .row { display: flex; gap: 5px; }
+  #ui .row button { margin: 5px 0; }
+  #ui .label {
+    font-size: 0.72rem;
+    color: #9aa3af;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 10px;
+    margin-bottom: 4px;
+  }
+  #stats {
+    font-size: 0.75rem;
+    color: #9aa3af;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    padding: 8px 10px;
+    background: #14171c;
+    border-radius: 4px;
+    margin-top: 6px;
+  }
+  #stats .k { color: #4aa3ff; }
+  #help {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    font-size: 0.75rem;
+    color: #9aa3af;
+    background: rgba(24, 28, 35, 0.92);
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid #2a3140;
+  }
+  #help kbd {
+    background: #252a33;
+    border: 1px solid #3a4150;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.7rem;
+  }
+</style>
+</head>
+<body>
+<div id="canvas-root"></div>
+
+<div id="ui">
+  <h3>Water Physics 3D</h3>
+  <button id="btn-play">⏸ Pause</button>
+  <button id="btn-reset">↻ Reset scene</button>
+
+  <div class="label">Source</div>
+  <button id="btn-source">Remove source</button>
+
+  <div class="label">View</div>
+  <div class="row">
+    <button id="btn-rotate">Auto-rotate</button>
+  </div>
+
+  <div id="stats">
+    <div>tick <span class="k" id="st-tick">0</span></div>
+    <div>water cells <span class="k" id="st-water">0</span></div>
+    <div>active <span class="k" id="st-active">0</span></div>
+  </div>
+</div>
+
+<div id="help">
+  <kbd>drag</kbd> orbit · <kbd>scroll</kbd> zoom · <kbd>right-drag</kbd> pan · <kbd>space</kbd> pause
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ---------- CA simulation ----------
+// Grid dimensions. Y is up.
+const GX = 16, GY = 14, GZ = 16;
+const FALLING_FLAG = 0x80;
+const LEVEL_MASK = 0x07;
+
+// Cells
+const AIR = 0, STONE = 1, WATER = 2;
+
+const cellType  = new Uint8Array(GX * GY * GZ);
+const cellWater = new Uint8Array(GX * GY * GZ);
+
+const idx = (x, y, z) => (y * GZ + z) * GX + x;
+const inBounds = (x, y, z) => x >= 0 && x < GX && y >= 0 && y < GY && z >= 0 && z < GZ;
+
+const flowLevel = (raw) => raw & LEVEL_MASK;
+const isFalling = (raw) => (raw & FALLING_FLAG) !== 0;
+const isSource = (raw) => (raw & (LEVEL_MASK | FALLING_FLAG)) === 0;
+
+function buildTerrain() {
+  cellType.fill(AIR);
+  cellWater.fill(0);
+  // Floor at y=0..1
+  for (let x = 0; x < GX; x++)
+    for (let z = 0; z < GZ; z++) {
+      cellType[idx(x, 0, z)] = STONE;
+      cellType[idx(x, 1, z)] = STONE;
+    }
+  // Central pedestal (4x4) at y=2..5
+  for (let x = 6; x < 10; x++)
+    for (let z = 6; z < 10; z++)
+      for (let y = 2; y <= 5; y++)
+        cellType[idx(x, y, z)] = STONE;
+  // Small step on +X side so water cascades off asymmetrically
+  for (let x = 11; x < 13; x++)
+    for (let z = 5; z < 11; z++)
+      cellType[idx(x, 2, z)] = STONE;
+  // Dig a small basin on -X side
+  for (let x = 1; x < 4; x++)
+    for (let z = 5; z < 11; z++) {
+      cellType[idx(x, 0, z)] = AIR;
+      cellType[idx(x, 1, z)] = AIR;
+    }
+  // Basin rim
+  for (let z = 4; z < 12; z++) {
+    cellType[idx(0, 0, z)] = STONE;
+    cellType[idx(0, 1, z)] = STONE;
+    cellType[idx(4, 0, z)] = STONE;
+    cellType[idx(4, 1, z)] = STONE;
+  }
+  for (let x = 0; x < 5; x++) {
+    cellType[idx(x, 0, 4)] = STONE;
+    cellType[idx(x, 1, 4)] = STONE;
+    cellType[idx(x, 0, 11)] = STONE;
+    cellType[idx(x, 1, 11)] = STONE;
+  }
+}
+
+let sourcePlaced = false;
+function placeSource() {
+  cellType[idx(8, 6, 8)] = WATER;
+  cellWater[idx(8, 6, 8)] = 0; // source
+  sourcePlaced = true;
+}
+function removeSource() {
+  cellType[idx(8, 6, 8)] = AIR;
+  cellWater[idx(8, 6, 8)] = 0;
+  sourcePlaced = false;
+}
+
+// One CA tick — returns number of water cells changed. Updates are
+// in-place (matching the behaviour that was "fine" before the ill-advised
+// double-buffer attempt). Convergence is handled by the outer loop
+// freezing the sim when `changed` reaches zero for a few ticks in a row.
+function tickCA() {
+  const active = [];
+  for (let y = 0; y < GY; y++)
+    for (let z = 0; z < GZ; z++)
+      for (let x = 0; x < GX; x++)
+        if (cellType[idx(x, y, z)] === WATER) active.push([x, y, z]);
+  active.sort((a, b) => b[1] - a[1]); // top-down so gravity cascades in one tick
+
+  const HDIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  let changed = 0;
+
+  // Pre-pass: determine which flowing cells are going to decay this tick.
+  // These cells skip Rule 1/2 in the main pass so they don't backfill
+  // positions the previous tick just cleared — that's what caused the
+  // drain checkerboard. Decisions use start-of-tick state; levels encode
+  // distance from source, so the ripple proceeds one ring per tick.
+  const flowingDecaySet = new Set();
+  for (const [x, y, z] of active) {
+    const raw = cellWater[idx(x, y, z)];
+    if (isSource(raw) || isFalling(raw)) continue;
+    const lvl = flowLevel(raw);
+    // Support from above?
+    if (y + 1 < GY && cellType[idx(x, y + 1, z)] === WATER) {
+      const araw = cellWater[idx(x, y + 1, z)];
+      if (isSource(araw) || isFalling(araw)) continue;
+      if (flowLevel(araw) < lvl) continue;
+    }
+    let supported = false;
+    for (const [dx, dz] of HDIRS) {
+      const nx = x + dx, nz = z + dz;
+      if (!inBounds(nx, y, nz)) continue;
+      if (cellType[idx(nx, y, nz)] !== WATER) continue;
+      const nraw = cellWater[idx(nx, y, nz)];
+      if (isFalling(nraw)) { supported = true; break; }
+      if (flowLevel(nraw) < lvl) { supported = true; break; }
+    }
+    if (!supported) flowingDecaySet.add(idx(x, y, z));
+  }
+
+  for (const [x, y, z] of active) {
+    // Decaying cells skip all rules — applied at end of tick.
+    if (flowingDecaySet.has(idx(x, y, z))) continue;
+    if (cellType[idx(x, y, z)] !== WATER) continue;
+    const raw = cellWater[idx(x, y, z)];
+    const lvl = flowLevel(raw);
+    const falling = isFalling(raw);
+    const source = isSource(raw);
+
+    // Rule 1: gravity
+    if (y - 1 >= 0 && cellType[idx(x, y - 1, z)] === AIR) {
+      cellType[idx(x, y - 1, z)] = WATER;
+      cellWater[idx(x, y - 1, z)] = FALLING_FLAG;
+      changed++;
+      continue;
+    }
+
+    // Landed? Below must be solid, world floor, or non-falling water.
+    let landed = false;
+    if (y === 0) {
+      landed = true;
+    } else {
+      const below = cellType[idx(x, y - 1, z)];
+      if (below === AIR) {
+        landed = false;
+      } else if (below === WATER) {
+        landed = !isFalling(cellWater[idx(x, y - 1, z)]);
+      } else {
+        landed = true;
+      }
+    }
+
+    // Rule 2: horizontal spread
+    const spreadLevel = falling ? 0 : lvl;
+    if (spreadLevel < 7 && landed) {
+      for (const [dx, dz] of HDIRS) {
+        const nx = x + dx, nz = z + dz;
+        if (!inBounds(nx, y, nz)) continue;
+        const nt = cellType[idx(nx, y, nz)];
+        if (nt === AIR) {
+          cellType[idx(nx, y, nz)] = WATER;
+          cellWater[idx(nx, y, nz)] = spreadLevel + 1;
+          changed++;
+        } else if (nt === WATER) {
+          const nraw = cellWater[idx(nx, y, nz)];
+          if (isSource(nraw) || isFalling(nraw)) continue;
+          if (flowLevel(nraw) > spreadLevel + 1) {
+            cellWater[idx(nx, y, nz)] = spreadLevel + 1;
+            changed++;
+          }
+        }
+      }
+    }
+
+    // Rule 3 (falling only): flowing decay was decided in the pre-pass.
+    if (falling) {
+      const aboveIsWater = y + 1 < GY && cellType[idx(x, y + 1, z)] === WATER;
+      if (!aboveIsWater) {
+        cellType[idx(x, y, z)] = AIR;
+        cellWater[idx(x, y, z)] = 0;
+        changed++;
+      }
+    }
+  }
+
+  // Apply the pre-pass decisions. Flowing cells that lost support go
+  // straight to AIR, producing the outward ripple.
+  for (const cellIdx of flowingDecaySet) {
+    cellType[cellIdx] = AIR;
+    cellWater[cellIdx] = 0;
+    changed++;
+  }
+  return changed;
+}
+
+// ---------- Three.js scene ----------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0f1115);
+scene.fog = new THREE.Fog(0x0f1115, 30, 80);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 500);
+camera.position.set(22, 18, 22);
+camera.lookAt(GX / 2, GY / 2, GZ / 2);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.getElementById('canvas-root').appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(GX / 2, 3, GZ / 2);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.autoRotate = false;
+controls.autoRotateSpeed = 1.2;
+controls.update();
+
+// Lighting
+scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+sun.position.set(GX, GY * 1.5, GZ);
+sun.castShadow = true;
+sun.shadow.mapSize.width = 1024;
+sun.shadow.mapSize.height = 1024;
+sun.shadow.camera.left = -20;
+sun.shadow.camera.right = 20;
+sun.shadow.camera.top = 20;
+sun.shadow.camera.bottom = -20;
+sun.shadow.camera.near = 0.5;
+sun.shadow.camera.far = 80;
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0x89cff0, 0x1a1d24, 0.35));
+
+// Ground plane to catch shadows
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(200, 200),
+  new THREE.ShadowMaterial({ opacity: 0.25 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.001;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// InstancedMesh for stone
+const cubeGeo = new THREE.BoxGeometry(1, 1, 1);
+const stoneMat = new THREE.MeshStandardMaterial({
+  color: 0x6a7080,
+  roughness: 0.9,
+  metalness: 0.0,
+});
+const MAX_STONE = GX * GY * GZ;
+const stoneMesh = new THREE.InstancedMesh(cubeGeo, stoneMat, MAX_STONE);
+stoneMesh.castShadow = true;
+stoneMesh.receiveShadow = true;
+scene.add(stoneMesh);
+
+// Water: instanced, colored per cell based on level
+const waterMat = new THREE.MeshStandardMaterial({
+  color: 0x3a7fde,
+  transparent: true,
+  opacity: 0.78,
+  roughness: 0.15,
+  metalness: 0.05,
+  depthWrite: false,
+});
+const MAX_WATER = GX * GY * GZ;
+const waterMesh = new THREE.InstancedMesh(cubeGeo, waterMat, MAX_WATER);
+waterMesh.instanceColor = new THREE.InstancedBufferAttribute(
+  new Float32Array(MAX_WATER * 3), 3
+);
+waterMesh.castShadow = false;
+waterMesh.receiveShadow = true;
+scene.add(waterMesh);
+
+// Flow direction arrows — thin cones laid flat, pointing toward the
+// steepest descent of the level gradient. Sources and falling water get
+// no arrow (sources are static; falling is trivially down).
+const arrowGeo = new THREE.ConeGeometry(0.12, 0.5, 6);
+arrowGeo.rotateX(Math.PI / 2); // point along +Z by default
+const arrowMat = new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.95 });
+const arrowMesh = new THREE.InstancedMesh(arrowGeo, arrowMat, MAX_WATER);
+arrowMesh.frustumCulled = false;
+scene.add(arrowMesh);
+
+const dummy = new THREE.Object3D();
+
+function rebuildStoneMesh() {
+  let i = 0;
+  for (let y = 0; y < GY; y++)
+    for (let z = 0; z < GZ; z++)
+      for (let x = 0; x < GX; x++) {
+        if (cellType[idx(x, y, z)] !== STONE) continue;
+        dummy.position.set(x + 0.5, y + 0.5, z + 0.5);
+        dummy.updateMatrix();
+        stoneMesh.setMatrixAt(i++, dummy.matrix);
+      }
+  stoneMesh.count = i;
+  stoneMesh.instanceMatrix.needsUpdate = true;
+}
+
+const srcColor  = new THREE.Color(0x0a3a9e);
+const flowColor = new THREE.Color(0x3a7fde);
+const fallColor = new THREE.Color(0x5aa3ff);
+
+// Compute flow direction for a flowing water cell by looking at the
+// 4 cardinal horizontal neighbors. The flow vector points in the
+// direction of steepest descent (toward lower-level neighbors or air).
+// Returns {x, z} or null if the cell has no directional flow.
+function computeFlow(x, y, z, myLevel) {
+  let fx = 0, fz = 0;
+  const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (const [dx, dz] of NEIGHBORS) {
+    const nx = x + dx, nz = z + dz;
+    if (!inBounds(nx, y, nz)) continue;
+    const nt = cellType[idx(nx, y, nz)];
+    // Empty neighbor = biggest possible drop
+    if (nt === AIR) {
+      // Also consider if the block below that neighbor is air
+      // (a cliff edge — water would fall off that side)
+      fx += dx * 8;
+      fz += dz * 8;
+      continue;
+    }
+    if (nt === WATER) {
+      const nraw = cellWater[idx(nx, y, nz)];
+      if (isFalling(nraw)) continue;
+      const nl = isSource(nraw) ? 0 : flowLevel(nraw);
+      if (nl > myLevel) {
+        // Neighbor is further from source → flow goes toward it
+        fx += dx * (nl - myLevel);
+        fz += dz * (nl - myLevel);
+      }
+    }
+  }
+  if (fx === 0 && fz === 0) return null;
+  const len = Math.hypot(fx, fz);
+  return { x: fx / len, z: fz / len };
+}
+
+function updateWaterMesh() {
+  let i = 0;
+  let arrowCount = 0;
+  const colors = waterMesh.instanceColor.array;
+  for (let y = 0; y < GY; y++)
+    for (let z = 0; z < GZ; z++)
+      for (let x = 0; x < GX; x++) {
+        if (cellType[idx(x, y, z)] !== WATER) continue;
+        const raw = cellWater[idx(x, y, z)];
+        const lvl = flowLevel(raw);
+        const falling = isFalling(raw);
+        const source = isSource(raw);
+        const height = (source || falling) ? 1.0 : Math.max(0.25, (8 - lvl) / 9);
+        dummy.rotation.set(0, 0, 0);
+        dummy.position.set(x + 0.5, y + height / 2, z + 0.5);
+        dummy.scale.set(0.98, height, 0.98);
+        dummy.updateMatrix();
+        waterMesh.setMatrixAt(i, dummy.matrix);
+
+        let c;
+        if (source) c = srcColor;
+        else if (falling) c = fallColor;
+        else {
+          const t = lvl / 7;
+          c = new THREE.Color().lerpColors(flowColor, fallColor, t * 0.6);
+        }
+        colors[i * 3 + 0] = c.r;
+        colors[i * 3 + 1] = c.g;
+        colors[i * 3 + 2] = c.b;
+        i++;
+
+        // Flow direction arrow for flowing cells only
+        if (!source && !falling) {
+          const flow = computeFlow(x, y, z, lvl);
+          if (flow) {
+            const yaw = Math.atan2(flow.x, flow.z);
+            dummy.rotation.set(0, yaw, 0);
+            dummy.position.set(x + 0.5, y + height + 0.05, z + 0.5);
+            dummy.scale.set(1, 1, 1);
+            dummy.updateMatrix();
+            arrowMesh.setMatrixAt(arrowCount, dummy.matrix);
+            arrowCount++;
+          }
+        }
+      }
+  dummy.scale.set(1, 1, 1);
+  dummy.rotation.set(0, 0, 0);
+  waterMesh.count = i;
+  waterMesh.instanceMatrix.needsUpdate = true;
+  waterMesh.instanceColor.needsUpdate = true;
+  arrowMesh.count = arrowCount;
+  arrowMesh.instanceMatrix.needsUpdate = true;
+  return i;
+}
+
+// ---------- Ticker ----------
+let paused = false;
+let tickNumber = 0;
+const TICK_MS = 300;
+let accumulator = 0;
+let lastTime = performance.now();
+let stableTicks = 0; // consecutive ticks with zero changes
+const STABLE_THRESHOLD = 3;
+
+function reset() {
+  buildTerrain();
+  placeSource();
+  tickNumber = 0;
+  stableTicks = 0;
+  rebuildStoneMesh();
+  updateWaterMesh();
+}
+
+// ---------- UI ----------
+const btnPlay = document.getElementById('btn-play');
+const btnReset = document.getElementById('btn-reset');
+const btnSource = document.getElementById('btn-source');
+const btnRotate = document.getElementById('btn-rotate');
+const stTick = document.getElementById('st-tick');
+const stWater = document.getElementById('st-water');
+const stActive = document.getElementById('st-active');
+
+btnPlay.addEventListener('click', () => {
+  paused = !paused;
+  btnPlay.textContent = paused ? '▶ Play' : '⏸ Pause';
+});
+btnReset.addEventListener('click', reset);
+btnSource.addEventListener('click', () => {
+  if (sourcePlaced) {
+    removeSource();
+    btnSource.textContent = 'Place source';
+  } else {
+    placeSource();
+    btnSource.textContent = 'Remove source';
+  }
+  stableTicks = 0; // wake the sim back up
+});
+btnRotate.addEventListener('click', () => {
+  controls.autoRotate = !controls.autoRotate;
+  btnRotate.classList.toggle('active', controls.autoRotate);
+});
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    btnPlay.click();
+  }
+});
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ---------- Main loop ----------
+function animate(now) {
+  requestAnimationFrame(animate);
+  const dt = now - lastTime;
+  lastTime = now;
+  if (!paused) {
+    accumulator += dt;
+    while (accumulator >= TICK_MS) {
+      accumulator -= TICK_MS;
+      // Freeze the sim once it has converged: no state changes for N
+      // ticks in a row means running more ticks just re-renders the
+      // same frame. Tick counter still advances so the HUD shows time.
+      if (stableTicks >= STABLE_THRESHOLD) {
+        tickNumber++;
+        stActive.textContent = 0;
+        continue;
+      }
+      const changed = tickCA();
+      tickNumber++;
+      stActive.textContent = changed;
+      stableTicks = (changed === 0) ? stableTicks + 1 : 0;
+    }
+  }
+  const waterCount = updateWaterMesh();
+  stTick.textContent = tickNumber;
+  stWater.textContent = waterCount;
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+reset();
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>
