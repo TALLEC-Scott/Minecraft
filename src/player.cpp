@@ -307,7 +307,49 @@ void Player::findGroundAndUpdate(World* world) {
         return chunk->getBlockType(worldToLocal(bx, cx), by, worldToLocal(bz, cz)) == WATER;
     };
 
-    camera.update(blockCheck, world->chunkManager, waterCheck);
+    // Flow vector at a water block: (fx, fy, fz). Horizontal from level
+    // gradient; Y = -1 for falling water (pushes player downward).
+    auto flowCheck = [](int bx, int by, int bz, void* ctx) -> glm::vec3 {
+        constexpr float FLOW_INTO_AIR_WEIGHT = 8.0f;
+        auto* cm = static_cast<ChunkManager*>(ctx);
+        // Sample one cell: returns {blockType, waterRaw}. Chunk lookup is
+        // cached across calls — player + 4 neighbors usually share a chunk.
+        int lastCx = INT_MIN, lastCz = INT_MIN;
+        Chunk* lastChunk = nullptr;
+        auto sample = [&](int x, int y, int z) -> std::pair<block_type, uint8_t> {
+            if (y < 0 || y >= CHUNK_HEIGHT) return {STONE, 0};
+            int cx = worldToChunk(x), cz = worldToChunk(z);
+            if (cx != lastCx || cz != lastCz) {
+                lastCx = cx; lastCz = cz;
+                lastChunk = cm->getChunk(cx, cz);
+            }
+            if (!lastChunk) return {STONE, 0};
+            int lx = worldToLocal(x, cx), lz = worldToLocal(z, cz);
+            block_type t = lastChunk->getBlockType(lx, y, lz);
+            return {t, t == WATER ? lastChunk->getWaterLevel(lx, y, lz) : (uint8_t)0};
+        };
+        auto self = sample(bx, by, bz);
+        if (self.first != WATER) return glm::vec3(0);
+        if (waterIsFalling(self.second)) return glm::vec3(0, -1, 0);
+        int myLvl = waterIsSource(self.second) ? 0 : waterFlowLevel(self.second);
+        glm::vec3 flow(0);
+        static const int dirs[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (auto& d : dirs) {
+            auto n = sample(bx + d[0], by, bz + d[1]);
+            float contrib = 0;
+            if (n.first == AIR) {
+                contrib = FLOW_INTO_AIR_WEIGHT;
+            } else if (n.first == WATER) {
+                int nLvl = waterIsSource(n.second) ? 0 : waterFlowLevel(n.second);
+                contrib = (float)(nLvl - myLvl);
+            }
+            flow.x += d[0] * contrib;
+            flow.z += d[1] * contrib;
+        }
+        return flow;
+    };
+
+    camera.update(blockCheck, world->chunkManager, waterCheck, flowCheck);
     if (!camera.isWalkMode()) return;
 
     // Footstep sounds: look up block types at player feet

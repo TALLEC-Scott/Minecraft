@@ -89,7 +89,7 @@ void Camera::toggleWalkMode() {
     }
 }
 
-void Camera::update(BlockCheck isSolid, void* ctx, WaterCheck isWater) {
+void Camera::update(BlockCheck isSolid, void* ctx, WaterCheck isWater, WaterFlowCheck getFlow) {
     // Check water state always (needed for visual effects even in fly mode)
     inWater = false;
     eyesInWater = false;
@@ -120,6 +120,26 @@ void Camera::update(BlockCheck isSolid, void* ctx, WaterCheck isWater) {
         velocityY += move.y * 0.3f;
         velocityY = glm::clamp(velocityY, -0.15f, 0.15f);
         move.y = 0;
+        // Water current: push player horizontally along stream; falling
+        // water (flow.y < 0) pushes vertically down.
+        if (getFlow) {
+            constexpr float WATER_CURRENT_PUSH = 0.025f;   // blocks/frame at 60fps
+            constexpr float WATERFALL_DOWN_PUSH = 0.014f;
+            int fx = (int)std::floor(cameraPosition.x + 0.5f);
+            int fy = (int)std::floor(cameraPosition.y - PLAYER_HEIGHT + 0.5f);
+            int fz = (int)std::floor(cameraPosition.z + 0.5f);
+            glm::vec3 flow = getFlow(fx, fy, fz, ctx);
+            glm::vec2 horiz(flow.x, flow.z);
+            if (glm::dot(horiz, horiz) > 0.000001f) {
+                horiz = glm::normalize(horiz);
+                float push = WATER_CURRENT_PUSH * deltaTime * 60.0f;
+                move.x += horiz.x * push;
+                move.z += horiz.y * push;
+            }
+            if (flow.y < -0.001f) {
+                velocityY -= WATERFALL_DOWN_PUSH * deltaTime * 60.0f;
+            }
+        }
     }
 
     // Resolve horizontal movement with wall sliding
