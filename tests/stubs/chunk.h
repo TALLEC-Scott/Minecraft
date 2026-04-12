@@ -17,6 +17,14 @@ class Chunk {
     int chunkX = 0;
     int chunkZ = 0;
     bool dirty = false;
+    uint8_t sectionDirty = 0xFF;
+    uint8_t builtDirtyMask = 0;
+
+    void markSectionDirty(int sy) {
+        if (sy < 0 || sy >= 8) return;
+        sectionDirty |= (1u << sy);
+    }
+    bool isMeshDirty() const { return sectionDirty != 0; }
 
     // skyLight is unused by the water sim but WorldResolver::operator()
     // checks it in the real codebase; keep a trivially-valid stub so both
@@ -39,6 +47,10 @@ class Chunk {
     void setBlockType(int x, int y, int z, block_type t) {
         if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return;
         types[idx(x, y, z)] = static_cast<uint8_t>(t);
+        int sy = y / 16;
+        markSectionDirty(sy);
+        if (y % 16 == 0) markSectionDirty(sy - 1);
+        if (y % 16 == 15) markSectionDirty(sy + 1);
     }
 
     uint8_t getWaterLevel(int x, int y, int z) const {

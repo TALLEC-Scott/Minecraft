@@ -134,6 +134,26 @@ void WaterSimulator::tick() {
             }
         }
 
+        // Rule 0: infinite water source. A non-source water cell with 2+
+        // horizontal source neighbors becomes a source itself. This is
+        // how oceans refill when you break a block — adjacent sources
+        // clone into the gap instead of creating flowing staircases.
+        if (!waterIsSource(raw) && landed) {
+            int sourceCount = 0;
+            for (auto& hd : HDIRS) {
+                auto n = resolver.local(x + hd[0], z + hd[1]);
+                if (!n.chunk) continue;
+                if (n.chunk->getBlockType(n.lx, y, n.lz) != WATER) continue;
+                if (waterIsSource(n.chunk->getWaterLevel(n.lx, y, n.lz))) sourceCount++;
+            }
+            if (sourceCount >= 2) {
+                world->setBlock(x, y, z, WATER, 0);
+                activate(x, y, z);
+                anyChanged = true;
+                continue;
+            }
+        }
+
         // Rule 2: horizontal spread. Falling cells use effective level 0
         // so newly-landed water fans out like a source.
         uint8_t spreadLevel = falling ? 0 : level;
