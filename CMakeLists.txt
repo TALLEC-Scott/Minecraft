@@ -27,6 +27,7 @@ set(COMMON_SOURCES
     src/main.cpp
     src/camera.cpp
     src/chunk.cpp
+    src/chunk_mesh.cpp
     src/cube.cpp
     src/shader.cpp
     src/stb_image.cpp
@@ -190,11 +191,13 @@ else()
         tests/test_water.cpp
         tests/test_sparse_light.cpp
         tests/test_world_resolver.cpp
+        tests/test_chunk_mesh.cpp
         src/TerrainGenerator.cpp
         src/perlin_noise.cpp
         src/game_state.cpp
         src/WaterSimulator.cpp
         src/miniaudio.cpp
+        src/chunk_mesh.cpp
     )
     # tests/stubs is searched before include/ so the water-sim tests can
     # compile src/WaterSimulator.cpp against minimal stubs of chunk.h /
