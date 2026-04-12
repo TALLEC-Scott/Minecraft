@@ -35,6 +35,7 @@ class WaterSimulator {
     explicit WaterSimulator(World* world) : world(world) {}
     ~WaterSimulator();
     void tick();
+    void updateAmbient(glm::vec3 playerPos);
     void initAudio(ma_engine* engine);
     void activate(int x, int y, int z);
     void activateNeighbors(int x, int y, int z);
@@ -52,6 +53,10 @@ class WaterSimulator {
     std::vector<WaterTickCell> tickCells;
     // Heap-allocated so WaterSimulator.h doesn't pull <miniaudio.h>
     // into every translation unit that sees a World.
+    // CA transition sound (plays during active block changes)
     ma_sound* flowSound = nullptr;
+    // Ambient loop for proximity to flowing water (plays when player is near)
+    ma_sound* ambientFlowSound = nullptr;
+    float ambientVolume = 0.0f; // smoothed volume for fade in/out
     bool audioLoaded = false;
 };
