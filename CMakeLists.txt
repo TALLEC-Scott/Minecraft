@@ -131,7 +131,11 @@ else()
     # linker only gets one pass at. Wrap everything in --start-group /
     # --end-group so the linker does multiple resolution passes and both
     # directions resolve.
-    target_compile_options(minecraft PRIVATE $<$<CONFIG:Release>:-O3>)
+    # -Wno-stringop-overflow: mingw-w64 g++ 10 fires a false-positive when
+    # moving an array of std::unique_ptr (SparseSkyLight::data); the
+    # synthesized move assignment is provably safe.
+    target_compile_options(minecraft PRIVATE $<$<CONFIG:Release>:-O3>
+                                             $<$<COMPILE_LANGUAGE:CXX>:-Wno-stringop-overflow>)
     target_link_options(minecraft PRIVATE
         "LINKER:--start-group"
         "LINKER:--end-group")
