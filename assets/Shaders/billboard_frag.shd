@@ -7,8 +7,17 @@ out vec4 FragColor;
 
 uniform sampler2DArray ourTexture;
 uniform vec3 tintColor;
+uniform float glowMode; // 0 = textured (default), >0.5 = radial gradient for bloom halo
 
 void main() {
-    vec4 texColor = texture(ourTexture, vec3(TexCoord, texLayer));
-    FragColor = vec4(texColor.rgb * brightness * tintColor, texColor.a);
+    if (glowMode > 0.5) {
+        // Radial falloff from quad center — soft bloom halo
+        float d = distance(TexCoord, vec2(0.5));
+        float alpha = clamp(1.0 - d * 2.0, 0.0, 1.0);
+        alpha = alpha * alpha; // quadratic falloff for softer edge
+        FragColor = vec4(tintColor * brightness, alpha);
+    } else {
+        vec4 texColor = texture(ourTexture, vec3(TexCoord, texLayer));
+        FragColor = vec4(texColor.rgb * brightness * tintColor, texColor.a);
+    }
 }
