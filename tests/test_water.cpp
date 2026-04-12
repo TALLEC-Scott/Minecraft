@@ -232,6 +232,64 @@ TEST(WaterSimulator, OceanGapFillsAsSource) {
         << "gap in ocean row should fill as source";
 }
 
+// --- Flow direction ---
+
+TEST(WaterSimulator, FlowDirectionPointsOutward) {
+    // Place a source on a flat surface. After spreading, each flowing
+    // cell's neighbors at higher levels (further from source) should be
+    // in the "outward" direction. We verify this by checking that the
+    // flow vector (accumulated from neighbor levels) points AWAY from
+    // the source for cells along each cardinal axis.
+    PedestalScene s;
+    const int y = PedestalScene::FLOOR_Y + 1;
+    s.world.setBlock(8, y, 8, WATER, 0);
+    s.sim.activate(8, y, 8);
+    runTicks(s.sim, 15);
+
+    // Cell at (9, y, 8) is level 1. Its +X neighbor (10,y,8) is level 2.
+    // Flow should point toward +X (away from source).
+    // Verify by checking the water levels form a gradient.
+    EXPECT_EQ(getType(s.world, 9, y, 8), WATER);
+    EXPECT_EQ(getType(s.world, 10, y, 8), WATER);
+    uint8_t lvl9 = waterFlowLevel(getWaterRaw(s.world, 9, y, 8));
+    uint8_t lvl10 = waterFlowLevel(getWaterRaw(s.world, 10, y, 8));
+    EXPECT_LT(lvl9, lvl10) << "level should increase away from source";
+
+    // Same in -X direction
+    uint8_t lvl7 = waterFlowLevel(getWaterRaw(s.world, 7, y, 8));
+    uint8_t lvl6 = waterFlowLevel(getWaterRaw(s.world, 6, y, 8));
+    EXPECT_LT(lvl7, lvl6) << "level should increase away from source in -X";
+
+    // Diagonal: (9,y,9) should have higher level than (8,y,8) source
+    EXPECT_EQ(getType(s.world, 9, y, 9), WATER);
+    uint8_t lvlDiag = waterFlowLevel(getWaterRaw(s.world, 9, y, 9));
+    EXPECT_GT(lvlDiag, 0u) << "diagonal cell should be flowing (not source)";
+
+    // Source itself stays level 0
+    EXPECT_TRUE(waterIsSource(getWaterRaw(s.world, 8, y, 8)));
+}
+
+TEST(WaterSimulator, FallingWaterColumnHasWaterBelow) {
+    // Place source above air. Falling column should form. Verify each
+    // cell in the column is WATER with the falling flag set and has
+    // proper waterLevel data that the mesh builder can use for side faces.
+    PedestalScene s;
+    s.placeSource(); // source at y=8, floor at y=2
+    runTicks(s.sim, 20);
+
+    // Mid-column cells (above landing level) should be 1-block-wide
+    // falling water with AIR on all sides. The bottom cell (y=FLOOR+1)
+    // may have spread horizontally, so skip it.
+    for (int y = PedestalScene::FLOOR_Y + 2; y < PedestalScene::SRC_Y; y++) {
+        EXPECT_EQ(getType(s.world, s.SRC_X, y, s.SRC_Z), WATER) << "y=" << y;
+        uint8_t raw = getWaterRaw(s.world, s.SRC_X, y, s.SRC_Z);
+        EXPECT_TRUE(waterIsFalling(raw)) << "y=" << y << " should be falling";
+        // Side neighbors should be AIR (mid-column is 1 block wide)
+        EXPECT_EQ(getType(s.world, s.SRC_X + 1, y, s.SRC_Z), AIR)
+            << "side of falling column should be AIR at y=" << y;
+    }
+}
+
 // --- Section dirty tracking ---
 
 TEST(WaterSimulator, SectionDirtyOnlyAffectedSection) {
