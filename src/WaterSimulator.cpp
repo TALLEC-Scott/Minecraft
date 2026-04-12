@@ -10,15 +10,57 @@ WaterSimulator::~WaterSimulator() {
         if (audioLoaded) ma_sound_uninit(flowSound);
         delete flowSound;
     }
+    if (ambientFlowSound) {
+        if (audioLoaded) ma_sound_uninit(ambientFlowSound);
+        delete ambientFlowSound;
+    }
 }
 
 void WaterSimulator::initAudio(ma_engine* engine) {
     if (!engine) return;
+    // CA transition sound (short bursts when blocks change)
     if (!flowSound) flowSound = new ma_sound{};
     ma_sound_init_from_file(engine, "assets/Sounds/liquid/water.wav", MA_SOUND_FLAG_DECODE, nullptr, nullptr, flowSound);
     ma_sound_set_looping(flowSound, MA_FALSE);
     ma_sound_set_volume(flowSound, 0.5f);
+    // Ambient loop — plays continuously when player is near flowing water
+    if (!ambientFlowSound) ambientFlowSound = new ma_sound{};
+    ma_sound_init_from_file(engine, "assets/Sounds/liquid/water.wav", MA_SOUND_FLAG_DECODE, nullptr, nullptr, ambientFlowSound);
+    ma_sound_set_looping(ambientFlowSound, MA_TRUE);
+    ma_sound_set_volume(ambientFlowSound, 0.0f);
+    ma_sound_start(ambientFlowSound);
     audioLoaded = true;
+}
+
+void WaterSimulator::updateAmbient(glm::vec3 playerPos) {
+    if (!audioLoaded || !ambientFlowSound) return;
+    int px = (int)std::floor(playerPos.x);
+    int py = (int)std::floor(playerPos.y);
+    int pz = (int)std::floor(playerPos.z);
+    constexpr int RADIUS = 8;
+    constexpr int RADIUS_SQ = RADIUS * RADIUS;
+    WorldResolver resolver(world->chunkManager);
+    int closestDistSq = RADIUS_SQ + 1;
+    for (int dx = -RADIUS; dx <= RADIUS; dx += 2) {
+        for (int dz = -RADIUS; dz <= RADIUS; dz += 2) {
+            for (int dy = -4; dy <= 4; dy += 2) {
+                int distSq = dx * dx + dy * dy + dz * dz;
+                if (distSq >= closestDistSq) continue;
+                int wy = py + dy;
+                if (wy < 0 || wy >= CHUNK_HEIGHT) continue;
+                auto loc = resolver.local(px + dx, pz + dz);
+                if (!loc.chunk || loc.chunk->getBlockType(loc.lx, wy, loc.lz) != WATER) continue;
+                if (waterIsSource(loc.chunk->getWaterLevel(loc.lx, wy, loc.lz))) continue;
+                closestDistSq = distSq;
+            }
+        }
+    }
+    float targetVol = (closestDistSq < RADIUS_SQ) ? 0.8f * (1.0f - std::sqrt((float)closestDistSq) / RADIUS) : 0.0f;
+    // Smooth volume transitions to avoid popping
+    float blend = (targetVol > ambientVolume) ? 0.08f : 0.04f; // fade in faster than fade out
+    ambientVolume += (targetVol - ambientVolume) * blend;
+    if (ambientVolume < 0.005f) ambientVolume = 0.0f;
+    ma_sound_set_volume(ambientFlowSound, ambientVolume);
 }
 
 void WaterSimulator::activate(int x, int y, int z) {

@@ -756,8 +756,8 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     c[fd.u] = u;
                     c[fd.v] = v;
                     block_type bt = getBlock(c[0], c[1], c[2])->getType();
-                    // Skip air; skip liquid sides (only render top face, f==4)
-                    if (bt == AIR || (hasFlag(bt, BF_LIQUID) && f != 4)) {
+                    // Skip air blocks entirely.
+                    if (bt == AIR) {
                         mask[u][v] = -1;
                         continue;
                     }
@@ -766,11 +766,19 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     nc[fd.d] += fd.d_sign;
                     Cube* nb = getBlockCross(this, nc[0], nc[1], nc[2], nx_neg, nx_pos, nz_neg, nz_pos);
                     block_type nbType = nb ? nb->getType() : STONE;
-                    // Show face if neighbor is air/liquid, or if current is translucent
-                    // and neighbor is a different block type (not leaf-to-leaf)
-                    bool show = (nbType == AIR) ||
-                                (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
-                                (g_fancyLeaves && (hasFlag(bt, BF_TRANSLUCENT) || hasFlag(nbType, BF_TRANSLUCENT)));
+
+                    bool show;
+                    if (hasFlag(bt, BF_LIQUID)) {
+                        // Water renders top face (f==4) always if neighbor
+                        // above is air. Side faces render where water meets
+                        // air — this gives the visible "edge" of flowing water.
+                        // Skip face between two water blocks (no visible boundary).
+                        show = (nbType == AIR);
+                    } else {
+                        show = (nbType == AIR) ||
+                               (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
+                               (g_fancyLeaves && (hasFlag(bt, BF_TRANSLUCENT) || hasFlag(nbType, BF_TRANSLUCENT)));
+                    }
                     int val = show ? (int)bt : -1;
                     mask[u][v] = val;
                     if (val != -1) anyFace = true;
@@ -825,8 +833,22 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
 
                     float vp[4][3];
                     bool isWT = (bt == (int)WATER && f == 4);
+
+                    // Water side faces: clamp the top edge (high-v vertices)
+                    // to the water surface height so sides aren't full-block.
+                    // fd.v==1 means the v axis is Y (true for all side faces).
+                    bool isWaterSide = (bt == (int)WATER && f != 4 && f != 5 && fd.v == 1);
+                    if (isWaterSide && waterLevels) {
+                        size_t wi = static_cast<size_t>(u) * CHUNK_HEIGHT * CHUNK_SIZE + d * CHUNK_SIZE + v;
+                        uint8_t wraw = waterLevels.get()[wi];
+                        float wh = waterIsFalling(wraw) ? (8.0f / 9.0f) : ((8.0f - waterFlowLevel(wraw)) / 9.0f);
+                        // v1 is the high-Y edge; clamp it to water height
+                        float waterTop = (float)v - 0.5f + wh;
+                        if (fd.v_sign > 0) v1 = waterTop;
+                        else v0 = waterTop;
+                    }
+
                     // Vertex order: (u0,v0), (u0,v1), (u1,v1), (u1,v0)
-                    // Maps to corners: SW(0), NW(1), NE(2), SE(3) when u_sign>0, v_sign>0
                     vp[0][fd.d] = isWT ? waterY[0] : d_val;
                     vp[0][fd.u] = u0;
                     vp[0][fd.v] = v0;
@@ -889,6 +911,64 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     }
 
                     bool isWater = (bt == (int)WATER);
+
+                    // Compute flow direction for water top faces.
+                    // Packed into the ao byte's upper bits so the
+                    // fragment shader can scroll the UV directionally.
+                    uint8_t flowBits = 0;
+                    if (isWater && f == 4 && waterLevels) {
+                        size_t wi = static_cast<size_t>(u) * CHUNK_HEIGHT * CHUNK_SIZE + d * CHUNK_SIZE + v;
+                        uint8_t raw = waterLevels.get()[wi];
+                        if (!waterIsSource(raw) && !waterIsFalling(raw)) {
+                            int myLvl = waterFlowLevel(raw);
+                            float fx = 0, fz = 0;
+                            // +X / -X neighbors
+                            for (int dx : {-1, 1}) {
+                                int nx = u + dx;
+                                block_type nbt; uint8_t nraw = 0;
+                                if (nx >= 0 && nx < CHUNK_SIZE) {
+                                    nbt = getBlock(nx, d, v)->getType();
+                                    if (nbt == WATER) nraw = waterLevels.get()[static_cast<size_t>(nx) * CHUNK_HEIGHT * CHUNK_SIZE + d * CHUNK_SIZE + v];
+                                } else {
+                                    Cube* nb = getBlockCross(this, nx, d, v, nx_neg, nx_pos, nz_neg, nz_pos);
+                                    nbt = nb ? nb->getType() : STONE;
+                                    if (nbt == WATER) {
+                                        Chunk* nc = (dx < 0) ? nx_neg : nx_pos;
+                                        if (nc) nraw = nc->getWaterLevel(dx < 0 ? CHUNK_SIZE - 1 : 0, d, v);
+                                    }
+                                }
+                                if (nbt == AIR) { fx += dx * 8; }
+                                else if (nbt == WATER && !waterIsSource(nraw) && waterFlowLevel(nraw) > myLvl) {
+                                    fx += dx * (waterFlowLevel(nraw) - myLvl);
+                                }
+                            }
+                            // +Z / -Z neighbors
+                            for (int dz : {-1, 1}) {
+                                int nz = v + dz;
+                                block_type nbt; uint8_t nraw = 0;
+                                if (nz >= 0 && nz < CHUNK_SIZE) {
+                                    nbt = getBlock(u, d, nz)->getType();
+                                    if (nbt == WATER) nraw = waterLevels.get()[static_cast<size_t>(u) * CHUNK_HEIGHT * CHUNK_SIZE + d * CHUNK_SIZE + nz];
+                                } else {
+                                    Cube* nb = getBlockCross(this, u, d, nz, nx_neg, nx_pos, nz_neg, nz_pos);
+                                    nbt = nb ? nb->getType() : STONE;
+                                    if (nbt == WATER) {
+                                        Chunk* nc = (dz < 0) ? nz_neg : nz_pos;
+                                        if (nc) nraw = nc->getWaterLevel(u, d, dz < 0 ? CHUNK_SIZE - 1 : 0);
+                                    }
+                                }
+                                if (nbt == AIR) { fz += dz * 8; }
+                                else if (nbt == WATER && !waterIsSource(nraw) && waterFlowLevel(nraw) > myLvl) {
+                                    fz += dz * (waterFlowLevel(nraw) - myLvl);
+                                }
+                            }
+                            if (fx != 0 || fz != 0) {
+                                int angleIdx = ((int)roundf(atan2f(fz, fx) / (3.14159265f / 8.0f)) + 16) % 16;
+                                flowBits = FLOW_HAS_DIR_BIT | ((angleIdx & FLOW_ANGLE_MASK) << FLOW_ANGLE_SHIFT);
+                            }
+                        }
+                    }
+
                     auto& idx = isWater ? sm.waterIdx : sm.opaqueIdx;
 
                     // Batch-write 4 packed vertices at once
@@ -903,7 +983,7 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                         dst->v = (uint8_t)uvs[vi][1];
                         dst->normalIdx = (uint8_t)f;
                         dst->texLayer = (uint8_t)layer;
-                        dst->ao = (uint8_t)ao[vi];
+                        dst->ao = (uint8_t)(ao[vi] & 0x03) | flowBits;
                         dst->packedLight = (uint8_t)(skyLightVals[vi] * 16 + blockLightVals[vi]);
                         dst++;
                     }
@@ -1122,16 +1202,21 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLe
                     c[fd.u] = u;
                     c[fd.v] = v;
                     block_type bt = blocks[c[0] * CHUNK_HEIGHT * CHUNK_SIZE + c[1] * CHUNK_SIZE + c[2]].getType();
-                    if (bt == AIR || (hasFlag(bt, BF_LIQUID) && f != 4)) {
+                    if (bt == AIR) {
                         mask[u][v] = -1;
                         continue;
                     }
                     int nc[3] = {c[0], c[1], c[2]};
                     nc[fd.d] += fd.d_sign;
                     block_type nbType = getTypeCross(nc[0], nc[1], nc[2]);
-                    bool show = (nbType == AIR) ||
-                                (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
-                                (g_fancyLeaves && (hasFlag(bt, BF_TRANSLUCENT) || hasFlag(nbType, BF_TRANSLUCENT)));
+                    bool show;
+                    if (hasFlag(bt, BF_LIQUID)) {
+                        show = (nbType == AIR);
+                    } else {
+                        show = (nbType == AIR) ||
+                               (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
+                               (g_fancyLeaves && (hasFlag(bt, BF_TRANSLUCENT) || hasFlag(nbType, BF_TRANSLUCENT)));
+                    }
                     int val = show ? (int)bt : -1;
                     mask[u][v] = val;
                     if (val != -1) anyFace = true;

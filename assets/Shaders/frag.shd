@@ -8,6 +8,7 @@ in float ao;
 in float skyLight;
 in float blockLight;
 in float fogFactor;
+flat in vec2 flowDir;
 
 out vec4 FragColor;
 
@@ -23,10 +24,21 @@ uniform int fancyLeaves;
 void main() {
     float isWater = float(materialType);
     vec2 uv = TexCoord;
-    // Water UV animation — only compute sin/cos for actual water fragments
+    // Water UV animation — directional scroll for flowing water,
+    // gentle omnidirectional ripple for source blocks.
     if (isWater > 0.5) {
-        uv += vec2(time * 0.03, time * 0.02)
-            + 0.02 * vec2(sin(FragPos.x * 2.0 + time * 1.5), cos(FragPos.z * 2.0 + time * 1.2));
+        if (length(flowDir) > 0.1) {
+            // Flowing: scroll UV in the flow direction.
+            // ~1 UV/sec ≈ 1 texture tile per second, matching Minecraft's
+            // ~1 pixel per tick (20 ticks/sec on a 16px texture).
+            uv -= flowDir * time * 0.8
+                + 0.02 * vec2(sin(FragPos.x * 3.0 + time * 2.0),
+                              cos(FragPos.z * 3.0 + time * 1.6));
+        } else {
+            // Source / falling: gentle stationary ripple
+            uv += 0.03 * vec2(sin(FragPos.x * 2.0 + time * 1.0),
+                              cos(FragPos.z * 2.0 + time * 0.8));
+        }
     }
 
     vec4 texColor = texture(ourTexture, vec3(uv, texLayer));

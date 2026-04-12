@@ -25,6 +25,7 @@ scripts/mapgen
 scripts/check_biomes
 mapgen
 build_win/
+build_win*/
 *.exe
-build_win*
 trace.*
+tools/

@@ -54,6 +54,15 @@ enum Biome { BIOME_OCEAN, BIOME_BEACH, BIOME_PLAINS, BIOME_FOREST, BIOME_DESERT,
 static constexpr uint8_t WATER_LEVEL_MASK = 0x07;
 static constexpr uint8_t WATER_FALLING_FLAG = 0x80;
 static constexpr uint8_t WATER_MAX_FLOW = 7; // cells at level 7 don't spread further
+
+// Flow direction encoding packed into the AO byte's upper bits at mesh
+// build time. The AO value uses bits 0-1 (0-3); we store a "has
+// directional flow" flag in bit 2 and a compass angle index (0-15) in
+// bits 3-6. Source blocks and falling water leave these bits zero
+// (gentle omnidirectional ripple in the shader).
+static constexpr uint8_t FLOW_HAS_DIR_BIT  = 0x04; // bit 2
+static constexpr uint8_t FLOW_ANGLE_SHIFT  = 3;     // bits 3-6
+static constexpr uint8_t FLOW_ANGLE_MASK   = 0x0F;  // 4 bits → 16 directions
 inline uint8_t waterFlowLevel(uint8_t raw) { return raw & WATER_LEVEL_MASK; }
 inline bool waterIsFalling(uint8_t raw) { return (raw & WATER_FALLING_FLAG) != 0; }
 inline bool waterIsSource(uint8_t raw) { return (raw & (WATER_LEVEL_MASK | WATER_FALLING_FLAG)) == 0; }

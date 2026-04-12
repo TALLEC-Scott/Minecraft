@@ -359,10 +359,12 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
         g_frame.chunksRendered++;
     }
 
-    // Pass 2: transparent geometry (water + leaves) back-to-front
+    // Pass 2: transparent geometry (water) back-to-front.
+    // Double-sided so water edges are visible from both directions.
     shaderProgram.setInt("materialType", 1);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_CULL_FACE);
     for (int i = (int)visible.size() - 1; i >= 0; i--) {
         auto& vc = visible[i];
         Chunk* nx_neg = chunkManager->getChunk(vc.pos.x - 1, vc.pos.y);
@@ -372,6 +374,7 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
         vc.chunk->renderWater(shaderProgram, nx_neg, nx_pos, nz_neg, nz_pos);
     }
     glDisable(GL_BLEND);
+    glEnable(GL_CULL_FACE);
 
     return rendered;
 }
@@ -380,6 +383,7 @@ void World::update(glm::vec3 cameraPosition) const {
     ZoneScopedN("World::update");
     this->chunkManager->update(cameraPosition);
     this->waterSimulator->tick();
+    this->waterSimulator->updateAmbient(cameraPosition);
 }
 
 bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::ivec3& hitPos,
