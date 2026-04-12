@@ -13,10 +13,9 @@
 #include <climits>
 #include <cstddef>
 #include <utility>
-#include "cube.h"  // CHUNK_HEIGHT, CHUNK_SIZE, worldToChunk, worldToLocal
+#include "cube.h" // CHUNK_HEIGHT, CHUNK_SIZE, worldToChunk, worldToLocal
 
-template <typename ChunkManagerT, typename ChunkT>
-struct WorldResolverT {
+template <typename ChunkManagerT, typename ChunkT> struct WorldResolverT {
     ChunkManagerT* cm;
     int cachedCX = INT_MIN, cachedCZ = INT_MIN;
     ChunkT* cachedChunk = nullptr;
@@ -51,8 +50,7 @@ struct WorldResolverT {
         if (wy < 0 || wy >= CHUNK_HEIGHT) return {nullptr, 0};
         auto loc = local(wx, wz);
         if (!loc.chunk) return {nullptr, 0};
-        return {loc.chunk,
-                static_cast<size_t>(loc.lx) * CHUNK_HEIGHT * CHUNK_SIZE +
-                    static_cast<size_t>(wy) * CHUNK_SIZE + loc.lz};
+        return {loc.chunk, static_cast<size_t>(loc.lx) * CHUNK_HEIGHT * CHUNK_SIZE +
+                               static_cast<size_t>(wy) * CHUNK_SIZE + loc.lz};
     }
 };

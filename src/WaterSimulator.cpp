@@ -20,12 +20,14 @@ void WaterSimulator::initAudio(ma_engine* engine) {
     if (!engine) return;
     // CA transition sound (short bursts when blocks change)
     if (!flowSound) flowSound = new ma_sound{};
-    ma_sound_init_from_file(engine, "assets/Sounds/liquid/water.wav", MA_SOUND_FLAG_DECODE, nullptr, nullptr, flowSound);
+    ma_sound_init_from_file(engine, "assets/Sounds/liquid/water.wav", MA_SOUND_FLAG_DECODE, nullptr, nullptr,
+                            flowSound);
     ma_sound_set_looping(flowSound, MA_FALSE);
     ma_sound_set_volume(flowSound, 0.5f);
     // Ambient loop — plays continuously when player is near flowing water
     if (!ambientFlowSound) ambientFlowSound = new ma_sound{};
-    ma_sound_init_from_file(engine, "assets/Sounds/liquid/water.wav", MA_SOUND_FLAG_DECODE, nullptr, nullptr, ambientFlowSound);
+    ma_sound_init_from_file(engine, "assets/Sounds/liquid/water.wav", MA_SOUND_FLAG_DECODE, nullptr, nullptr,
+                            ambientFlowSound);
     ma_sound_set_looping(ambientFlowSound, MA_TRUE);
     ma_sound_set_volume(ambientFlowSound, 0.0f);
     ma_sound_start(ambientFlowSound);
@@ -76,7 +78,10 @@ void WaterSimulator::activateNeighbors(int x, int y, int z) {
 void WaterSimulator::tick() {
     if (!forceNextTick) {
         auto now = std::chrono::steady_clock::now();
-        if (lastTickTime.time_since_epoch().count() == 0) { lastTickTime = now; return; }
+        if (lastTickTime.time_since_epoch().count() == 0) {
+            lastTickTime = now;
+            return;
+        }
         double elapsed = std::chrono::duration<double>(now - lastTickTime).count();
         if (elapsed < TICK_SECONDS) return;
         lastTickTime = now;
@@ -114,16 +119,24 @@ void WaterSimulator::tick() {
             bool supported = false;
             if (y + 1 < CHUNK_HEIGHT && loc.chunk->getBlockType(loc.lx, y + 1, loc.lz) == WATER) {
                 uint8_t araw = loc.chunk->getWaterLevel(loc.lx, y + 1, loc.lz);
-                if (waterIsSource(araw) || waterIsFalling(araw)) supported = true;
-                else if (waterFlowLevel(araw) < lvl) supported = true;
+                if (waterIsSource(araw) || waterIsFalling(araw))
+                    supported = true;
+                else if (waterFlowLevel(araw) < lvl)
+                    supported = true;
             }
             if (!supported) {
                 for (auto& hd : HDIRS) {
                     auto n = resolver.local(x + hd[0], z + hd[1]);
                     if (!n.chunk || n.chunk->getBlockType(n.lx, y, n.lz) != WATER) continue;
                     uint8_t nraw = n.chunk->getWaterLevel(n.lx, y, n.lz);
-                    if (waterIsFalling(nraw)) { supported = true; break; }
-                    if (waterFlowLevel(nraw) < lvl) { supported = true; break; }
+                    if (waterIsFalling(nraw)) {
+                        supported = true;
+                        break;
+                    }
+                    if (waterFlowLevel(nraw) < lvl) {
+                        supported = true;
+                        break;
+                    }
                 }
             }
             cell.willDecay = !supported;
@@ -206,8 +219,8 @@ void WaterSimulator::tick() {
         // lands on solid ground (source-like fan-out). When it lands on
         // an existing pool, it dissipates into the pool — no extra water
         // layer above the pool surface.
-        bool solidBelow = (y > 0) && chunk->getBlockType(lx, y - 1, lz) != AIR
-                                  && chunk->getBlockType(lx, y - 1, lz) != WATER;
+        bool solidBelow =
+            (y > 0) && chunk->getBlockType(lx, y - 1, lz) != AIR && chunk->getBlockType(lx, y - 1, lz) != WATER;
         bool canSpreadFalling = falling && solidBelow;
         uint8_t spreadLevel = falling ? 0 : level;
         bool allowSpread = landed && (falling ? canSpreadFalling : true);
@@ -235,8 +248,7 @@ void WaterSimulator::tick() {
 
         // Rule 3 (falling only): flowing decay was decided in the pre-pass.
         if (falling) {
-            bool aboveIsWater = y + 1 < CHUNK_HEIGHT &&
-                                chunk->getBlockType(lx, y + 1, lz) == WATER;
+            bool aboveIsWater = y + 1 < CHUNK_HEIGHT && chunk->getBlockType(lx, y + 1, lz) == WATER;
             if (!aboveIsWater) {
                 world->setBlock(x, y, z, AIR, 0);
                 activateNeighbors(x, y, z);
@@ -248,7 +260,8 @@ void WaterSimulator::tick() {
     // Apply pre-pass decays. Each decay adds 6 neighbor inserts to
     // nextActive, so grow the reserve before the loop.
     size_t decayCount = 0;
-    for (const auto& cell : tickCells) if (cell.willDecay) decayCount++;
+    for (const auto& cell : tickCells)
+        if (cell.willDecay) decayCount++;
     if (decayCount > 0) {
         nextActive.reserve(nextActive.size() + decayCount * 6);
         for (const auto& cell : tickCells) {

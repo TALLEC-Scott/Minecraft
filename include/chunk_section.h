@@ -12,7 +12,9 @@ class ChunkSection {
     static constexpr int SIZE = 16;
     static constexpr int VOLUME = SIZE * SIZE * SIZE; // 4096
 
-    ChunkSection() : palette{AIR}, bitsPerBlock(1), data(bitsPerWord(1) > 0 ? (VOLUME + bitsPerWord(1) - 1) / bitsPerWord(1) : VOLUME, 0) {}
+    ChunkSection()
+        : palette{AIR}, bitsPerBlock(1),
+          data(bitsPerWord(1) > 0 ? (VOLUME + bitsPerWord(1) - 1) / bitsPerWord(1) : VOLUME, 0) {}
 
     block_type getBlock(int x, int y, int z) const {
         uint16_t idx = getPaletteIndex(x, y, z);
@@ -34,9 +36,7 @@ class ChunkSection {
         setPaletteIndex(x, y, z, palIdx);
     }
 
-    bool isEmpty() const {
-        return palette.size() == 1 && palette[0] == AIR;
-    }
+    bool isEmpty() const { return palette.size() == 1 && palette[0] == AIR; }
 
     // Decompress into a flat Cube array (4096 entries, indexed [x * 16*16 + y * 16 + z])
     void decompress(Cube* out) const {
@@ -55,8 +55,7 @@ class ChunkSection {
         // Build palette
         for (int i = 0; i < VOLUME; i++) {
             uint8_t t = static_cast<uint8_t>(source[i].getType());
-            if (std::find(palette.begin(), palette.end(), t) == palette.end())
-                palette.push_back(t);
+            if (std::find(palette.begin(), palette.end(), t) == palette.end()) palette.push_back(t);
         }
         if (palette.empty()) palette.push_back(AIR);
         bitsPerBlock = bitsNeeded(palette.size());
@@ -77,15 +76,18 @@ class ChunkSection {
     size_t memoryUsage() const { return palette.size() + data.size() * 8; }
 
   private:
-    std::vector<uint8_t> palette;   // index -> block_type
+    std::vector<uint8_t> palette; // index -> block_type
     uint8_t bitsPerBlock;
-    std::vector<uint64_t> data;     // packed bit array
+    std::vector<uint64_t> data; // packed bit array
 
     static uint8_t bitsNeeded(size_t paletteSize) {
         if (paletteSize <= 1) return 1;
         uint8_t bits = 0;
         size_t v = paletteSize - 1;
-        while (v > 0) { bits++; v >>= 1; }
+        while (v > 0) {
+            bits++;
+            v >>= 1;
+        }
         return bits;
     }
 

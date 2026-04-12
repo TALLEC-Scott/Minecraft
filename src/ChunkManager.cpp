@@ -172,8 +172,7 @@ void ChunkManager::generateChunk(int x, int z) {
     chunks[glm::ivec2(x, z)] = std::move(chunk);
     // Cross-chunk light propagation
     Chunk& newChunk = chunks[glm::ivec2(x, z)];
-    newChunk.propagateBorderLight(getChunk(x - 1, z), getChunk(x + 1, z),
-                                  getChunk(x, z - 1), getChunk(x, z + 1));
+    newChunk.propagateBorderLight(getChunk(x - 1, z), getChunk(x + 1, z), getChunk(x, z - 1), getChunk(x, z + 1));
     for (auto& [dx, dz] : std::initializer_list<std::pair<int, int>>{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}) {
         auto it = chunks.find(glm::ivec2(x + dx, z + dz));
         if (it != chunks.end()) it->second.markDirty();
@@ -219,9 +218,9 @@ void ChunkManager::workerLoop() {
                 std::lock_guard<std::mutex> lock(resultMutex);
                 resultQueue.push(std::move(data));
             } else if (isMeshBuild) {
-                Chunk::MeshData mesh = buildMeshFromData(meshReq.blocks.get(), meshReq.skyLight.get(),
-                                                         meshReq.waterLevels.get(), meshReq.maxSolidY,
-                                                         meshReq.chunkX, meshReq.chunkZ, meshReq.borders);
+                Chunk::MeshData mesh =
+                    buildMeshFromData(meshReq.blocks.get(), meshReq.skyLight.get(), meshReq.waterLevels.get(),
+                                      meshReq.maxSolidY, meshReq.chunkX, meshReq.chunkZ, meshReq.borders);
                 std::lock_guard<std::mutex> lock(resultMutex);
                 meshResultQueue.push({meshReq.pos, std::move(mesh)});
             }
@@ -254,8 +253,8 @@ void ChunkManager::queueMeshBuild(glm::ivec2 pos) {
     MeshRequest req;
     req.pos = pos;
     req.blocks = chunk.decompressBlocks();
-    chunk.ensureSkyLightFlat();        // async worker needs the flat array
-    req.skyLight = chunk.skyLight;     // shared_ptr copy; worker holds ref
+    chunk.ensureSkyLightFlat();          // async worker needs the flat array
+    req.skyLight = chunk.skyLight;       // shared_ptr copy; worker holds ref
     req.waterLevels = chunk.waterLevels; // shared_ptr copy of per-block flow levels
     req.maxSolidY = chunk.maxSolidY;
     req.chunkX = chunk.chunkX;
@@ -316,7 +315,7 @@ void ChunkManager::drainResults() {
 
         // Cross-chunk light propagation
         chunks[pos].propagateBorderLight(getChunk(pos.x - 1, pos.y), getChunk(pos.x + 1, pos.y),
-                                          getChunk(pos.x, pos.y - 1), getChunk(pos.x, pos.y + 1));
+                                         getChunk(pos.x, pos.y - 1), getChunk(pos.x, pos.y + 1));
 
         // Queue async mesh build for the new chunk and its neighbors
         queueMeshBuild(pos);

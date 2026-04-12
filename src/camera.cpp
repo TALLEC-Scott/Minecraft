@@ -123,7 +123,7 @@ void Camera::update(BlockCheck isSolid, void* ctx, WaterCheck isWater, WaterFlow
         // Water current: push player horizontally along stream; falling
         // water (flow.y < 0) pushes vertically down.
         if (getFlow) {
-            constexpr float WATER_CURRENT_PUSH = 0.025f;   // blocks/frame at 60fps
+            constexpr float WATER_CURRENT_PUSH = 0.025f; // blocks/frame at 60fps
             constexpr float WATERFALL_DOWN_PUSH = 0.014f;
             int fx = (int)std::floor(cameraPosition.x + 0.5f);
             int fy = (int)std::floor(cameraPosition.y - PLAYER_HEIGHT + 0.5f);

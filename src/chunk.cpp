@@ -26,8 +26,8 @@ static void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY);
 
 // Sync sampler: reads in-chunk from blocks[]/waterLevels[], cross-chunk
 // via Chunk pointers (including diagonals for 4-chunk corners).
-static WaterCellSample sampleSync(const Cube* blocks, const uint8_t* waterLevels,
-                                  const Chunk::NeighborChunks& nc, int bx, int by, int bz) {
+static WaterCellSample sampleSync(const Cube* blocks, const uint8_t* waterLevels, const Chunk::NeighborChunks& nc,
+                                  int bx, int by, int bz) {
     auto classify = [](block_type t, uint8_t raw) -> WaterCellSample {
         if (t == WATER) return {CellKind::Water, raw};
         if (t == AIR) return {CellKind::Air, 0};
@@ -39,26 +39,46 @@ static WaterCellSample sampleSync(const Cube* blocks, const uint8_t* waterLevels
     Chunk* c = nullptr;
     int lx = bx, lz = bz;
     if ((xNeg || xPos) && (zNeg || zPos)) {
-        if (xNeg && zNeg) { c = nc.dNN; lx = CHUNK_SIZE - 1; lz = CHUNK_SIZE - 1; }
-        else if (xNeg && zPos) { c = nc.dNP; lx = CHUNK_SIZE - 1; lz = 0; }
-        else if (xPos && zNeg) { c = nc.dPN; lx = 0; lz = CHUNK_SIZE - 1; }
-        else { c = nc.dPP; lx = 0; lz = 0; }
-    } else if (xNeg) { c = nc.nxNeg; lx = CHUNK_SIZE - 1; }
-    else if (xPos) { c = nc.nxPos; lx = 0; }
-    else if (zNeg) { c = nc.nzNeg; lz = CHUNK_SIZE - 1; }
-    else if (zPos) { c = nc.nzPos; lz = 0; }
+        if (xNeg && zNeg) {
+            c = nc.dNN;
+            lx = CHUNK_SIZE - 1;
+            lz = CHUNK_SIZE - 1;
+        } else if (xNeg && zPos) {
+            c = nc.dNP;
+            lx = CHUNK_SIZE - 1;
+            lz = 0;
+        } else if (xPos && zNeg) {
+            c = nc.dPN;
+            lx = 0;
+            lz = CHUNK_SIZE - 1;
+        } else {
+            c = nc.dPP;
+            lx = 0;
+            lz = 0;
+        }
+    } else if (xNeg) {
+        c = nc.nxNeg;
+        lx = CHUNK_SIZE - 1;
+    } else if (xPos) {
+        c = nc.nxPos;
+        lx = 0;
+    } else if (zNeg) {
+        c = nc.nzNeg;
+        lz = CHUNK_SIZE - 1;
+    } else if (zPos) {
+        c = nc.nzPos;
+        lz = 0;
+    }
     if (c) return classify(c->getBlockType(lx, by, lz), c->getWaterLevel(lx, by, lz));
     size_t i = static_cast<size_t>(bx) * CHUNK_HEIGHT * CHUNK_SIZE + by * CHUNK_SIZE + bz;
     uint8_t raw = waterLevels ? waterLevels[i] : 0;
     return classify(blocks[i].getType(), raw);
 }
 
-static void computeWaterTopCorners(const Cube* blocks, const uint8_t* waterLevels,
-                                   int bx, int by, int bz, int uSign, int vSign, float out[4],
-                                   const Chunk::NeighborChunks& nc) {
-    computeWaterTopCornersT(bx, by, bz, uSign, vSign, out, [&](int x, int y, int z) {
-        return sampleSync(blocks, waterLevels, nc, x, y, z);
-    });
+static void computeWaterTopCorners(const Cube* blocks, const uint8_t* waterLevels, int bx, int by, int bz, int uSign,
+                                   int vSign, float out[4], const Chunk::NeighborChunks& nc) {
+    computeWaterTopCornersT(bx, by, bz, uSign, vSign, out,
+                            [&](int x, int y, int z) { return sampleSync(blocks, waterLevels, nc, x, y, z); });
 }
 
 // Water side face corner indices into topCorners[4] (computed with u_sign=1, v_sign=-1).
@@ -157,12 +177,12 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
                 shoreBlock = SAND;
 
             for (int j = 0; j <= WATER_LEVEL + 1 && j < CHUNK_HEIGHT; j++) {
-                Cube* block = getBlockFromFlat(flatBlocks.get(),i, j, k);
+                Cube* block = getBlockFromFlat(flatBlocks.get(), i, j, k);
                 block_type bt = block->getType();
                 if (bt != DIRT && bt != GRASS && bt != STONE && bt != GRAVEL) continue;
 
                 if (j < WATER_LEVEL) {
-                    Cube* above = getBlockFromFlat(flatBlocks.get(),i, j + 1, k);
+                    Cube* above = getBlockFromFlat(flatBlocks.get(), i, j + 1, k);
                     if (above && above->getType() == WATER) {
                         block->setType(shoreBlock);
                         continue;
@@ -170,7 +190,7 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
                 }
                 static const int dirs[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
                 for (auto& dir : dirs) {
-                    Cube* nb = getBlockFromFlat(flatBlocks.get(),i + dir[0], j + dir[1], k + dir[2]);
+                    Cube* nb = getBlockFromFlat(flatBlocks.get(), i + dir[0], j + dir[1], k + dir[2]);
                     if (nb && nb->getType() == WATER) {
                         block->setType(shoreBlock);
                         break;
@@ -222,7 +242,7 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
         if (tx - radius < 1 || tx + radius >= CHUNK_SIZE - 1) continue;
         if (tz - radius < 1 || tz + radius >= CHUNK_SIZE - 1) continue;
 
-        Cube* surfaceBlock = getBlockFromFlat(flatBlocks.get(),tx, surface, tz);
+        Cube* surfaceBlock = getBlockFromFlat(flatBlocks.get(), tx, surface, tz);
         if (!surfaceBlock || surfaceBlock->getType() != tbp.surfaceBlock) continue;
         if (tbp.surfaceBlock != GRASS) continue; // only plant trees on grass
 
@@ -241,7 +261,7 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
 
         // Trunk
         for (int y = surface + 1; y <= surface + trunkH; y++) {
-            Cube* b = getBlockFromFlat(flatBlocks.get(),tx, y, tz);
+            Cube* b = getBlockFromFlat(flatBlocks.get(), tx, y, tz);
             if (b) b->setType(WOOD);
         }
 
@@ -254,7 +274,7 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
                     if (dx == 0 && dz == 0 && ly == 0) continue;
                     int bx = tx + dx, by = canopyBase + ly, bz = tz + dz;
                     if (bx < 0 || bx >= CHUNK_SIZE || bz < 0 || bz >= CHUNK_SIZE) continue;
-                    Cube* b = getBlockFromFlat(flatBlocks.get(),bx, by, bz);
+                    Cube* b = getBlockFromFlat(flatBlocks.get(), bx, by, bz);
                     if (b && b->getType() == AIR) b->setType(LEAVES);
                 }
             }
@@ -265,7 +285,7 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
                 if (abs(dx) == 1 && abs(dz) == 1) continue;
                 int bx = tx + dx, bz = tz + dz;
                 if (bx < 0 || bx >= CHUNK_SIZE || bz < 0 || bz >= CHUNK_SIZE) continue;
-                Cube* crown = getBlockFromFlat(flatBlocks.get(),bx, canopyBase + layers, bz);
+                Cube* crown = getBlockFromFlat(flatBlocks.get(), bx, canopyBase + layers, bz);
                 if (crown && crown->getType() == AIR) crown->setType(LEAVES);
             }
         }
@@ -286,11 +306,11 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
         int cactusH = cactusDist(rng);
         if (surface + cactusH >= CHUNK_HEIGHT) continue;
 
-        Cube* surfBlock = getBlockFromFlat(flatBlocks.get(),cx, surface, cz);
+        Cube* surfBlock = getBlockFromFlat(flatBlocks.get(), cx, surface, cz);
         if (!surfBlock || surfBlock->getType() != SAND) continue;
 
         for (int y = surface + 1; y <= surface + cactusH; y++) {
-            Cube* b = getBlockFromFlat(flatBlocks.get(),cx, y, cz);
+            Cube* b = getBlockFromFlat(flatBlocks.get(), cx, y, cz);
             if (b && b->getType() == AIR) b->setType(CACTUS);
         }
     }
@@ -396,11 +416,12 @@ static void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY) 
                 // Check if any neighbor is darker (worth seeding from)
                 bool hasEdge = (x == 0 || x == CHUNK_SIZE - 1 || z == 0 || z == CHUNK_SIZE - 1);
                 if (!hasEdge) {
-                    hasEdge = (y > 0 && unpackSky(skyLight[slIdx(x, y - 1, z)]) < mySky - 1) ||
-                              (unpackSky(skyLight[slIdx(x - 1 < 0 ? 0 : x - 1, y, z)]) < mySky - 1) ||
-                              (unpackSky(skyLight[slIdx(x + 1 >= CHUNK_SIZE ? CHUNK_SIZE - 1 : x + 1, y, z)]) < mySky - 1) ||
-                              (unpackSky(skyLight[slIdx(x, y, z - 1 < 0 ? 0 : z - 1)]) < mySky - 1) ||
-                              (unpackSky(skyLight[slIdx(x, y, z + 1 >= CHUNK_SIZE ? CHUNK_SIZE - 1 : z + 1)]) < mySky - 1);
+                    hasEdge =
+                        (y > 0 && unpackSky(skyLight[slIdx(x, y - 1, z)]) < mySky - 1) ||
+                        (unpackSky(skyLight[slIdx(x - 1 < 0 ? 0 : x - 1, y, z)]) < mySky - 1) ||
+                        (unpackSky(skyLight[slIdx(x + 1 >= CHUNK_SIZE ? CHUNK_SIZE - 1 : x + 1, y, z)]) < mySky - 1) ||
+                        (unpackSky(skyLight[slIdx(x, y, z - 1 < 0 ? 0 : z - 1)]) < mySky - 1) ||
+                        (unpackSky(skyLight[slIdx(x, y, z + 1 >= CHUNK_SIZE ? CHUNK_SIZE - 1 : z + 1)]) < mySky - 1);
                 }
                 if (hasEdge) queue.push_back(packCoord(x, y, z));
             }
@@ -468,15 +489,15 @@ void Chunk::compressSkyLight() {
 
 void Chunk::ensureSkyLightFlat() {
     if (skyLight) return;
-    skyLight = std::shared_ptr<uint8_t[]>(
-        new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]());
+    skyLight = std::shared_ptr<uint8_t[]>(new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]());
     sparseLight.exportToFlat(skyLight.get());
 }
 
 uint8_t Chunk::getSkyLight(int x, int y, int z) const {
     if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 15;
     if (skyLight) {
-        return unpackSky(skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+        return unpackSky(
+            skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
     }
     return unpackSky(sparseLight.get(x, y, z));
 }
@@ -484,7 +505,8 @@ uint8_t Chunk::getSkyLight(int x, int y, int z) const {
 uint8_t Chunk::getBlockLight(int x, int y, int z) const {
     if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 0;
     if (skyLight) {
-        return unpackBlock(skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+        return unpackBlock(
+            skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
     }
     return unpackBlock(sparseLight.get(x, y, z));
 }
@@ -500,7 +522,7 @@ void Chunk::propagateBorderLight(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Ch
     blkQueue.reserve(CHUNK_SIZE * CHUNK_HEIGHT);
     auto packCoord = [](int x, int y, int z) -> int32_t { return (x << 20) | (y << 8) | z; };
 
-    ensureSkyLightFlat(); // BFS needs flat read/write access
+    ensureSkyLightFlat();         // BFS needs flat read/write access
     uint8_t* lt = skyLight.get(); // packed light array
     auto flatBlocks = decompressBlocks();
     Cube* blks = flatBlocks.get();
@@ -517,8 +539,7 @@ void Chunk::propagateBorderLight(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Ch
             uint8_t nbrSky = neighbor->getSkyLight(nbrX, y, nbrZ);
             if (nbrSky > 1) {
                 uint8_t propagated = nbrSky - 1;
-                if (propagated > unpackSky(lt[si]) &&
-                    !hasFlag(blks[si].getType(), BF_OPAQUE)) {
+                if (propagated > unpackSky(lt[si]) && !hasFlag(blks[si].getType(), BF_OPAQUE)) {
                     lt[si] = (propagated << 4) | (lt[si] & 0xF);
                     skyQueue.push_back(packCoord(selfX, y, selfZ));
                 }
@@ -527,8 +548,7 @@ void Chunk::propagateBorderLight(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Ch
             uint8_t nbrBlk = neighbor->getBlockLight(nbrX, y, nbrZ);
             if (nbrBlk > 1) {
                 uint8_t propagated = nbrBlk - 1;
-                if (propagated > unpackBlock(lt[si]) &&
-                    !hasFlag(blks[si].getType(), BF_OPAQUE)) {
+                if (propagated > unpackBlock(lt[si]) && !hasFlag(blks[si].getType(), BF_OPAQUE)) {
                     lt[si] = (lt[si] & 0xF0) | (propagated & 0xF);
                     blkQueue.push_back(packCoord(selfX, y, selfZ));
                 }
@@ -538,23 +558,19 @@ void Chunk::propagateBorderLight(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Ch
 
     // Seed from -X neighbor (their x=CHUNK_SIZE-1 -> our x=0)
     if (nx_neg) {
-        for (int z = 0; z < CHUNK_SIZE; z++)
-            seedEdge(nx_neg, 0, z, CHUNK_SIZE - 1, z);
+        for (int z = 0; z < CHUNK_SIZE; z++) seedEdge(nx_neg, 0, z, CHUNK_SIZE - 1, z);
     }
     // Seed from +X neighbor (their x=0 -> our x=CHUNK_SIZE-1)
     if (nx_pos) {
-        for (int z = 0; z < CHUNK_SIZE; z++)
-            seedEdge(nx_pos, CHUNK_SIZE - 1, z, 0, z);
+        for (int z = 0; z < CHUNK_SIZE; z++) seedEdge(nx_pos, CHUNK_SIZE - 1, z, 0, z);
     }
     // Seed from -Z neighbor (their z=CHUNK_SIZE-1 -> our z=0)
     if (nz_neg) {
-        for (int x = 0; x < CHUNK_SIZE; x++)
-            seedEdge(nz_neg, x, 0, x, CHUNK_SIZE - 1);
+        for (int x = 0; x < CHUNK_SIZE; x++) seedEdge(nz_neg, x, 0, x, CHUNK_SIZE - 1);
     }
     // Seed from +Z neighbor (their z=0 -> our z=CHUNK_SIZE-1)
     if (nz_pos) {
-        for (int x = 0; x < CHUNK_SIZE; x++)
-            seedEdge(nz_pos, x, CHUNK_SIZE - 1, x, 0);
+        for (int x = 0; x < CHUNK_SIZE; x++) seedEdge(nz_pos, x, CHUNK_SIZE - 1, x, 0);
     }
 
     // BFS flood inward — sky light uses high nibble, block light uses low nibble
@@ -677,7 +693,8 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
         }
 
     // Greedy meshing: merge coplanar same-type adjacent faces into larger quads.
-    // Packed vertex layout (12 bytes): pos(3×int16) + uv(2×uint8) + normalIdx(uint8) + texLayer(uint8) + ao(uint8) + packedLight(uint8)
+    // Packed vertex layout (12 bytes): pos(3×int16) + uv(2×uint8) + normalIdx(uint8) + texLayer(uint8) + ao(uint8) +
+    // packedLight(uint8)
 
     struct FaceDef {
         int d, u, v;                // axis indices for normal, first tangent, second tangent
@@ -700,11 +717,13 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
     uint8_t* lightPtr = skyLight.get();
     auto slDirect = [lightPtr](int x, int y, int z) -> int {
         if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 15;
-        return unpackSky(lightPtr[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+        return unpackSky(
+            lightPtr[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
     };
     auto blDirect = [lightPtr](int x, int y, int z) -> int {
         if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 0;
-        return unpackBlock(lightPtr[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+        return unpackBlock(
+            lightPtr[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
     };
 
     int mask[MAX_DIM][MAX_DIM];
@@ -735,301 +754,322 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
         sm.waterIdx.clear();
         unsigned int opaqueBase = 0, waterBase = 0;
 
-    for (int f = 0; f < 6; f++) {
-        const FaceDef& fd = FACE_DEFS[f];
-        const int d_dim = std::min(DIM[fd.d], effDIM[fd.d]);
-        const int u_dim = std::min(DIM[fd.u], effDIM[fd.u]);
-        const int v_dim = std::min(DIM[fd.v], effDIM[fd.v]);
+        for (int f = 0; f < 6; f++) {
+            const FaceDef& fd = FACE_DEFS[f];
+            const int d_dim = std::min(DIM[fd.d], effDIM[fd.d]);
+            const int u_dim = std::min(DIM[fd.u], effDIM[fd.u]);
+            const int v_dim = std::min(DIM[fd.v], effDIM[fd.v]);
 
-        // Clamp the Y-related axis to the current section's range.
-        const int d_start = (fd.d == 1) ? std::max(yMin, 0) : 0;
-        const int d_end   = (fd.d == 1) ? std::min(yMax, d_dim) : d_dim;
-        const int v_start = (fd.v == 1) ? std::max(yMin, 0) : 0;
-        const int v_end   = (fd.v == 1) ? std::min(yMax, v_dim) : v_dim;
+            // Clamp the Y-related axis to the current section's range.
+            const int d_start = (fd.d == 1) ? std::max(yMin, 0) : 0;
+            const int d_end = (fd.d == 1) ? std::min(yMax, d_dim) : d_dim;
+            const int v_start = (fd.v == 1) ? std::max(yMin, 0) : 0;
+            const int v_end = (fd.v == 1) ? std::min(yMax, v_dim) : v_dim;
 
-        for (int d = d_start; d < d_end; d++) {
+            for (int d = d_start; d < d_end; d++) {
 
-            // 1. Build mask for this face direction and slice
-            bool anyFace = false;
-            for (int u = 0; u < u_dim; u++) {
-                for (int v = v_start; v < v_end; v++) {
-                    int c[3];
-                    c[fd.d] = d;
-                    c[fd.u] = u;
-                    c[fd.v] = v;
-                    block_type bt = getBlock(c[0], c[1], c[2])->getType();
-                    // Skip air blocks entirely.
-                    if (bt == AIR) {
-                        mask[u][v] = -1;
-                        continue;
+                // 1. Build mask for this face direction and slice
+                bool anyFace = false;
+                for (int u = 0; u < u_dim; u++) {
+                    for (int v = v_start; v < v_end; v++) {
+                        int c[3];
+                        c[fd.d] = d;
+                        c[fd.u] = u;
+                        c[fd.v] = v;
+                        block_type bt = getBlock(c[0], c[1], c[2])->getType();
+                        // Skip air blocks entirely.
+                        if (bt == AIR) {
+                            mask[u][v] = -1;
+                            continue;
+                        }
+
+                        int nc[3] = {c[0], c[1], c[2]};
+                        nc[fd.d] += fd.d_sign;
+                        Cube* nb = getBlockCross(this, nc[0], nc[1], nc[2], nx_neg, nx_pos, nz_neg, nz_pos);
+                        block_type nbType = nb ? nb->getType() : STONE;
+
+                        bool show;
+                        if (hasFlag(bt, BF_LIQUID)) {
+                            // Water: top + 4 sides, skip bottom. Render where neighbor is air.
+                            show = (f != 5) && (nbType == AIR);
+                        } else {
+                            show = (nbType == AIR) || (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
+                                   (g_fancyLeaves && (hasFlag(bt, BF_TRANSLUCENT) || hasFlag(nbType, BF_TRANSLUCENT)));
+                        }
+                        int val = show ? (int)bt : -1;
+                        mask[u][v] = val;
+                        if (val != -1) anyFace = true;
                     }
-
-                    int nc[3] = {c[0], c[1], c[2]};
-                    nc[fd.d] += fd.d_sign;
-                    Cube* nb = getBlockCross(this, nc[0], nc[1], nc[2], nx_neg, nx_pos, nz_neg, nz_pos);
-                    block_type nbType = nb ? nb->getType() : STONE;
-
-                    bool show;
-                    if (hasFlag(bt, BF_LIQUID)) {
-                        // Water: top + 4 sides, skip bottom. Render where neighbor is air.
-                        show = (f != 5) && (nbType == AIR);
-                    } else {
-                        show = (nbType == AIR) ||
-                               (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
-                               (g_fancyLeaves && (hasFlag(bt, BF_TRANSLUCENT) || hasFlag(nbType, BF_TRANSLUCENT)));
-                    }
-                    int val = show ? (int)bt : -1;
-                    mask[u][v] = val;
-                    if (val != -1) anyFace = true;
                 }
-            }
 
-            if (!anyFace) continue; // entire slice is air, skip greedy sweep
+                if (!anyFace) continue; // entire slice is air, skip greedy sweep
 
-            // 2. Sweep mask and emit quads
-            for (int u = 0; u < u_dim; u++) {
-                for (int v = v_start; v < v_end;) {
-                    int bt = mask[u][v];
-                    if (bt == -1) {
-                        v++;
-                        continue;
-                    }
-
-                    int h = 1, w = 1;
-                    if (g_greedyMeshing) {
-                        while (v + h < v_dim && mask[u][v + h] == bt) h++;
-                        w = 1;
-                        while (u + w < u_dim) {
-                            bool ok = true;
-                            for (int dv = 0; dv < h && ok; dv++) ok = (mask[u + w][v + dv] == bt);
-                            if (!ok) break;
-                            w++;
+                // 2. Sweep mask and emit quads
+                for (int u = 0; u < u_dim; u++) {
+                    for (int v = v_start; v < v_end;) {
+                        int bt = mask[u][v];
+                        if (bt == -1) {
+                            v++;
+                            continue;
                         }
-                    }
 
-                    float layer = (float)TextureArray::layerForFace((block_type)bt, f);
-                    float d_val = (float)d + fd.d_sign * 0.5f;
+                        int h = 1, w = 1;
+                        if (g_greedyMeshing) {
+                            while (v + h < v_dim && mask[u][v + h] == bt) h++;
+                            w = 1;
+                            while (u + w < u_dim) {
+                                bool ok = true;
+                                for (int dv = 0; dv < h && ok; dv++) ok = (mask[u + w][v + dv] == bt);
+                                if (!ok) break;
+                                w++;
+                            }
+                        }
 
-                    // Greedy merge must not cross section boundary along the v
-                    // axis (which is Y for side faces).
-                    {
-                        int h_max = v_end - v;
-                        if (h > h_max) h = h_max;
-                    }
+                        float layer = (float)TextureArray::layerForFace((block_type)bt, f);
+                        float d_val = (float)d + fd.d_sign * 0.5f;
 
-                    // Water top face: per-vertex heights averaged with neighbors for a smooth surface.
-                    float waterY[4] = {d_val, d_val, d_val, d_val};
-                    if (bt == (int)WATER && f == 4) {
-                        computeWaterTopCorners(blocks, waterLevels.get(), u, d, v, fd.u_sign, fd.v_sign, waterY, nc);
-                    }
+                        // Greedy merge must not cross section boundary along the v
+                        // axis (which is Y for side faces).
+                        {
+                            int h_max = v_end - v;
+                            if (h > h_max) h = h_max;
+                        }
 
-                    float u_lo = (float)u - 0.5f, u_hi = (float)(u + w) - 0.5f;
-                    float v_lo = (float)v - 0.5f, v_hi = (float)(v + h) - 0.5f;
-                    float u0 = fd.u_sign > 0 ? u_lo : u_hi;
-                    float u1 = fd.u_sign > 0 ? u_hi : u_lo;
-                    float v0 = fd.v_sign > 0 ? v_lo : v_hi;
-                    float v1 = fd.v_sign > 0 ? v_hi : v_lo;
+                        // Water top face: per-vertex heights averaged with neighbors for a smooth surface.
+                        float waterY[4] = {d_val, d_val, d_val, d_val};
+                        if (bt == (int)WATER && f == 4) {
+                            computeWaterTopCorners(blocks, waterLevels.get(), u, d, v, fd.u_sign, fd.v_sign, waterY,
+                                                   nc);
+                        }
 
-                    float vp[4][3];
-                    bool isWT = (bt == (int)WATER && f == 4);
+                        float u_lo = (float)u - 0.5f, u_hi = (float)(u + w) - 0.5f;
+                        float v_lo = (float)v - 0.5f, v_hi = (float)(v + h) - 0.5f;
+                        float u0 = fd.u_sign > 0 ? u_lo : u_hi;
+                        float u1 = fd.u_sign > 0 ? u_hi : u_lo;
+                        float v0 = fd.v_sign > 0 ? v_lo : v_hi;
+                        float v1 = fd.v_sign > 0 ? v_hi : v_lo;
 
-                    // Vertex order: (u0,v0), (u0,v1), (u1,v1), (u1,v0)
-                    vp[0][fd.d] = isWT ? waterY[0] : d_val;
-                    vp[0][fd.u] = u0;
-                    vp[0][fd.v] = v0;
-                    vp[1][fd.d] = isWT ? waterY[1] : d_val;
-                    vp[1][fd.u] = u0;
-                    vp[1][fd.v] = v1;
-                    vp[2][fd.d] = isWT ? waterY[2] : d_val;
-                    vp[2][fd.u] = u1;
-                    vp[2][fd.v] = v1;
-                    vp[3][fd.d] = isWT ? waterY[3] : d_val;
-                    vp[3][fd.u] = u1;
-                    vp[3][fd.v] = v0;
+                        float vp[4][3];
+                        bool isWT = (bt == (int)WATER && f == 4);
 
-                    bool isWaterSide = (bt == (int)WATER && f != 4 && f != 5 && fd.v == 1);
-                    if (isWaterSide && waterLevels) {
-                        int bc[3]; bc[fd.d] = d; bc[fd.u] = u; bc[fd.v] = v;
-                        float topCorners[4];
-                        computeWaterTopCorners(blocks, waterLevels.get(), bc[0], bc[1], bc[2],
-                                               1, -1, topCorners, nc);
-                        vp[1][fd.v] = topCorners[SIDE_TOP_IDX[f][0]];
-                        vp[2][fd.v] = topCorners[SIDE_TOP_IDX[f][1]];
-                    }
+                        // Vertex order: (u0,v0), (u0,v1), (u1,v1), (u1,v0)
+                        vp[0][fd.d] = isWT ? waterY[0] : d_val;
+                        vp[0][fd.u] = u0;
+                        vp[0][fd.v] = v0;
+                        vp[1][fd.d] = isWT ? waterY[1] : d_val;
+                        vp[1][fd.u] = u0;
+                        vp[1][fd.v] = v1;
+                        vp[2][fd.d] = isWT ? waterY[2] : d_val;
+                        vp[2][fd.u] = u1;
+                        vp[2][fd.v] = v1;
+                        vp[3][fd.d] = isWT ? waterY[3] : d_val;
+                        vp[3][fd.u] = u1;
+                        vp[3][fd.v] = v0;
 
-                    const float uvs[4][2] = {{0.f, 0.f}, {0.f, (float)h}, {(float)w, (float)h}, {(float)w, 0.f}};
+                        bool isWaterSide = (bt == (int)WATER && f != 4 && f != 5 && fd.v == 1);
+                        if (isWaterSide && waterLevels) {
+                            int bc[3];
+                            bc[fd.d] = d;
+                            bc[fd.u] = u;
+                            bc[fd.v] = v;
+                            float topCorners[4];
+                            computeWaterTopCorners(blocks, waterLevels.get(), bc[0], bc[1], bc[2], 1, -1, topCorners,
+                                                   nc);
+                            vp[1][fd.v] = topCorners[SIDE_TOP_IDX[f][0]];
+                            vp[2][fd.v] = topCorners[SIDE_TOP_IDX[f][1]];
+                        }
 
-                    // Per-vertex AO: check 3 corner neighbors per vertex
-                    // For each vertex, find the block at that corner and the
-                    // two side + one diagonal neighbor in the face's normal direction.
-                    int skyLightVals[4], blockLightVals[4];
-                    int bu[4], bv[4], cu[4], cv[4];
-                    bu[0] = bu[1] = (fd.u_sign > 0) ? u : u + w - 1;
-                    bu[2] = bu[3] = (fd.u_sign > 0) ? u + w - 1 : u;
-                    bv[0] = bv[3] = (fd.v_sign > 0) ? v : v + h - 1;
-                    bv[1] = bv[2] = (fd.v_sign > 0) ? v + h - 1 : v;
-                    cu[0] = cu[1] = -fd.u_sign;
-                    cu[2] = cu[3] = fd.u_sign;
-                    cv[0] = cv[3] = -fd.v_sign;
-                    cv[1] = cv[2] = fd.v_sign;
+                        const float uvs[4][2] = {{0.f, 0.f}, {0.f, (float)h}, {(float)w, (float)h}, {(float)w, 0.f}};
 
-                    int ao[4];
-                    for (int vi = 0; vi < 4; vi++) {
-                        int bc[3];
-                        bc[fd.d] = d;
-                        bc[fd.u] = bu[vi];
-                        bc[fd.v] = bv[vi];
-                        int n[3] = {0, 0, 0};
-                        n[fd.d] = fd.d_sign;
-                        int su[3] = {0, 0, 0};
-                        su[fd.u] = cu[vi];
-                        int sv[3] = {0, 0, 0};
-                        sv[fd.v] = cv[vi];
+                        // Per-vertex AO: check 3 corner neighbors per vertex
+                        // For each vertex, find the block at that corner and the
+                        // two side + one diagonal neighbor in the face's normal direction.
+                        int skyLightVals[4], blockLightVals[4];
+                        int bu[4], bv[4], cu[4], cv[4];
+                        bu[0] = bu[1] = (fd.u_sign > 0) ? u : u + w - 1;
+                        bu[2] = bu[3] = (fd.u_sign > 0) ? u + w - 1 : u;
+                        bv[0] = bv[3] = (fd.v_sign > 0) ? v : v + h - 1;
+                        bv[1] = bv[2] = (fd.v_sign > 0) ? v + h - 1 : v;
+                        cu[0] = cu[1] = -fd.u_sign;
+                        cu[2] = cu[3] = fd.u_sign;
+                        cv[0] = cv[3] = -fd.v_sign;
+                        cv[1] = cv[2] = fd.v_sign;
 
-                        // Fast AO lookup using precomputed opacity cache
-                        int px = bc[0] + n[0], py = bc[1] + n[1], pz = bc[2] + n[2];
-                        int s1 = (py + su[1] >= 0 && py + su[1] < opaqueH)
-                                     ? opaq[oIdx(px + su[0], py + su[1], pz + su[2])]
-                                     : 0;
-                        int s2 = (py + sv[1] >= 0 && py + sv[1] < opaqueH)
-                                     ? opaq[oIdx(px + sv[0], py + sv[1], pz + sv[2])]
-                                     : 0;
-                        int cr = (py + su[1] + sv[1] >= 0 && py + su[1] + sv[1] < opaqueH)
-                                     ? opaq[oIdx(px + su[0] + sv[0], py + su[1] + sv[1], pz + su[2] + sv[2])]
-                                     : 0;
-                        int aoVal = (s1 && s2) ? 0 : 3 - (s1 + s2 + cr);
+                        int ao[4];
+                        for (int vi = 0; vi < 4; vi++) {
+                            int bc[3];
+                            bc[fd.d] = d;
+                            bc[fd.u] = bu[vi];
+                            bc[fd.v] = bv[vi];
+                            int n[3] = {0, 0, 0};
+                            n[fd.d] = fd.d_sign;
+                            int su[3] = {0, 0, 0};
+                            su[fd.u] = cu[vi];
+                            int sv[3] = {0, 0, 0};
+                            sv[fd.v] = cv[vi];
 
-                        ao[vi] = aoVal;
+                            // Fast AO lookup using precomputed opacity cache
+                            int px = bc[0] + n[0], py = bc[1] + n[1], pz = bc[2] + n[2];
+                            int s1 = (py + su[1] >= 0 && py + su[1] < opaqueH)
+                                         ? opaq[oIdx(px + su[0], py + su[1], pz + su[2])]
+                                         : 0;
+                            int s2 = (py + sv[1] >= 0 && py + sv[1] < opaqueH)
+                                         ? opaq[oIdx(px + sv[0], py + sv[1], pz + sv[2])]
+                                         : 0;
+                            int cr = (py + su[1] + sv[1] >= 0 && py + su[1] + sv[1] < opaqueH)
+                                         ? opaq[oIdx(px + su[0] + sv[0], py + su[1] + sv[1], pz + su[2] + sv[2])]
+                                         : 0;
+                            int aoVal = (s1 && s2) ? 0 : 3 - (s1 + s2 + cr);
 
-                        skyLightVals[vi] = slDirect(bc[0] + n[0], bc[1] + n[1], bc[2] + n[2]);
-                        blockLightVals[vi] = blDirect(bc[0] + n[0], bc[1] + n[1], bc[2] + n[2]);
-                    }
+                            ao[vi] = aoVal;
 
-                    bool isWater = (bt == (int)WATER);
+                            skyLightVals[vi] = slDirect(bc[0] + n[0], bc[1] + n[1], bc[2] + n[2]);
+                            blockLightVals[vi] = blDirect(bc[0] + n[0], bc[1] + n[1], bc[2] + n[2]);
+                        }
 
-                    // Compute flow direction for water top faces.
-                    // Packed into the ao byte's upper bits so the
-                    // fragment shader can scroll the UV directionally.
-                    uint8_t flowBits = 0;
-                    if (isWater && f == 4 && waterLevels) {
-                        size_t wi = static_cast<size_t>(u) * CHUNK_HEIGHT * CHUNK_SIZE + d * CHUNK_SIZE + v;
-                        uint8_t raw = waterLevels.get()[wi];
-                        if (!waterIsSource(raw) && !waterIsFalling(raw)) {
-                            int myLvl = waterFlowLevel(raw);
-                            float fx = 0, fz = 0;
-                            // Minecraft flow direction: accumulate a vector pointing
-                            // downhill (from higher water toward lower water).
-                            // For each neighbor:
-                            //   - lower level (more water) → push away from it (outward)
-                            //   - higher level (less water) → pull toward it (outward)
-                            //   - AIR → strong pull toward it (cliff edge)
-                            // +X / -X neighbors
-                            for (int dx : {-1, 1}) {
-                                int nx = u + dx;
-                                block_type nbt; uint8_t nraw = 0;
-                                if (nx >= 0 && nx < CHUNK_SIZE) {
-                                    nbt = getBlock(nx, d, v)->getType();
-                                    if (nbt == WATER) nraw = waterLevels.get()[static_cast<size_t>(nx) * CHUNK_HEIGHT * CHUNK_SIZE + d * CHUNK_SIZE + v];
-                                } else {
-                                    Cube* nb = getBlockCross(this, nx, d, v, nx_neg, nx_pos, nz_neg, nz_pos);
-                                    nbt = nb ? nb->getType() : STONE;
-                                    if (nbt == WATER) {
-                                        Chunk* nc = (dx < 0) ? nx_neg : nx_pos;
-                                        if (nc) nraw = nc->getWaterLevel(dx < 0 ? CHUNK_SIZE - 1 : 0, d, v);
+                        bool isWater = (bt == (int)WATER);
+
+                        // Compute flow direction for water top faces.
+                        // Packed into the ao byte's upper bits so the
+                        // fragment shader can scroll the UV directionally.
+                        uint8_t flowBits = 0;
+                        if (isWater && f == 4 && waterLevels) {
+                            size_t wi = static_cast<size_t>(u) * CHUNK_HEIGHT * CHUNK_SIZE + d * CHUNK_SIZE + v;
+                            uint8_t raw = waterLevels.get()[wi];
+                            if (!waterIsSource(raw) && !waterIsFalling(raw)) {
+                                int myLvl = waterFlowLevel(raw);
+                                float fx = 0, fz = 0;
+                                // Minecraft flow direction: accumulate a vector pointing
+                                // downhill (from higher water toward lower water).
+                                // For each neighbor:
+                                //   - lower level (more water) → push away from it (outward)
+                                //   - higher level (less water) → pull toward it (outward)
+                                //   - AIR → strong pull toward it (cliff edge)
+                                // +X / -X neighbors
+                                for (int dx : {-1, 1}) {
+                                    int nx = u + dx;
+                                    block_type nbt;
+                                    uint8_t nraw = 0;
+                                    if (nx >= 0 && nx < CHUNK_SIZE) {
+                                        nbt = getBlock(nx, d, v)->getType();
+                                        if (nbt == WATER)
+                                            nraw =
+                                                waterLevels.get()[static_cast<size_t>(nx) * CHUNK_HEIGHT * CHUNK_SIZE +
+                                                                  d * CHUNK_SIZE + v];
+                                    } else {
+                                        Cube* nb = getBlockCross(this, nx, d, v, nx_neg, nx_pos, nz_neg, nz_pos);
+                                        nbt = nb ? nb->getType() : STONE;
+                                        if (nbt == WATER) {
+                                            Chunk* nc = (dx < 0) ? nx_neg : nx_pos;
+                                            if (nc) nraw = nc->getWaterLevel(dx < 0 ? CHUNK_SIZE - 1 : 0, d, v);
+                                        }
+                                    }
+                                    if (nbt == AIR) {
+                                        fx += dx * 8;
+                                    } else if (nbt == WATER) {
+                                        int nLvl = waterIsSource(nraw) ? 0 : waterFlowLevel(nraw);
+                                        // Flow points from low level (strong) to high level (weak)
+                                        // dx points toward neighbor, so if neighbor has more water
+                                        // (lower level), flow is away from it (subtract)
+                                        fx += dx * (nLvl - myLvl);
                                     }
                                 }
-                                if (nbt == AIR) { fx += dx * 8; }
-                                else if (nbt == WATER) {
-                                    int nLvl = waterIsSource(nraw) ? 0 : waterFlowLevel(nraw);
-                                    // Flow points from low level (strong) to high level (weak)
-                                    // dx points toward neighbor, so if neighbor has more water
-                                    // (lower level), flow is away from it (subtract)
-                                    fx += dx * (nLvl - myLvl);
-                                }
-                            }
-                            // +Z / -Z neighbors
-                            for (int dz : {-1, 1}) {
-                                int nz = v + dz;
-                                block_type nbt; uint8_t nraw = 0;
-                                if (nz >= 0 && nz < CHUNK_SIZE) {
-                                    nbt = getBlock(u, d, nz)->getType();
-                                    if (nbt == WATER) nraw = waterLevels.get()[static_cast<size_t>(u) * CHUNK_HEIGHT * CHUNK_SIZE + d * CHUNK_SIZE + nz];
-                                } else {
-                                    Cube* nb = getBlockCross(this, u, d, nz, nx_neg, nx_pos, nz_neg, nz_pos);
-                                    nbt = nb ? nb->getType() : STONE;
-                                    if (nbt == WATER) {
-                                        Chunk* nc = (dz < 0) ? nz_neg : nz_pos;
-                                        if (nc) nraw = nc->getWaterLevel(u, d, dz < 0 ? CHUNK_SIZE - 1 : 0);
+                                // +Z / -Z neighbors
+                                for (int dz : {-1, 1}) {
+                                    int nz = v + dz;
+                                    block_type nbt;
+                                    uint8_t nraw = 0;
+                                    if (nz >= 0 && nz < CHUNK_SIZE) {
+                                        nbt = getBlock(u, d, nz)->getType();
+                                        if (nbt == WATER)
+                                            nraw =
+                                                waterLevels.get()[static_cast<size_t>(u) * CHUNK_HEIGHT * CHUNK_SIZE +
+                                                                  d * CHUNK_SIZE + nz];
+                                    } else {
+                                        Cube* nb = getBlockCross(this, u, d, nz, nx_neg, nx_pos, nz_neg, nz_pos);
+                                        nbt = nb ? nb->getType() : STONE;
+                                        if (nbt == WATER) {
+                                            Chunk* nc = (dz < 0) ? nz_neg : nz_pos;
+                                            if (nc) nraw = nc->getWaterLevel(u, d, dz < 0 ? CHUNK_SIZE - 1 : 0);
+                                        }
+                                    }
+                                    if (nbt == AIR) {
+                                        fz += dz * 8;
+                                    } else if (nbt == WATER) {
+                                        int nLvl = waterIsSource(nraw) ? 0 : waterFlowLevel(nraw);
+                                        fz += dz * (nLvl - myLvl);
                                     }
                                 }
-                                if (nbt == AIR) { fz += dz * 8; }
-                                else if (nbt == WATER) {
-                                    int nLvl = waterIsSource(nraw) ? 0 : waterFlowLevel(nraw);
-                                    fz += dz * (nLvl - myLvl);
+                                if (fx != 0 || fz != 0) {
+                                    int angleIdx = ((int)roundf(atan2f(fz, fx) / (3.14159265f / 8.0f)) + 16) % 16;
+                                    flowBits = FLOW_HAS_DIR_BIT | ((angleIdx & FLOW_ANGLE_MASK) << FLOW_ANGLE_SHIFT);
                                 }
                             }
-                            if (fx != 0 || fz != 0) {
-                                int angleIdx = ((int)roundf(atan2f(fz, fx) / (3.14159265f / 8.0f)) + 16) % 16;
-                                flowBits = FLOW_HAS_DIR_BIT | ((angleIdx & FLOW_ANGLE_MASK) << FLOW_ANGLE_SHIFT);
+                        }
+
+                        auto& idx = isWater ? sm.waterIdx : sm.opaqueIdx;
+                        unsigned int& base = isWater ? waterBase : opaqueBase;
+
+                        if (isWater) {
+                            size_t off = sm.waterVerts.size();
+                            sm.waterVerts.resize(off + 4 * WATER_BYTES_PER_VERT);
+                            WaterVertex* wdst = reinterpret_cast<WaterVertex*>(&sm.waterVerts[off]);
+                            for (int vi = 0; vi < 4; vi++) {
+                                wdst->px = (vp[vi][0] + worldOff[0]) * 2.0f;
+                                wdst->py = (vp[vi][1] + worldOff[1]) * 2.0f;
+                                wdst->pz = (vp[vi][2] + worldOff[2]) * 2.0f;
+                                wdst->u = (uint8_t)uvs[vi][0];
+                                wdst->v = (uint8_t)uvs[vi][1];
+                                wdst->normalIdx = (uint8_t)f;
+                                wdst->texLayer = (uint8_t)layer;
+                                wdst->ao = (uint8_t)(ao[vi] & 0x03) | flowBits;
+                                wdst->packedLight = (uint8_t)(skyLightVals[vi] * 16 + blockLightVals[vi]);
+                                wdst++;
+                            }
+                        } else {
+                            size_t off = sm.verts.size();
+                            sm.verts.resize(off + 4 * BYTES_PER_VERT);
+                            PackedVertex* dst = reinterpret_cast<PackedVertex*>(&sm.verts[off]);
+                            for (int vi = 0; vi < 4; vi++) {
+                                dst->px = (int16_t)((vp[vi][0] + worldOff[0]) * 2.0f);
+                                dst->py = (int16_t)((vp[vi][1] + worldOff[1]) * 2.0f);
+                                dst->pz = (int16_t)((vp[vi][2] + worldOff[2]) * 2.0f);
+                                dst->u = (uint8_t)uvs[vi][0];
+                                dst->v = (uint8_t)uvs[vi][1];
+                                dst->normalIdx = (uint8_t)f;
+                                dst->texLayer = (uint8_t)layer;
+                                dst->ao = (uint8_t)ao[vi];
+                                dst->packedLight = (uint8_t)(skyLightVals[vi] * 16 + blockLightVals[vi]);
+                                dst++;
                             }
                         }
-                    }
-
-                    auto& idx = isWater ? sm.waterIdx : sm.opaqueIdx;
-                    unsigned int& base = isWater ? waterBase : opaqueBase;
-
-                    if (isWater) {
-                        size_t off = sm.waterVerts.size();
-                        sm.waterVerts.resize(off + 4 * WATER_BYTES_PER_VERT);
-                        WaterVertex* wdst = reinterpret_cast<WaterVertex*>(&sm.waterVerts[off]);
-                        for (int vi = 0; vi < 4; vi++) {
-                            wdst->px = (vp[vi][0] + worldOff[0]) * 2.0f;
-                            wdst->py = (vp[vi][1] + worldOff[1]) * 2.0f;
-                            wdst->pz = (vp[vi][2] + worldOff[2]) * 2.0f;
-                            wdst->u = (uint8_t)uvs[vi][0];
-                            wdst->v = (uint8_t)uvs[vi][1];
-                            wdst->normalIdx = (uint8_t)f;
-                            wdst->texLayer = (uint8_t)layer;
-                            wdst->ao = (uint8_t)(ao[vi] & 0x03) | flowBits;
-                            wdst->packedLight = (uint8_t)(skyLightVals[vi] * 16 + blockLightVals[vi]);
-                            wdst++;
+                        bool flipDiag = (ao[0] + ao[2] > ao[1] + ao[3]);
+                        if (flipDiag) {
+                            idx.push_back(base);
+                            idx.push_back(base + 1);
+                            idx.push_back(base + 2);
+                            idx.push_back(base + 2);
+                            idx.push_back(base + 3);
+                            idx.push_back(base);
+                        } else {
+                            idx.push_back(base + 1);
+                            idx.push_back(base + 2);
+                            idx.push_back(base + 3);
+                            idx.push_back(base + 3);
+                            idx.push_back(base);
+                            idx.push_back(base + 1);
                         }
-                    } else {
-                        size_t off = sm.verts.size();
-                        sm.verts.resize(off + 4 * BYTES_PER_VERT);
-                        PackedVertex* dst = reinterpret_cast<PackedVertex*>(&sm.verts[off]);
-                        for (int vi = 0; vi < 4; vi++) {
-                            dst->px = (int16_t)((vp[vi][0] + worldOff[0]) * 2.0f);
-                            dst->py = (int16_t)((vp[vi][1] + worldOff[1]) * 2.0f);
-                            dst->pz = (int16_t)((vp[vi][2] + worldOff[2]) * 2.0f);
-                            dst->u = (uint8_t)uvs[vi][0];
-                            dst->v = (uint8_t)uvs[vi][1];
-                            dst->normalIdx = (uint8_t)f;
-                            dst->texLayer = (uint8_t)layer;
-                            dst->ao = (uint8_t)ao[vi];
-                            dst->packedLight = (uint8_t)(skyLightVals[vi] * 16 + blockLightVals[vi]);
-                            dst++;
-                        }
-                    }
-                    bool flipDiag = (ao[0] + ao[2] > ao[1] + ao[3]);
-                    if (flipDiag) {
-                        idx.push_back(base);     idx.push_back(base + 1); idx.push_back(base + 2);
-                        idx.push_back(base + 2); idx.push_back(base + 3); idx.push_back(base);
-                    } else {
-                        idx.push_back(base + 1); idx.push_back(base + 2); idx.push_back(base + 3);
-                        idx.push_back(base + 3); idx.push_back(base);     idx.push_back(base + 1);
-                    }
-                    base += 4;
+                        base += 4;
 
-                    if (g_greedyMeshing) {
-                        for (int du = 0; du < w; du++)
-                            for (int dv = 0; dv < h; dv++) mask[u + du][v + dv] = -1;
+                        if (g_greedyMeshing) {
+                            for (int du = 0; du < w; du++)
+                                for (int dv = 0; dv < h; dv++) mask[u + du][v + dv] = -1;
+                        }
+                        v += h;
                     }
-                    v += h;
                 }
             }
         }
-    }
     } // end per-section loop
 
     // ---- Stitch section meshes into pendingMesh ----
@@ -1046,13 +1086,11 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
             auto& sm = sectionMeshes[s];
             // Opaque
             pendingMesh.verts.insert(pendingMesh.verts.end(), sm.verts.begin(), sm.verts.end());
-            for (auto idx_val : sm.opaqueIdx)
-                pendingMesh.opaqueIdx.push_back(idx_val + opaqueVertOff);
+            for (auto idx_val : sm.opaqueIdx) pendingMesh.opaqueIdx.push_back(idx_val + opaqueVertOff);
             opaqueVertOff += (unsigned int)(sm.verts.size() / BYTES_PER_VERT);
             // Water
             pendingMesh.waterVerts.insert(pendingMesh.waterVerts.end(), sm.waterVerts.begin(), sm.waterVerts.end());
-            for (auto idx_val : sm.waterIdx)
-                pendingMesh.waterIdx.push_back(idx_val + waterVertOff);
+            for (auto idx_val : sm.waterIdx) pendingMesh.waterIdx.push_back(idx_val + waterVertOff);
             waterVertOff += (unsigned int)(sm.waterVerts.size() / WATER_BYTES_PER_VERT);
         }
         pendingMesh.ready = true;
@@ -1084,8 +1122,7 @@ Chunk::NeighborBorders Chunk::snapshotBorders(const NeighborChunks& nc) {
                 int lx = xAxis ? edgeLocal : i;
                 int lz = xAxis ? i : edgeLocal;
                 out.types[i][y] = n->getBlock(lx, y, lz)->getType();
-                out.lightBorder[i][y] = flat ? flat[lightIdx(lx, y, lz)]
-                                             : n->sparseLight.get(lx, y, lz);
+                out.lightBorder[i][y] = flat ? flat[lightIdx(lx, y, lz)] : n->sparseLight.get(lx, y, lz);
                 out.waterBorder[i][y] = n->getWaterLevel(lx, y, lz);
             }
     };
@@ -1164,7 +1201,7 @@ void Chunk::uploadMesh() {
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, pendingMesh.waterIdx.size() * sizeof(unsigned int),
                  pendingMesh.waterIdx.data(), GL_STATIC_DRAW);
     constexpr int WSTRIDE = 20;
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, WSTRIDE, nullptr);       // float pos at offset 0
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, WSTRIDE, nullptr); // float pos at offset 0
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_UNSIGNED_BYTE, GL_FALSE, WSTRIDE, (void*)12);
     glEnableVertexAttribArray(1);
@@ -1241,7 +1278,10 @@ static void darkenSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, i
     static const int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
 
     // Phase 1: zero the placed block's sky light and any direct sky column below it
-    { size_t i = idx(x, y, z); skyLight[i] = skyLight[i] & 0xF; } // zero sky nibble, keep block
+    {
+        size_t i = idx(x, y, z);
+        skyLight[i] = skyLight[i] & 0xF;
+    } // zero sky nibble, keep block
 
     struct Node {
         int x, y, z;
@@ -1343,12 +1383,30 @@ int Chunk::getGlobalHeight(int x, int y) {
 }
 
 void Chunk::destroy() {
-    if (chunkVAO) { glDeleteVertexArrays(1, &chunkVAO); chunkVAO = 0; }
-    if (chunkVBO) { glDeleteBuffers(1, &chunkVBO); chunkVBO = 0; }
-    if (chunkEBO) { glDeleteBuffers(1, &chunkEBO); chunkEBO = 0; }
-    if (waterVAO) { glDeleteVertexArrays(1, &waterVAO); waterVAO = 0; }
-    if (waterVBO) { glDeleteBuffers(1, &waterVBO); waterVBO = 0; }
-    if (waterEBO) { glDeleteBuffers(1, &waterEBO); waterEBO = 0; }
+    if (chunkVAO) {
+        glDeleteVertexArrays(1, &chunkVAO);
+        chunkVAO = 0;
+    }
+    if (chunkVBO) {
+        glDeleteBuffers(1, &chunkVBO);
+        chunkVBO = 0;
+    }
+    if (chunkEBO) {
+        glDeleteBuffers(1, &chunkEBO);
+        chunkEBO = 0;
+    }
+    if (waterVAO) {
+        glDeleteVertexArrays(1, &waterVAO);
+        waterVAO = 0;
+    }
+    if (waterVBO) {
+        glDeleteBuffers(1, &waterVBO);
+        waterVBO = 0;
+    }
+    if (waterEBO) {
+        glDeleteBuffers(1, &waterEBO);
+        waterEBO = 0;
+    }
     for (int i = 0; i < NUM_SECTIONS; i++) sections[i].reset();
     skyLight.reset();
 }

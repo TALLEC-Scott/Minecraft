@@ -31,8 +31,7 @@ struct VerticalResult {
 };
 
 // Resolve vertical movement with AABB — checks all blocks the player hitbox overlaps
-template <typename SolidCheck>
-VerticalResult resolveVertical(glm::vec3 feetPos, float moveY, SolidCheck isSolid) {
+template <typename SolidCheck> VerticalResult resolveVertical(glm::vec3 feetPos, float moveY, SolidCheck isSolid) {
     VerticalResult result = {feetPos.y + moveY, false, false};
     float hw = PLAYER_HALF_WIDTH;
     int minX = (int)std::floor(feetPos.x - hw + 0.5f);

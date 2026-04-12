@@ -26,7 +26,7 @@ static constexpr int NUM_SECTIONS = CHUNK_HEIGHT / 16;
 // CPU-side chunk data — no GL resources, safe to build on worker threads
 struct ChunkData {
     std::unique_ptr<ChunkSection> sections[NUM_SECTIONS];
-    std::shared_ptr<uint8_t[]> skyLight; // packed: high nibble = sky, low nibble = block
+    std::shared_ptr<uint8_t[]> skyLight;    // packed: high nibble = sky, low nibble = block
     std::shared_ptr<uint8_t[]> waterLevels; // per-block water level (0=source, 1-7=flow)
     int heights[CHUNK_SIZE][CHUNK_SIZE]{};
     Biome biomes[CHUNK_SIZE][CHUNK_SIZE]{};
@@ -35,9 +35,7 @@ struct ChunkData {
 
     ChunkData() = default;
     ChunkData(ChunkData&& o) noexcept
-        : skyLight(std::move(o.skyLight)),
-          waterLevels(std::move(o.waterLevels)),
-          chunkX(o.chunkX), chunkZ(o.chunkZ),
+        : skyLight(std::move(o.skyLight)), waterLevels(std::move(o.waterLevels)), chunkX(o.chunkX), chunkZ(o.chunkZ),
           maxSolidY(o.maxSolidY) {
         for (int i = 0; i < NUM_SECTIONS; i++) sections[i] = std::move(o.sections[i]);
         std::memcpy(heights, o.heights, sizeof(heights));
@@ -79,18 +77,12 @@ class Chunk {
     // Move only
     // Init order matches member declaration order to satisfy -Wreorder.
     Chunk(Chunk&& other) noexcept
-        : skyLight(std::move(other.skyLight)),
-          waterLevels(std::move(other.waterLevels)),
-          sparseLight(std::move(other.sparseLight)),
-          maxSolidY(other.maxSolidY),
-          chunkX(other.chunkX), chunkY(other.chunkY),
-          meshBuildInFlight(other.meshBuildInFlight),
-          sectionDirty(other.sectionDirty),
+        : skyLight(std::move(other.skyLight)), waterLevels(std::move(other.waterLevels)),
+          sparseLight(std::move(other.sparseLight)), maxSolidY(other.maxSolidY), chunkX(other.chunkX),
+          chunkY(other.chunkY), meshBuildInFlight(other.meshBuildInFlight), sectionDirty(other.sectionDirty),
           chunkVAO(other.chunkVAO), chunkVBO(other.chunkVBO), chunkEBO(other.chunkEBO),
-          opaqueIndexCount(other.opaqueIndexCount),
-          waterVAO(other.waterVAO), waterVBO(other.waterVBO), waterEBO(other.waterEBO),
-          waterIndexCount(other.waterIndexCount),
-          pendingMesh(std::move(other.pendingMesh)) {
+          opaqueIndexCount(other.opaqueIndexCount), waterVAO(other.waterVAO), waterVBO(other.waterVBO),
+          waterEBO(other.waterEBO), waterIndexCount(other.waterIndexCount), pendingMesh(std::move(other.pendingMesh)) {
         for (int i = 0; i < NUM_SECTIONS; i++) {
             sections[i] = std::move(other.sections[i]);
             sectionMeshes[i] = std::move(other.sectionMeshes[i]);
@@ -168,8 +160,8 @@ class Chunk {
 
     // Per-section cached mesh — used for incremental rebuilds.
     struct SectionMesh {
-        std::vector<uint8_t> verts;       // opaque (PackedVertex)
-        std::vector<uint8_t> waterVerts;  // water (WaterVertex)
+        std::vector<uint8_t> verts;      // opaque (PackedVertex)
+        std::vector<uint8_t> waterVerts; // water (WaterVertex)
         std::vector<unsigned int> opaqueIdx;
         std::vector<unsigned int> waterIdx;
     };
@@ -187,8 +179,7 @@ class Chunk {
         // If a build is in flight or pending upload, also record this
         // bit so uploadMesh can restore it — otherwise the upload's
         // builtDirtyMask clear wipes changes made after the snapshot.
-        if (meshBuildInFlight || builtDirtyMask != 0)
-            dirtyDuringBuild |= (1u << sy);
+        if (meshBuildInFlight || builtDirtyMask != 0) dirtyDuringBuild |= (1u << sy);
     }
     bool isMeshDirty() const { return sectionDirty != 0; }
     void destroy();
@@ -260,7 +251,7 @@ class Chunk {
 
     // Section-based block storage — null sections mean all-air
     std::unique_ptr<ChunkSection> sections[NUM_SECTIONS];
-    std::shared_ptr<uint8_t[]> skyLight; // packed: high nibble = sky, low nibble = block
+    std::shared_ptr<uint8_t[]> skyLight;    // packed: high nibble = sky, low nibble = block
     std::shared_ptr<uint8_t[]> waterLevels; // per-block water level (0=source, 1-7=flow)
     // Permanent sparse storage for light values (~8-12 KB per chunk vs
     // flat 32 KB). Authoritative: skyLight flat array is a transient
@@ -291,16 +282,18 @@ class Chunk {
     uint8_t getWaterLevel(int x, int y, int z) const {
         if (!waterLevels || x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE)
             return 0;
-        return waterLevels[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z];
+        return waterLevels[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE +
+                           z];
     }
 
     void setWaterLevel(int x, int y, int z, uint8_t level) {
         if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return;
         if (!waterLevels) {
-            waterLevels = std::shared_ptr<uint8_t[]>(
-                new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]());
+            waterLevels =
+                std::shared_ptr<uint8_t[]>(new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]());
         }
-        waterLevels[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z] = level;
+        waterLevels[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z] =
+            level;
     }
     int chunkX = -1;
     int chunkY = -1;

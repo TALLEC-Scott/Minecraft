@@ -19,8 +19,8 @@ static constexpr int WATER_BYTES_PER_VERT = sizeof(WaterVertex);
 
 // Reads in-chunk from blocks[]/waterLevels[], cross-chunk from the
 // snapshotted NeighborBorders (cardinal edges + diagonal corners).
-static WaterCellSample sampleBorder(const Cube* blocks, const uint8_t* waterLevels,
-                                    const NeighborBorders& nb, int bx, int by, int bz) {
+static WaterCellSample sampleBorder(const Cube* blocks, const uint8_t* waterLevels, const NeighborBorders& nb, int bx,
+                                    int by, int bz) {
     auto classify = [](block_type t, uint8_t raw) -> WaterCellSample {
         if (t == WATER) return {CellKind::Water, raw};
         if (t == AIR) return {CellKind::Air, 0};
@@ -31,20 +31,33 @@ static WaterCellSample sampleBorder(const Cube* blocks, const uint8_t* waterLeve
     bool zNeg = bz < 0, zPos = bz >= CHUNK_SIZE;
     if ((xNeg || xPos) && (zNeg || zPos)) {
         const DiagonalCorner* d = nullptr;
-        if (xNeg && zNeg) d = &nb.dNN;
-        else if (xNeg && zPos) d = &nb.dNP;
-        else if (xPos && zNeg) d = &nb.dPN;
-        else d = &nb.dPP;
+        if (xNeg && zNeg)
+            d = &nb.dNN;
+        else if (xNeg && zPos)
+            d = &nb.dNP;
+        else if (xPos && zNeg)
+            d = &nb.dPN;
+        else
+            d = &nb.dPP;
         if (!d->valid) return {CellKind::Solid, 0};
         return classify(d->types[by], d->waterBorder[by]);
     }
     if (xNeg || xPos || zNeg || zPos) {
         const NeighborBorder* b = nullptr;
         int bi = 0;
-        if (xNeg) { b = &nb.xNeg; bi = bz; }
-        else if (xPos) { b = &nb.xPos; bi = bz; }
-        else if (zNeg) { b = &nb.zNeg; bi = bx; }
-        else { b = &nb.zPos; bi = bx; }
+        if (xNeg) {
+            b = &nb.xNeg;
+            bi = bz;
+        } else if (xPos) {
+            b = &nb.xPos;
+            bi = bz;
+        } else if (zNeg) {
+            b = &nb.zNeg;
+            bi = bx;
+        } else {
+            b = &nb.zPos;
+            bi = bx;
+        }
         if (!b->valid) return {CellKind::Solid, 0};
         return classify(b->types[bi][by], b->waterBorder[bi][by]);
     }
@@ -53,12 +66,10 @@ static WaterCellSample sampleBorder(const Cube* blocks, const uint8_t* waterLeve
     return classify(blocks[i].getType(), raw);
 }
 
-static void computeWaterTopCornersBorder(const Cube* blocks, const uint8_t* waterLevels,
-                                         int bx, int by, int bz, int uSign, int vSign, float out[4],
-                                         const NeighborBorders& nb) {
-    computeWaterTopCornersT(bx, by, bz, uSign, vSign, out, [&](int x, int y, int z) {
-        return sampleBorder(blocks, waterLevels, nb, x, y, z);
-    });
+static void computeWaterTopCornersBorder(const Cube* blocks, const uint8_t* waterLevels, int bx, int by, int bz,
+                                         int uSign, int vSign, float out[4], const NeighborBorders& nb) {
+    computeWaterTopCornersT(bx, by, bz, uSign, vSign, out,
+                            [&](int x, int y, int z) { return sampleBorder(blocks, waterLevels, nb, x, y, z); });
 }
 
 // Side-face corner indices into topCorners[4] computed with uSign=1, vSign=-1.
@@ -66,8 +77,8 @@ static void computeWaterTopCornersBorder(const Cube* blocks, const uint8_t* wate
 // [face][0] and [face][1] are the two corners on this face's edge.
 static constexpr int SIDE_TOP_IDX[4][2] = {{0, 3}, {2, 1}, {1, 0}, {3, 2}};
 
-MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, int maxSolidY, int chunkX,
-                           int chunkZ, const NeighborBorders& nb) {
+MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, int maxSolidY, int chunkX, int chunkZ,
+                           const NeighborBorders& nb) {
     ZoneScopedN("buildMeshFromData");
     int opaqueH = std::min(maxSolidY + 2, (int)CHUNK_HEIGHT);
     constexpr int OX = CHUNK_SIZE + 2, OZ = CHUNK_SIZE + 2;
@@ -138,11 +149,13 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
 
     auto slDirect = [light](int x, int y, int z) -> int {
         if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 15;
-        return unpackSky(light[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+        return unpackSky(
+            light[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
     };
     auto blDirect = [light](int x, int y, int z) -> int {
         if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 0;
-        return unpackBlock(light[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+        return unpackBlock(
+            light[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
     };
 
     int mask[MAX_DIM][MAX_DIM];
@@ -175,8 +188,7 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                     if (hasFlag(bt, BF_LIQUID)) {
                         show = (f != 5) && (nbType == AIR);
                     } else {
-                        show = (nbType == AIR) ||
-                               (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
+                        show = (nbType == AIR) || (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
                                (g_fancyLeaves && (hasFlag(bt, BF_TRANSLUCENT) || hasFlag(nbType, BF_TRANSLUCENT)));
                     }
                     int val = show ? (int)bt : -1;
@@ -227,7 +239,10 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                     bool isWaterSide2 = (bt == (int)WATER && f != 4 && f != 5 && fd.v == 1);
                     float sideTopA2 = v1, sideTopB2 = v1;
                     if (isWaterSide2 && waterLevels) {
-                        int bc[3]; bc[fd.d] = d; bc[fd.u] = u; bc[fd.v] = v;
+                        int bc[3];
+                        bc[fd.d] = d;
+                        bc[fd.u] = u;
+                        bc[fd.v] = v;
                         float topY2[4];
                         computeWaterTopCornersBorder(blocks, waterLevels, bc[0], bc[1], bc[2], 1, -1, topY2, nb);
                         sideTopA2 = topY2[SIDE_TOP_IDX[f][0]];
@@ -327,11 +342,19 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                         }
                     }
                     if (ao[0] + ao[2] > ao[1] + ao[3]) {
-                        idx.push_back(base);     idx.push_back(base + 1); idx.push_back(base + 2);
-                        idx.push_back(base + 2); idx.push_back(base + 3); idx.push_back(base);
+                        idx.push_back(base);
+                        idx.push_back(base + 1);
+                        idx.push_back(base + 2);
+                        idx.push_back(base + 2);
+                        idx.push_back(base + 3);
+                        idx.push_back(base);
                     } else {
-                        idx.push_back(base + 1); idx.push_back(base + 2); idx.push_back(base + 3);
-                        idx.push_back(base + 3); idx.push_back(base);     idx.push_back(base + 1);
+                        idx.push_back(base + 1);
+                        idx.push_back(base + 2);
+                        idx.push_back(base + 3);
+                        idx.push_back(base + 3);
+                        idx.push_back(base);
+                        idx.push_back(base + 1);
                     }
                     base += 4;
 
