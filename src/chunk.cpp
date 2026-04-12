@@ -892,8 +892,6 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     vp[3][fd.u] = u1;
                     vp[3][fd.v] = v0;
 
-                    // Water side faces: trim the top edge to the cell's
-                    // water height. Falling water stays full-height.
                     bool isWaterSide = (bt == (int)WATER && f != 4 && f != 5 && fd.v == 1);
                     if (isWaterSide && waterLevels) {
                         int bc[3]; bc[fd.d] = d; bc[fd.u] = u; bc[fd.v] = v;
@@ -972,6 +970,12 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                         if (!waterIsSource(raw) && !waterIsFalling(raw)) {
                             int myLvl = waterFlowLevel(raw);
                             float fx = 0, fz = 0;
+                            // Minecraft flow direction: accumulate a vector pointing
+                            // downhill (from higher water toward lower water).
+                            // For each neighbor:
+                            //   - lower level (more water) → push away from it (outward)
+                            //   - higher level (less water) → pull toward it (outward)
+                            //   - AIR → strong pull toward it (cliff edge)
                             // +X / -X neighbors
                             for (int dx : {-1, 1}) {
                                 int nx = u + dx;
@@ -988,8 +992,12 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                                     }
                                 }
                                 if (nbt == AIR) { fx += dx * 8; }
-                                else if (nbt == WATER && !waterIsSource(nraw) && waterFlowLevel(nraw) > myLvl) {
-                                    fx += dx * (waterFlowLevel(nraw) - myLvl);
+                                else if (nbt == WATER) {
+                                    int nLvl = waterIsSource(nraw) ? 0 : waterFlowLevel(nraw);
+                                    // Flow points from low level (strong) to high level (weak)
+                                    // dx points toward neighbor, so if neighbor has more water
+                                    // (lower level), flow is away from it (subtract)
+                                    fx += dx * (nLvl - myLvl);
                                 }
                             }
                             // +Z / -Z neighbors
@@ -1008,8 +1016,9 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                                     }
                                 }
                                 if (nbt == AIR) { fz += dz * 8; }
-                                else if (nbt == WATER && !waterIsSource(nraw) && waterFlowLevel(nraw) > myLvl) {
-                                    fz += dz * (waterFlowLevel(nraw) - myLvl);
+                                else if (nbt == WATER) {
+                                    int nLvl = waterIsSource(nraw) ? 0 : waterFlowLevel(nraw);
+                                    fz += dz * (nLvl - myLvl);
                                 }
                             }
                             if (fx != 0 || fz != 0) {
