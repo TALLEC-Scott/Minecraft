@@ -208,6 +208,16 @@ void WaterSimulator::tick() {
                 if (nbt == AIR) {
                     world->setBlock(nx, y, nz, WATER, uint8_t(spreadLevel + 1));
                     activate(nx, y, nz);
+                    // If the block below the new water is air, immediately
+                    // place falling water so the cliff edge renders cleanly
+                    // (no diagonal slope from corner averaging).
+                    if (y > 0) {
+                        block_type belowNew = n.chunk->getBlockType(n.lx, y - 1, n.lz);
+                        if (belowNew == AIR) {
+                            world->setBlock(nx, y - 1, nz, WATER, WATER_FALLING_FLAG);
+                            activate(nx, y - 1, nz);
+                        }
+                    }
                     anyChanged = true;
                 } else if (nbt == WATER) {
                     uint8_t nraw = n.chunk->getWaterLevel(n.lx, y, n.lz);

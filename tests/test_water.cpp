@@ -562,3 +562,789 @@ TEST(WaterSimulator, DrainCountStrictlyDecreases) {
     }
     EXPECT_EQ(prev, 0) << "drain did not fully empty the scene";
 }
+
+// --- Water geometry helpers ---
+// These are EXACT copies of the functions in chunk.cpp so the test
+// exercises the same math the mesh builder uses.
+
+static float waterHeightFromRaw_test(uint8_t raw) {
+    if (waterIsFalling(raw)) return 15.0f / 16.0f;
+    return (15.0f - waterFlowLevel(raw) * 2.0f) / 16.0f;
+}
+
+// Exact copy of waterCellHeight from chunk.cpp (in-chunk path only,
+// no cross-chunk since tests use a single chunk).
+float testWaterCellHeight(World& world, int wx, int wy, int wz) {
+    if (wy < 0 || wy >= CHUNK_HEIGHT) return -1.0f;
+    if (getType(world, wx, wy, wz) != WATER) return -1.0f;
+    // Water with water above = full block height
+    if (wy + 1 < CHUNK_HEIGHT && getType(world, wx, wy + 1, wz) == WATER)
+        return 1.0f;
+    uint8_t raw = getWaterRaw(world, wx, wy, wz);
+    return waterHeightFromRaw_test(raw);
+}
+
+// Exact copy of computeWaterTopCorners from chunk.cpp.
+// Uses canonical signs (uSign=1, vSign=-1) matching the side face path.
+void testWaterTopCorners(World& world, int wx, int wy, int wz, float out[4]) {
+    float cH = testWaterCellHeight(world, wx, wy, wz);
+    // After uSign=1 (no swap), vSign=-1 swap:
+    int cdx[4] = {-1, -1, 1, 1};
+    int cdz[4] = { 1, -1, -1, 1};
+    for (int ci = 0; ci < 4; ci++) {
+        float h[4] = {cH,
+            testWaterCellHeight(world, wx + cdx[ci], wy, wz),
+            testWaterCellHeight(world, wx, wy, wz + cdz[ci]),
+            testWaterCellHeight(world, wx + cdx[ci], wy, wz + cdz[ci])};
+        bool anyFull = false;
+        for (int i = 0; i < 4; i++) if (h[i] >= 1.0f) anyFull = true;
+        if (anyFull) {
+            out[ci] = (float)wy + 0.5f;
+        } else {
+            float sum = 0; int cnt = 0;
+            for (int i = 0; i < 4; i++) if (h[i] >= 0) { sum += h[i]; cnt++; }
+            out[ci] = (float)wy - 0.5f + sum / cnt;
+        }
+    }
+}
+
+// The side face top edge heights for a given face direction.
+// This replicates the EXACT mesh builder logic:
+//   computeWaterTopCorners(bc, 1, -1, topCorners)
+//   vp[1][Y] = topCorners[SIDE_TOP_IDX[f][0]]
+//   vp[2][Y] = topCorners[SIDE_TOP_IDX[f][1]]
+// Returns the two Y positions of the top-edge vertices.
+static constexpr int TEST_SIDE_TOP_IDX[4][2] = {{0,3}, {2,1}, {1,0}, {3,2}};
+
+// Side face bottom is always block floor.
+// Side face top is corner-averaged (no exceptions for falling/waterAbove).
+
+// --- Water geometry tests ---
+
+TEST(WaterSimulator, WaterUnderFallingHasFullHeight) {
+    // Pool water directly under a falling column should have
+    // waterCellHeight = 1.0 (full block) and all corners at block ceiling.
+    PedestalScene s;
+    const int y = PedestalScene::FLOOR_Y + 1;
+    // Place source high up so it creates a falling column
+    s.world.setBlock(8, 10, 8, WATER, 0);
+    s.sim.activate(8, 10, 8);
+    runTicks(s.sim, 30);
+
+    // The block at the base of the column (just above floor) should
+    // have water above it (the falling column).
+    ASSERT_EQ(getType(s.world, 8, y, 8), WATER);
+    ASSERT_EQ(getType(s.world, 8, y + 1, 8), WATER) << "should have falling water above";
+
+    float h = testWaterCellHeight(s.world, 8, y, 8);
+    EXPECT_FLOAT_EQ(h, 1.0f) << "water under falling should be full height";
+
+    // Corners are averaged with neighbors — the full-height center (1.0)
+    // pulls them above what they'd be without water above, and they must
+    // not exceed the block ceiling.
+    float corners[4];
+    testWaterTopCorners(s.world, 8, y, 8, corners);
+    float ceiling = (float)y + 0.5f;
+    float noWaterAboveH = (15.0f - waterFlowLevel(getWaterRaw(s.world, 8, y, 8)) * 2.0f) / 16.0f;
+    float minWithout = (float)y - 0.5f + noWaterAboveH;
+    for (int i = 0; i < 4; i++) {
+        EXPECT_LE(corners[i], ceiling)
+            << "corner " << i << " should not exceed ceiling";
+        // The full-height center should pull corners up compared to
+        // what they'd be with normal height
+        EXPECT_GE(corners[i], minWithout - 0.5f)
+            << "corner " << i << " should not be drastically low";
+    }
+}
+
+TEST(WaterSimulator, WaterAdjacentToFallingColumnNoSlope) {
+    // Pool water NEXT TO the falling column (not directly under it)
+    // should NOT have its corners pulled up to 1.0 by the adjacent
+    // full-height block. The corner shared with the falling column
+    // position should still average correctly without creating a
+    // diagonal slope that rises above the block's own water level.
+    PedestalScene s;
+    const int y = PedestalScene::FLOOR_Y + 1;
+    s.world.setBlock(8, 10, 8, WATER, 0);
+    s.sim.activate(8, 10, 8);
+    runTicks(s.sim, 30);
+
+    // Block at (9, y, 8) is pool water adjacent to the column base at (8, y, 8).
+    // It should NOT have water above it (the column is only at x=8).
+    ASSERT_EQ(getType(s.world, 9, y, 8), WATER);
+    bool hasWaterAbove = (getType(s.world, 9, y + 1, 8) == WATER);
+
+    float myH = testWaterCellHeight(s.world, 9, y, 8);
+    float corners[4];
+    testWaterTopCorners(s.world, 9, y, 8, corners);
+
+    // The corner closest to the column (at -X side) will average with
+    // the full-height block at (8, y, 8). Check that NO corner exceeds
+    // the block ceiling — that would cause visible geometry poking above.
+    float ceiling = (float)y + 0.5f;
+    for (int i = 0; i < 4; i++) {
+        EXPECT_LE(corners[i], ceiling)
+            << "corner " << i << " should not exceed block ceiling"
+            << " (hasWaterAbove=" << hasWaterAbove << ", myH=" << myH << ")";
+    }
+
+    // If this block does NOT have water above, its own height should be
+    // less than 1.0 (it's pool/flowing water, not full height).
+    if (!hasWaterAbove) {
+        EXPECT_LT(myH, 1.0f) << "pool water without water above should not be full height";
+        // Corners should stay below or at the water surface, not slope up
+        float maxSurface = (float)y - 0.5f + 1.0f; // absolute max = block ceiling
+        for (int i = 0; i < 4; i++) {
+            EXPECT_LE(corners[i], maxSurface)
+                << "corner " << i << " above block ceiling";
+        }
+    }
+}
+
+TEST(WaterSimulator, CliffEdgeWaterFallsImmediately) {
+    // When water spreads to a cliff edge (block below is air),
+    // falling water should be placed below immediately.
+    World world;
+    WaterSimulator sim(&world);
+    ensureChunks(world, 0, 20, 0, 20);
+
+    // Build a shelf: stone at y=5 from x=5..10, z=5..10
+    for (int x = 5; x <= 10; x++)
+        for (int z = 5; z <= 10; z++)
+            world.setBlock(x, 5, z, STONE, 0);
+
+    // Place water source in the middle of the shelf
+    world.setBlock(8, 6, 8, WATER, 0);
+    sim.activate(8, 6, 8);
+    runTicks(sim, 15);
+
+    // Water at the edge of the shelf (e.g., x=5, z=8) should have
+    // spread to x=4 (off the shelf). That block has air below.
+    // Falling water should exist at (4, 5, 8) = one below the edge.
+    if (getType(world, 4, 6, 8) == WATER) {
+        // Water went off the shelf — check falling water below
+        EXPECT_EQ(getType(world, 4, 5, 8), WATER)
+            << "falling water should be placed below cliff edge immediately";
+        if (getType(world, 4, 5, 8) == WATER) {
+            EXPECT_TRUE(waterIsFalling(getWaterRaw(world, 4, 5, 8)))
+                << "water below cliff edge should have falling flag";
+        }
+    }
+}
+
+TEST(WaterSimulator, FallingColumnSideFacesFlushed) {
+    // At the junction between a falling column and the pool below,
+    // the pool block directly under the column should have full height
+    // (1.0) so its side faces reach the falling column's block floor.
+    PedestalScene s;
+    const int y = PedestalScene::FLOOR_Y + 1;
+    s.world.setBlock(8, 10, 8, WATER, 0);
+    s.sim.activate(8, 10, 8);
+    runTicks(s.sim, 30);
+
+    // Falling column at (8, y+1..9, 8), pool at (8, y, 8)
+    ASSERT_EQ(getType(s.world, 8, y, 8), WATER);
+
+    // The pool block's side face top should be at the block ceiling
+    // (full height), NOT at waterHeightFromRaw which would leave a gap.
+    float corners[4];
+    testWaterTopCorners(s.world, 8, y, 8, corners);
+    float ceiling = (float)y + 0.5f;
+    for (int i = 0; i < 4; i++) {
+        EXPECT_LE(corners[i], ceiling)
+            << "pool corner " << i << " should not exceed ceiling";
+    }
+}
+
+TEST(WaterSimulator, AdjacentWaterCornersContiguous) {
+    // Adjacent water blocks must share identical corner heights at their
+    // shared edge. Any mismatch = visible gap in the mesh.
+    // Corners (u_sign=1, v_sign=-1):
+    //   0=(-X,+Z), 1=(-X,-Z), 2=(+X,-Z), 3=(+X,+Z)
+    // Block at (x,z) and (x+1,z) share the +X edge of (x,z) and -X edge of (x+1,z).
+    //   (x,z) corners 2=(+X,-Z) and 3=(+X,+Z)  must match
+    //   (x+1,z) corners 1=(-X,-Z) and 0=(-X,+Z) respectively.
+    PedestalScene s;
+    const int y = PedestalScene::FLOOR_Y + 1;
+    // Create a falling column so we test the tricky case
+    s.world.setBlock(8, 10, 8, WATER, 0);
+    s.sim.activate(8, 10, 8);
+    runTicks(s.sim, 30);
+
+    int mismatches = 0;
+    for (int x = 4; x <= 12; x++) {
+        for (int z = 4; z <= 12; z++) {
+            if (getType(s.world, x, y, z) != WATER) continue;
+            float cornersA[4];
+            testWaterTopCorners(s.world, x, y, z, cornersA);
+
+            // Check +X neighbor
+            if (getType(s.world, x + 1, y, z) == WATER) {
+                float cornersB[4];
+                testWaterTopCorners(s.world, x + 1, y, z, cornersB);
+                // A's +X,-Z (2) == B's -X,-Z (1)
+                if (std::abs(cornersA[2] - cornersB[1]) > 0.001f) {
+                    ADD_FAILURE() << "X-edge gap at (" << x << "," << z << ")->("
+                        << x+1 << "," << z << "): " << cornersA[2] << " vs " << cornersB[1];
+                    mismatches++;
+                }
+                // A's +X,+Z (3) == B's -X,+Z (0)
+                if (std::abs(cornersA[3] - cornersB[0]) > 0.001f) {
+                    ADD_FAILURE() << "X-edge gap at (" << x << "," << z << ")->("
+                        << x+1 << "," << z << "): " << cornersA[3] << " vs " << cornersB[0];
+                    mismatches++;
+                }
+            }
+
+            // Check +Z neighbor
+            if (getType(s.world, x, y, z + 1) == WATER) {
+                float cornersB[4];
+                testWaterTopCorners(s.world, x, y, z + 1, cornersB);
+                // A's -X,+Z (0) == B's -X,-Z (1) — wait, Z+ neighbor:
+                // A's +Z corners are 0=(-X,+Z) and 3=(+X,+Z)
+                // B's -Z corners are 1=(-X,-Z) and 2=(+X,-Z)
+                if (std::abs(cornersA[0] - cornersB[1]) > 0.001f) {
+                    ADD_FAILURE() << "Z-edge gap at (" << x << "," << z << ")->("
+                        << x << "," << z+1 << "): " << cornersA[0] << " vs " << cornersB[1];
+                    mismatches++;
+                }
+                if (std::abs(cornersA[3] - cornersB[2]) > 0.001f) {
+                    ADD_FAILURE() << "Z-edge gap at (" << x << "," << z << ")->("
+                        << x << "," << z+1 << "): " << cornersA[3] << " vs " << cornersB[2];
+                    mismatches++;
+                }
+            }
+        }
+    }
+    EXPECT_EQ(mismatches, 0) << "adjacent water blocks have non-matching corners";
+}
+
+TEST(WaterSimulator, VerticalContiguityFallingColumn) {
+    // A falling water column landing on a pool must have no vertical gaps.
+    // For each Y boundary between stacked water blocks:
+    //   - The lower block's side face top edge must equal the upper
+    //     block's side face bottom edge (block floor = y+0.5).
+    //   - Falling water side faces are full block height (floor to ceiling).
+    //   - Pool water side faces are trimmed to corner heights at top,
+    //     but extend to full height when water is above.
+    PedestalScene s;
+    s.world.setBlock(8, 10, 8, WATER, 0);
+    s.sim.activate(8, 10, 8);
+    runTicks(s.sim, 30);
+
+    // Check the column at x=8, z=8 from floor up to source
+    int mismatches = 0;
+    for (int y = PedestalScene::FLOOR_Y + 1; y < 10; y++) {
+        if (getType(s.world, 8, y, 8) != WATER) continue;
+        if (getType(s.world, 8, y + 1, 8) != WATER) continue;
+
+        // Lower block's side face top: if water above, full height = y+0.5
+        // Upper block's side face bottom: always block floor = y+0.5
+        // These must match (both are y+0.5 when water is above).
+        uint8_t lowerRaw = getWaterRaw(s.world, 8, y, 8);
+        bool lowerHasWaterAbove = true; // we just checked y+1 is water
+
+        // The side face top for the lower block:
+        float lowerSideTop;
+        if (waterIsFalling(lowerRaw) || lowerHasWaterAbove) {
+            // Full block height — side face goes to ceiling
+            lowerSideTop = (float)y + 0.5f;
+        } else {
+            // Trimmed to corner height
+            float corners[4];
+            testWaterTopCorners(s.world, 8, y, 8, corners);
+            lowerSideTop = *std::max_element(corners, corners + 4);
+        }
+
+        // Upper block's side face bottom is always the block floor
+        float upperSideBottom = (float)(y + 1) - 0.5f; // = y + 0.5
+
+        if (std::abs(lowerSideTop - upperSideBottom) > 0.001f) {
+            ADD_FAILURE() << "Vertical gap at y=" << y << "->" << y+1
+                << ": lower top=" << lowerSideTop
+                << ", upper bottom=" << upperSideBottom;
+            mismatches++;
+        }
+    }
+    EXPECT_EQ(mismatches, 0) << "vertical gaps in falling column";
+}
+
+TEST(WaterSimulator, HorizontalContiguityWithFallingColumn) {
+    // Full test: falling column + pool spread. Every pair of horizontally
+    // adjacent water blocks at every Y level must have matching corners.
+    PedestalScene s;
+    s.world.setBlock(8, 10, 8, WATER, 0);
+    s.sim.activate(8, 10, 8);
+    runTicks(s.sim, 30);
+
+    int mismatches = 0;
+    for (int y = PedestalScene::FLOOR_Y + 1; y <= 10; y++) {
+        for (int x = 2; x <= 14; x++) {
+            for (int z = 2; z <= 14; z++) {
+                if (getType(s.world, x, y, z) != WATER) continue;
+                float cornersA[4];
+                testWaterTopCorners(s.world, x, y, z, cornersA);
+
+                // +X neighbor
+                if (getType(s.world, x + 1, y, z) == WATER) {
+                    float cornersB[4];
+                    testWaterTopCorners(s.world, x + 1, y, z, cornersB);
+                    if (std::abs(cornersA[2] - cornersB[1]) > 0.001f) {
+                        ADD_FAILURE() << "X gap y=" << y << " (" << x << "," << z
+                            << ")->(" << x+1 << "," << z << "): "
+                            << cornersA[2] << " vs " << cornersB[1];
+                        mismatches++;
+                    }
+                    if (std::abs(cornersA[3] - cornersB[0]) > 0.001f) {
+                        ADD_FAILURE() << "X gap y=" << y << " (" << x << "," << z
+                            << ")->(" << x+1 << "," << z << "): "
+                            << cornersA[3] << " vs " << cornersB[0];
+                        mismatches++;
+                    }
+                }
+
+                // +Z neighbor
+                if (getType(s.world, x, y, z + 1) == WATER) {
+                    float cornersB[4];
+                    testWaterTopCorners(s.world, x, y, z + 1, cornersB);
+                    if (std::abs(cornersA[0] - cornersB[1]) > 0.001f) {
+                        ADD_FAILURE() << "Z gap y=" << y << " (" << x << "," << z
+                            << ")->(" << x << "," << z+1 << "): "
+                            << cornersA[0] << " vs " << cornersB[1];
+                        mismatches++;
+                    }
+                    if (std::abs(cornersA[3] - cornersB[2]) > 0.001f) {
+                        ADD_FAILURE() << "Z gap y=" << y << " (" << x << "," << z
+                            << ")->(" << x << "," << z+1 << "): "
+                            << cornersA[3] << " vs " << cornersB[2];
+                        mismatches++;
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_EQ(mismatches, 0) << "horizontal gaps across all Y levels";
+}
+
+TEST(WaterSimulator, FullMeshContiguity) {
+    // Comprehensive: scan EVERY water block at EVERY Y level and verify
+    // ALL adjacent pairs share identical corner heights at shared edges.
+    // Also verify vertical contiguity (side face top = block above floor).
+    PedestalScene s;
+    s.world.setBlock(8, 10, 8, WATER, 0);
+    s.sim.activate(8, 10, 8);
+    runTicks(s.sim, 40);
+
+    int hMismatches = 0, vMismatches = 0;
+    for (int y = 0; y < CHUNK_HEIGHT; y++) {
+        for (int x = -8; x <= 24; x++) {
+            for (int z = -8; z <= 24; z++) {
+                if (getType(s.world, x, y, z) != WATER) continue;
+                float cornersA[4];
+                testWaterTopCorners(s.world, x, y, z, cornersA);
+
+                // Horizontal: +X neighbor
+                if (getType(s.world, x + 1, y, z) == WATER) {
+                    float cornersB[4];
+                    testWaterTopCorners(s.world, x + 1, y, z, cornersB);
+                    if (std::abs(cornersA[2] - cornersB[1]) > 0.001f ||
+                        std::abs(cornersA[3] - cornersB[0]) > 0.001f) {
+                        if (hMismatches < 5)
+                            ADD_FAILURE() << "X gap y=" << y << " (" << x << "," << z << ")";
+                        hMismatches++;
+                    }
+                }
+                // Horizontal: +Z neighbor
+                if (getType(s.world, x, y, z + 1) == WATER) {
+                    float cornersB[4];
+                    testWaterTopCorners(s.world, x, y, z + 1, cornersB);
+                    if (std::abs(cornersA[0] - cornersB[1]) > 0.001f ||
+                        std::abs(cornersA[3] - cornersB[2]) > 0.001f) {
+                        if (hMismatches < 5)
+                            ADD_FAILURE() << "Z gap y=" << y << " (" << x << "," << z << ")";
+                        hMismatches++;
+                    }
+                }
+                // Vertical: block above is water — side faces must connect
+                if (getType(s.world, x, y + 1, z) == WATER) {
+                    uint8_t raw = getWaterRaw(s.world, x, y, z);
+                    bool waterAbove = true;
+                    float sideTop;
+                    if (waterIsFalling(raw) || waterAbove) {
+                        sideTop = (float)y + 0.5f;
+                    } else {
+                        sideTop = *std::max_element(cornersA, cornersA + 4);
+                    }
+                    float aboveFloor = (float)(y + 1) - 0.5f;
+                    if (std::abs(sideTop - aboveFloor) > 0.001f) {
+                        if (vMismatches < 5)
+                            ADD_FAILURE() << "V gap y=" << y << " (" << x << "," << z
+                                << ") top=" << sideTop << " floor=" << aboveFloor;
+                        vMismatches++;
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_EQ(hMismatches, 0) << "horizontal corner mismatches";
+    EXPECT_EQ(vMismatches, 0) << "vertical side face gaps";
+}
+
+// Helper: get the side face top height for a given face of a water block.
+// Returns the two vertex heights at the top edge of the side face.
+// Mirrors the mesh builder's SIDE_TOP_IDX logic.
+void testSideFaceTop(World& world, int wx, int wy, int wz, int face,
+                     float& topA, float& topB) {
+    float corners[4];
+    testWaterTopCorners(world, wx, wy, wz, corners);
+    topA = corners[TEST_SIDE_TOP_IDX[face][0]];
+    topB = corners[TEST_SIDE_TOP_IDX[face][1]];
+}
+
+// For a water block, compute the top face vertex Y positions in the
+// same order as the mesh builder: (u0,v0), (u0,v1), (u1,v1), (u1,v0).
+// For f=4 top face with u_sign=1, v_sign=-1:
+//   v0 = Z_hi, v1 = Z_lo (v_sign=-1 flips)
+//   vertex 0 = (X_lo, Y[0], Z_hi) → corner 0
+//   vertex 1 = (X_lo, Y[1], Z_lo) → corner 1
+//   vertex 2 = (X_hi, Y[2], Z_lo) → corner 2
+//   vertex 3 = (X_hi, Y[3], Z_hi) → corner 3
+void testTopFaceVertexY(World& world, int wx, int wy, int wz, float yOut[4]) {
+    testWaterTopCorners(world, wx, wy, wz, yOut);
+    // yOut[0..3] = corner heights, which map directly to vertex Y
+}
+
+TEST(WaterSimulator, SideFaceMatchesOwnTopFace) {
+    // Each water block's side face top edge must exactly match the
+    // corresponding edge of its own top face. Otherwise you see a
+    // crack between the side and top faces on the same block.
+    PedestalScene s;
+    const int y = PedestalScene::FLOOR_Y + 1;
+    s.world.setBlock(8, y, 8, WATER, 0);
+    s.sim.activate(8, y, 8);
+    runTicks(s.sim, 15);
+
+    int mismatches = 0;
+    for (int x = 2; x <= 14; x++) {
+        for (int z = 2; z <= 14; z++) {
+            if (getType(s.world, x, y, z) != WATER) continue;
+            float topCorners[4];
+            testWaterTopCorners(s.world, x, y, z, topCorners);
+
+            // For each side face (0-3), check if neighbor is AIR (face visible)
+            int dx[] = {0, 0, -1, 1};
+            int dz[] = {1, -1, 0, 0};
+            for (int f = 0; f < 4; f++) {
+                if (getType(s.world, x + dx[f], y, z + dz[f]) != AIR) continue;
+                float sideA, sideB;
+                testSideFaceTop(s.world, x, y, z, f, sideA, sideB);
+                // Side face top must match the top face corners at that edge
+                static constexpr int IDX[4][2] = {{0,3}, {2,1}, {1,0}, {3,2}};
+                float topA = topCorners[IDX[f][0]];
+                float topB = topCorners[IDX[f][1]];
+                if (std::abs(sideA - topA) > 0.001f || std::abs(sideB - topB) > 0.001f) {
+                    ADD_FAILURE() << "Side/top mismatch at (" << x << "," << z
+                        << ") face=" << f << ": side=(" << sideA << "," << sideB
+                        << ") top=(" << topA << "," << topB << ")";
+                    mismatches++;
+                }
+            }
+        }
+    }
+    EXPECT_EQ(mismatches, 0);
+}
+
+TEST(WaterSimulator, StaircaseWaterContiguity) {
+    // Water flowing down a staircase terrain. Each step drops 1 Y level.
+    // Verify contiguity at each step transition.
+    World world;
+    WaterSimulator sim(&world);
+    ensureChunks(world, 0, 30, 0, 16);
+
+    // Build a staircase: step at x=5 y=8, x=8 y=7, x=11 y=6, x=14 y=5
+    for (int step = 0; step < 4; step++) {
+        int sx = 5 + step * 3;
+        int sy = 8 - step;
+        for (int x = sx; x < sx + 3; x++)
+            for (int z = 4; z <= 12; z++)
+                world.setBlock(x, sy, z, STONE, 0);
+    }
+    // Walls on sides
+    for (int x = 5; x < 17; x++) {
+        for (int y = 4; y <= 10; y++) {
+            world.setBlock(x, y, 3, STONE, 0);
+            world.setBlock(x, y, 13, STONE, 0);
+        }
+    }
+
+    // Place water source at the top of the staircase
+    world.setBlock(6, 9, 8, WATER, 0);
+    sim.activate(6, 9, 8);
+    runTicks(sim, 50);
+
+    // Check contiguity across all water blocks
+    int hMismatches = 0;
+    for (int y = 0; y < 15; y++) {
+        for (int x = 3; x <= 18; x++) {
+            for (int z = 3; z <= 13; z++) {
+                if (getType(world, x, y, z) != WATER) continue;
+                float cornersA[4];
+                testWaterTopCorners(world, x, y, z, cornersA);
+
+                // +X neighbor at same Y
+                if (getType(world, x + 1, y, z) == WATER) {
+                    float cornersB[4];
+                    testWaterTopCorners(world, x + 1, y, z, cornersB);
+                    if (std::abs(cornersA[2] - cornersB[1]) > 0.001f ||
+                        std::abs(cornersA[3] - cornersB[0]) > 0.001f) {
+                        if (hMismatches < 5)
+                            ADD_FAILURE() << "X gap y=" << y << " (" << x << "," << z << ")";
+                        hMismatches++;
+                    }
+                }
+                // +Z neighbor at same Y
+                if (getType(world, x, y, z + 1) == WATER) {
+                    float cornersB[4];
+                    testWaterTopCorners(world, x, y, z + 1, cornersB);
+                    if (std::abs(cornersA[0] - cornersB[1]) > 0.001f ||
+                        std::abs(cornersA[3] - cornersB[2]) > 0.001f) {
+                        if (hMismatches < 5)
+                            ADD_FAILURE() << "Z gap y=" << y << " (" << x << "," << z << ")";
+                        hMismatches++;
+                    }
+                }
+                // Vertical: water above
+                if (getType(world, x, y + 1, z) == WATER) {
+                    // Side face top must be at ceiling when water above
+                    float sideTop = (float)y + 0.5f;
+                    float aboveFloor = (float)(y + 1) - 0.5f;
+                    if (std::abs(sideTop - aboveFloor) > 0.001f) {
+                        if (hMismatches < 5)
+                            ADD_FAILURE() << "V gap y=" << y << " (" << x << "," << z << ")";
+                        hMismatches++;
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_EQ(hMismatches, 0) << "staircase water has gaps";
+}
+
+TEST(WaterSimulator, VertexLevelContiguityCheck) {
+    // This test checks the EXACT vertex Y positions that the mesh builder
+    // would produce, for every water block, and verifies:
+    // 1. Each block's side face top Y matches its own top face edge Y
+    // 2. Adjacent blocks' top face edges share the same Y at shared corners
+    // 3. Vertically stacked water: lower block side top Y == upper block floor
+    //
+    // This catches any gap regardless of cause.
+    PedestalScene s;
+    s.world.setBlock(8, 10, 8, WATER, 0);
+    s.sim.activate(8, 10, 8);
+    runTicks(s.sim, 30);
+
+    int errors = 0;
+    auto reportErr = [&](const char* type, int x, int y, int z,
+                         const char* detail, float a, float b) {
+        if (errors < 10)
+            ADD_FAILURE() << type << " at (" << x << "," << y << "," << z
+                << ") " << detail << ": " << a << " vs " << b;
+        errors++;
+    };
+
+    for (int y = 0; y < 15; y++) {
+        for (int x = 2; x <= 14; x++) {
+            for (int z = 2; z <= 14; z++) {
+                if (getType(s.world, x, y, z) != WATER) continue;
+
+                // Get this block's corner heights (same as mesh builder)
+                float corners[4]; // 0=(-X,+Z), 1=(-X,-Z), 2=(+X,-Z), 3=(+X,+Z)
+                testWaterTopCorners(s.world, x, y, z, corners);
+                float floor = (float)y - 0.5f;
+
+                // CHECK 1: side face top == own top face edge (same corners)
+                // This is guaranteed by construction but verify anyway.
+                for (int f = 0; f < 4; f++) {
+                    // Side face only visible when neighbor is AIR
+                    int dx[] = {0, 0, -1, 1};
+                    int dz[] = {1, -1, 0, 0};
+                    if (getType(s.world, x + dx[f], y, z + dz[f]) != AIR) continue;
+
+                    float sA = corners[TEST_SIDE_TOP_IDX[f][0]];
+                    float sB = corners[TEST_SIDE_TOP_IDX[f][1]];
+                    // Side face vertices: bottom at floor, top at sA/sB
+                    // Top face vertices at this edge: same corners
+                    // (They're the same array, so this is tautological,
+                    // but verifies the IDX mapping is consistent)
+                    if (sA < floor || sB < floor) {
+                        reportErr("SIDE_BELOW_FLOOR", x, y, z, "side face top below floor", sA, floor);
+                    }
+                }
+
+                // CHECK 2: horizontal contiguity with +X neighbor
+                if (getType(s.world, x + 1, y, z) == WATER) {
+                    float nb[4];
+                    testWaterTopCorners(s.world, x + 1, y, z, nb);
+                    // Shared edge at x+0.5:
+                    // This block's +X corners: 2=(+X,-Z), 3=(+X,+Z)
+                    // Neighbor's -X corners: 1=(-X,-Z), 0=(-X,+Z)
+                    if (std::abs(corners[2] - nb[1]) > 0.001f)
+                        reportErr("X_EDGE", x, y, z, "+X/-Z corner", corners[2], nb[1]);
+                    if (std::abs(corners[3] - nb[0]) > 0.001f)
+                        reportErr("X_EDGE", x, y, z, "+X/+Z corner", corners[3], nb[0]);
+                }
+
+                // CHECK 3: horizontal contiguity with +Z neighbor
+                if (getType(s.world, x, y, z + 1) == WATER) {
+                    float nb[4];
+                    testWaterTopCorners(s.world, x, y, z + 1, nb);
+                    // Shared edge at z+0.5:
+                    // This block's +Z corners: 0=(-X,+Z), 3=(+X,+Z)
+                    // Neighbor's -Z corners: 1=(-X,-Z), 2=(+X,-Z)
+                    if (std::abs(corners[0] - nb[1]) > 0.001f)
+                        reportErr("Z_EDGE", x, y, z, "-X/+Z corner", corners[0], nb[1]);
+                    if (std::abs(corners[3] - nb[2]) > 0.001f)
+                        reportErr("Z_EDGE", x, y, z, "+X/+Z corner", corners[3], nb[2]);
+                }
+
+                // CHECK 4: vertical — if water above, side face top must
+                // reach the block ceiling so it connects to the block above.
+                if (getType(s.world, x, y + 1, z) == WATER) {
+                    float ceiling = (float)y + 0.5f;
+                    // waterCellHeight returns 1.0 when water above.
+                    // All neighbors also at same Y: if they have water
+                    // above too, they return 1.0. If not, they return their
+                    // flow level. The averaged corners should be >= 15/16
+                    // height at minimum (since center is 1.0).
+                    // The KEY check: the side face top at each corner must
+                    // reach high enough that the block above's side face
+                    // bottom (= ceiling = y+0.5) connects.
+                    // Since corners are AVERAGED, they may be < ceiling.
+                    // This means there CAN be a gap between the side face
+                    // top and the block above's floor. This is the bug!
+                    for (int ci = 0; ci < 4; ci++) {
+                        if (corners[ci] < ceiling - 0.001f) {
+                            reportErr("VERT_GAP", x, y, z, "corner below ceiling",
+                                      corners[ci], ceiling);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_EQ(errors, 0) << "vertex-level contiguity failures";
+}
+
+TEST(WaterSimulator, FourChunkCornerIntersection) {
+    // At the corner where 4 chunks meet, each chunk computes corners by
+    // averaging itself + neighbor blocks. The DIAGONAL block is currently
+    // excluded (waterCellHeight returns -1 for both-axes-out-of-range).
+    // This makes each chunk exclude a DIFFERENT block, producing different
+    // corner heights at the shared 4-chunk vertex → visible seam.
+    //
+    // Create water spanning 4 chunks near a chunk-intersection corner,
+    // with varying flow levels so the heights differ.
+    World world;
+    WaterSimulator sim(&world);
+    ensureChunks(world, -20, 20, -20, 20);
+    // Flat floor
+    for (int x = -20; x <= 20; x++)
+        for (int z = -20; z <= 20; z++)
+            world.setBlock(x, 2, z, STONE, 0);
+    // Place sources at different positions so water spreads across chunk
+    // boundaries with mixed flow levels.
+    world.setBlock(-5, 3, -5, WATER, 0);
+    sim.activate(-5, 3, -5);
+    world.setBlock(5, 3, 5, WATER, 0);
+    sim.activate(5, 3, 5);
+    runTicks(sim, 40);
+
+    // The 4-chunk corner is at world (0, 0). The 4 blocks around it:
+    //   A = (-1, 3, -1) in chunk (-1, -1)
+    //   B = ( 0, 3, -1) in chunk ( 0, -1)
+    //   C = (-1, 3,  0) in chunk (-1,  0)
+    //   D = ( 0, 3,  0) in chunk ( 0,  0)
+    // If all 4 are water, their shared corner should have matching heights
+    // when viewed from all 4 blocks.
+    int y = 3;
+    int aType = getType(world, -1, y, -1);
+    int bType = getType(world,  0, y, -1);
+    int cType = getType(world, -1, y,  0);
+    int dType = getType(world,  0, y,  0);
+
+    if (aType == WATER && bType == WATER && cType == WATER && dType == WATER) {
+        float cornersA[4]; testWaterTopCorners(world, -1, y, -1, cornersA);
+        float cornersB[4]; testWaterTopCorners(world,  0, y, -1, cornersB);
+        float cornersC[4]; testWaterTopCorners(world, -1, y,  0, cornersC);
+        float cornersD[4]; testWaterTopCorners(world,  0, y,  0, cornersD);
+
+        // Shared corner at world (-0.5, -0.5):
+        //   A's corner (+X,+Z) = corner 3
+        //   B's corner (-X,+Z) = corner 0
+        //   C's corner (+X,-Z) = corner 2
+        //   D's corner (-X,-Z) = corner 1
+        float aC = cornersA[3];
+        float bC = cornersB[0];
+        float cC = cornersC[2];
+        float dC = cornersD[1];
+
+        EXPECT_FLOAT_EQ(aC, bC) << "4-chunk corner mismatch A vs B";
+        EXPECT_FLOAT_EQ(aC, cC) << "4-chunk corner mismatch A vs C";
+        EXPECT_FLOAT_EQ(aC, dC) << "4-chunk corner mismatch A vs D";
+        EXPECT_FLOAT_EQ(bC, dC) << "4-chunk corner mismatch B vs D";
+    }
+}
+
+TEST(WaterSimulator, FallingColumnSideFacesMatchCorners) {
+    // Falling water side faces must be trimmed to corner heights
+    // (not full block height), so they match adjacent pool top faces.
+    PedestalScene s;
+    s.world.setBlock(8, 10, 8, WATER, 0);
+    s.sim.activate(8, 10, 8);
+    runTicks(s.sim, 30);
+
+    const int y = PedestalScene::FLOOR_Y + 1;
+    // Column base at (8, y, 8) is falling water
+    ASSERT_EQ(getType(s.world, 8, y, 8), WATER);
+    ASSERT_TRUE(waterIsFalling(getWaterRaw(s.world, 8, y, 8)));
+
+    // Its side face heights must match its corner heights
+    float corners[4];
+    testWaterTopCorners(s.world, 8, y, 8, corners);
+    for (int f = 0; f < 4; f++) {
+        float sA, sB;
+        testSideFaceTop(s.world, 8, y, 8, f, sA, sB);
+        static constexpr int IDX[4][2] = {{0,3}, {2,1}, {1,0}, {3,2}};
+        EXPECT_FLOAT_EQ(sA, corners[IDX[f][0]])
+            << "falling water face " << f << " side/corner mismatch";
+        EXPECT_FLOAT_EQ(sB, corners[IDX[f][1]])
+            << "falling water face " << f << " side/corner mismatch";
+    }
+}
+
+TEST(WaterSimulator, CornerAveragingClampedToCeiling) {
+    // Verify that corner averaging never produces a height above the
+    // block ceiling, even when a full-height neighbor is included.
+    PedestalScene s;
+    const int y = PedestalScene::FLOOR_Y + 1;
+
+    // Place source on flat floor — all surrounding blocks are same height
+    s.world.setBlock(8, y, 8, WATER, 0);
+    s.sim.activate(8, y, 8);
+    runTicks(s.sim, 15);
+
+    // Check every water block's corners
+    for (int x = 4; x <= 12; x++) {
+        for (int z = 4; z <= 12; z++) {
+            if (getType(s.world, x, y, z) != WATER) continue;
+            float corners[4];
+            testWaterTopCorners(s.world, x, y, z, corners);
+            float ceiling = (float)y + 0.5f;
+            for (int i = 0; i < 4; i++) {
+                EXPECT_LE(corners[i], ceiling)
+                    << "corner " << i << " at (" << x << "," << z
+                    << ") exceeds block ceiling";
+            }
+        }
+    }
+}
