@@ -1382,6 +1382,64 @@ int main(int argc, char* argv[]) {
                 glEnable(GL_CULL_FACE);
             }
 
+            // Block-placement "pop" — expanding white wireframe that fades out.
+            // Shares highlightVAO with the targeted-block outline (re-uploaded each frame).
+            {
+                float p = player.getPlaceAnimProgress();
+                if (p >= 0.0f) {
+                    glm::ivec3 pp = player.getLastPlacedPos();
+                    float x = (float)pp.x;
+                    float y = (float)pp.y;
+                    float z = (float)pp.z;
+                    // Ease-out: snap outward fast, brightness fades faster than expansion
+                    float ease = 1.0f - (1.0f - p) * (1.0f - p);
+                    float e = 0.502f + 0.22f * ease;
+                    float bright = 1.0f - p;
+
+                    float popVerts[24 * 10];
+                    int vi = 0;
+                    auto addVert = [&](float vx, float vy, float vz) {
+                        popVerts[vi++] = vx;
+                        popVerts[vi++] = vy;
+                        popVerts[vi++] = vz;
+                        popVerts[vi++] = 0;
+                        popVerts[vi++] = 0;
+                        popVerts[vi++] = 0;
+                        popVerts[vi++] = 0;
+                        popVerts[vi++] = 0;
+                        popVerts[vi++] = (float)TextureArray::CLOUD_LAYER;
+                        popVerts[vi++] = 1;
+                    };
+                    float cx[8] = {x - e, x - e, x + e, x + e, x - e, x - e, x + e, x + e};
+                    float cy[8] = {y - e, y + e, y + e, y - e, y - e, y + e, y + e, y - e};
+                    float cz[8] = {z - e, z - e, z - e, z - e, z + e, z + e, z + e, z + e};
+                    int edges[12][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6},
+                                        {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+                    for (auto& edge : edges) {
+                        addVert(cx[edge[0]], cy[edge[0]], cz[edge[0]]);
+                        addVert(cx[edge[1]], cy[edge[1]], cz[edge[1]]);
+                    }
+
+                    glBindBuffer(GL_ARRAY_BUFFER, highlightVBO);
+                    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(popVerts), popVerts);
+
+                    billboardShader.use();
+                    billboardShader.setMat4("projection", projection);
+                    billboardShader.setMat4("view", player.getViewMatrix());
+                    billboardShader.setMat4("model", glm::mat4(1.0f));
+                    billboardShader.setVec3("tintColor", glm::vec3(bright));
+                    glDisable(GL_CULL_FACE);
+                    glLineWidth(3.0f);
+
+                    glBindVertexArray(highlightVAO);
+                    glDrawArrays(GL_LINES, 0, 24);
+                    glBindVertexArray(0);
+
+                    glEnable(GL_CULL_FACE);
+                    glLineWidth(2.0f);
+                }
+            }
+
             // First-person arm — lit by environment (matches terrain shader)
             {
                 glm::mat4 armModel = player.getArmModelMatrix();

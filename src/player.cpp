@@ -186,6 +186,11 @@ void Player::handleInput(GLFWwindow* window, World* world) {
         if (!blocked) {
             playBreakSound(hotbar[selectedSlot]);
             world->placeBlock(placementPos, hotbar[selectedSlot]);
+            // Arm swing (same feedback as left-click) + outline pop at placement pos
+            isPunching = true;
+            punchStartTime = glfwGetTime();
+            lastPlacedPos = placementPos;
+            placeAnimStart = glfwGetTime();
         }
     }
     rightClickHeld = rightDown;
@@ -380,6 +385,13 @@ float Player::getPunchSwingAngle() const {
     if (!isPunching) return 0.0f;
     float t = (float)((glfwGetTime() - punchStartTime) / PUNCH_DURATION);
     return std::sin(t * glm::radians(180.0f)) * -60.0f;
+}
+
+float Player::getPlaceAnimProgress() const {
+    if (placeAnimStart < 0) return -1.0f;
+    double t = (glfwGetTime() - placeAnimStart) / PLACE_ANIM_DURATION;
+    if (t >= 1.0) return -1.0f; // done
+    return (float)t;
 }
 
 glm::mat4 Player::getArmModelMatrix() const {
