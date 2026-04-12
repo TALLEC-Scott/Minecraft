@@ -90,90 +90,122 @@ static float waterHeightFromRaw(uint8_t raw) {
     return (15.0f - waterFlowLevel(raw) * 2.0f) / 16.0f;
 }
 
-static float waterCellHeight(const Cube* blocks, const uint8_t* waterLevels,
-                             int bx, int by, int bz,
-                             Chunk* nx_neg = nullptr, Chunk* nx_pos = nullptr,
-                             Chunk* nz_neg = nullptr, Chunk* nz_pos = nullptr,
-                             Chunk* d_nn = nullptr, Chunk* d_np = nullptr,
-                             Chunk* d_pn = nullptr, Chunk* d_pp = nullptr) {
+// Tri-state so corner averaging can distinguish AIR (cliff edges —
+// pull corner down toward floor) from SOLID (shoreline — exclude from
+// average so water against land stays flat).
+enum class CellKind : uint8_t { Water, Air, Solid };
+struct WaterCellSample {
+    CellKind kind;
+    uint8_t raw;
+    bool isWater() const { return kind == CellKind::Water; }
+};
+
+template <typename Sampler>
+static float waterCellHeightT(int bx, int by, int bz, Sampler sample) {
     if (by < 0 || by >= CHUNK_HEIGHT) return -1.0f;
-    // Cross-chunk lookup for water height at chunk boundaries
-    if (bx < 0 || bx >= CHUNK_SIZE || bz < 0 || bz >= CHUNK_SIZE) {
-        Chunk* nc = nullptr;
-        int nlx = bx, nlz = bz;
-        bool xNeg = bx < 0, xPos = bx >= CHUNK_SIZE;
-        bool zNeg = bz < 0, zPos = bz >= CHUNK_SIZE;
-        // Diagonal — use diagonal chunk pointer so 4-chunk corner averaging is symmetric
-        if ((xNeg || xPos) && (zNeg || zPos)) {
-            if (xNeg && zNeg) { nc = d_nn; nlx = CHUNK_SIZE - 1; nlz = CHUNK_SIZE - 1; }
-            else if (xNeg && zPos) { nc = d_np; nlx = CHUNK_SIZE - 1; nlz = 0; }
-            else if (xPos && zNeg) { nc = d_pn; nlx = 0; nlz = CHUNK_SIZE - 1; }
-            else { nc = d_pp; nlx = 0; nlz = 0; }
-        } else if (xNeg) { nc = nx_neg; nlx = CHUNK_SIZE - 1; }
-        else if (xPos)   { nc = nx_pos; nlx = 0; }
-        else if (zNeg)   { nc = nz_neg; nlz = CHUNK_SIZE - 1; }
-        else             { nc = nz_pos; nlz = 0; }
-        if (!nc || nc->getBlockType(nlx, by, nlz) != WATER) return -1.0f;
-        if (by + 1 < CHUNK_HEIGHT && nc->getBlockType(nlx, by + 1, nlz) == WATER) return 1.0f;
-        return waterHeightFromRaw(nc->getWaterLevel(nlx, by, nlz));
-    }
+    WaterCellSample s = sample(bx, by, bz);
+    if (!s.isWater()) return -1.0f;
+    // Water with water above = full block height (flush with the block above)
+    if (by + 1 < CHUNK_HEIGHT && sample(bx, by + 1, bz).isWater()) return 1.0f;
+    return waterHeightFromRaw(s.raw);
+}
+
+// Sync sampler: reads in-chunk from blocks[]/waterLevels[], cross-chunk
+// via Chunk pointers (including diagonals for 4-chunk corners).
+static WaterCellSample sampleSync(const Cube* blocks, const uint8_t* waterLevels,
+                                  const Chunk::NeighborChunks& nc, int bx, int by, int bz) {
+    auto classify = [](block_type t, uint8_t raw) -> WaterCellSample {
+        if (t == WATER) return {CellKind::Water, raw};
+        if (t == AIR) return {CellKind::Air, 0};
+        return {CellKind::Solid, 0};
+    };
+    if (by < 0 || by >= CHUNK_HEIGHT) return {CellKind::Solid, 0};
+    bool xNeg = bx < 0, xPos = bx >= CHUNK_SIZE;
+    bool zNeg = bz < 0, zPos = bz >= CHUNK_SIZE;
+    Chunk* c = nullptr;
+    int lx = bx, lz = bz;
+    if ((xNeg || xPos) && (zNeg || zPos)) {
+        if (xNeg && zNeg) { c = nc.dNN; lx = CHUNK_SIZE - 1; lz = CHUNK_SIZE - 1; }
+        else if (xNeg && zPos) { c = nc.dNP; lx = CHUNK_SIZE - 1; lz = 0; }
+        else if (xPos && zNeg) { c = nc.dPN; lx = 0; lz = CHUNK_SIZE - 1; }
+        else { c = nc.dPP; lx = 0; lz = 0; }
+    } else if (xNeg) { c = nc.nxNeg; lx = CHUNK_SIZE - 1; }
+    else if (xPos) { c = nc.nxPos; lx = 0; }
+    else if (zNeg) { c = nc.nzNeg; lz = CHUNK_SIZE - 1; }
+    else if (zPos) { c = nc.nzPos; lz = 0; }
+    if (c) return classify(c->getBlockType(lx, by, lz), c->getWaterLevel(lx, by, lz));
     size_t i = static_cast<size_t>(bx) * CHUNK_HEIGHT * CHUNK_SIZE + by * CHUNK_SIZE + bz;
-    if (blocks[i].getType() != WATER) return -1.0f;
-    // Water with water above = full block height
-    if (by + 1 < CHUNK_HEIGHT) {
-        size_t above = static_cast<size_t>(bx) * CHUNK_HEIGHT * CHUNK_SIZE + (by + 1) * CHUNK_SIZE + bz;
-        if (blocks[above].getType() == WATER) return 1.0f;
-    }
     uint8_t raw = waterLevels ? waterLevels[i] : 0;
-    return waterHeightFromRaw(raw);
+    return classify(blocks[i].getType(), raw);
+}
+
+static float waterCellHeight(const Cube* blocks, const uint8_t* waterLevels,
+                             int bx, int by, int bz, const Chunk::NeighborChunks& nc) {
+    return waterCellHeightT(bx, by, bz, [&](int x, int y, int z) {
+        return sampleSync(blocks, waterLevels, nc, x, y, z);
+    });
 }
 
 // Compute the four top-face corner heights of a water block by averaging
 // this cell with the up-to-three neighbors sharing each corner. Corner
 // offsets are flipped based on the face axis signs so they match the
 // quad's vertex order (SW, NW, NE, SE when u_sign/v_sign > 0).
-static void computeWaterTopCorners(const Cube* blocks, const uint8_t* waterLevels,
-                                   int bx, int by, int bz,
-                                   int uSign, int vSign, float out[4],
-                                   Chunk* nx_neg = nullptr, Chunk* nx_pos = nullptr,
-                                   Chunk* nz_neg = nullptr, Chunk* nz_pos = nullptr,
-                                   Chunk* d_nn = nullptr, Chunk* d_np = nullptr,
-                                   Chunk* d_pn = nullptr, Chunk* d_pp = nullptr) {
+// Compute 4 top-face corner heights, templated on a cell sampler.
+// Each corner averages 4 cells sharing it. AIR cells contribute height 0
+// (pulls corner down toward floor at water edges — dramatic slant where
+// water pours over cliffs). SOLID cells are excluded (water against a
+// wall stays flat). If any contributing cell has water above, the corner
+// snaps to the block ceiling for flush junctions.
+template <typename Sampler>
+static void computeWaterTopCornersT(int bx, int by, int bz,
+                                    int uSign, int vSign, float out[4],
+                                    Sampler sample) {
     int cdx[4] = {-1, -1, 1, 1};
     int cdz[4] = {-1, 1, 1, -1};
     if (uSign < 0) {
-        std::swap(cdx[0], cdx[3]);
-        std::swap(cdx[1], cdx[2]);
-        std::swap(cdz[0], cdz[3]);
-        std::swap(cdz[1], cdz[2]);
+        std::swap(cdx[0], cdx[3]); std::swap(cdx[1], cdx[2]);
+        std::swap(cdz[0], cdz[3]); std::swap(cdz[1], cdz[2]);
     }
     if (vSign < 0) {
-        std::swap(cdx[0], cdx[1]);
-        std::swap(cdx[2], cdx[3]);
-        std::swap(cdz[0], cdz[1]);
-        std::swap(cdz[2], cdz[3]);
+        std::swap(cdx[0], cdx[1]); std::swap(cdx[2], cdx[3]);
+        std::swap(cdz[0], cdz[1]); std::swap(cdz[2], cdz[3]);
     }
-    auto H = [&](int x, int y, int z) {
-        return waterCellHeight(blocks, waterLevels, x, y, z, nx_neg, nx_pos, nz_neg, nz_pos,
-                               d_nn, d_np, d_pn, d_pp);
+    // Sample one cell contribution. Returns {height, counted}:
+    //   Water → {height, true}
+    //   Air   → {0, true}   (pulls corner down — water pours over cliffs)
+    //   Solid → {0, false}  (excluded — water against land stays flat)
+    auto contribute = [&](int x, int y, int z) -> std::pair<float, bool> {
+        if (y < 0 || y >= CHUNK_HEIGHT) return {0.0f, false};
+        WaterCellSample s = sample(x, y, z);
+        if (s.kind == CellKind::Solid) return {0.0f, false};
+        if (s.kind == CellKind::Air) return {0.0f, true};
+        if (y + 1 < CHUNK_HEIGHT && sample(x, y + 1, z).isWater()) return {1.0f, true};
+        return {waterHeightFromRaw(s.raw), true};
     };
-    float cH = H(bx, by, bz);
+    auto cC = contribute(bx, by, bz);
     for (int ci = 0; ci < 4; ci++) {
-        float h[4] = {cH, H(bx + cdx[ci], by, bz), H(bx, by, bz + cdz[ci]),
-                      H(bx + cdx[ci], by, bz + cdz[ci])};
-        // If ANY cell at this corner has water above (height 1.0),
-        // the corner is at full block height. This ensures the surface
-        // connects flush with the block above (no gap at junctions).
+        std::pair<float, bool> h[4] = {cC,
+            contribute(bx + cdx[ci], by, bz),
+            contribute(bx, by, bz + cdz[ci]),
+            contribute(bx + cdx[ci], by, bz + cdz[ci])};
         bool anyFull = false;
-        for (int i = 0; i < 4; i++) if (h[i] >= 1.0f) anyFull = true;
+        for (int i = 0; i < 4; i++) if (h[i].second && h[i].first >= 1.0f) anyFull = true;
         if (anyFull) {
             out[ci] = (float)by + 0.5f;
         } else {
             float sum = 0; int cnt = 0;
-            for (int i = 0; i < 4; i++) if (h[i] >= 0) { sum += h[i]; cnt++; }
-            out[ci] = (float)by - 0.5f + sum / cnt;
+            for (int i = 0; i < 4; i++) if (h[i].second) { sum += h[i].first; cnt++; }
+            out[ci] = (float)by - 0.5f + (cnt > 0 ? sum / cnt : 0.0f);
         }
     }
+}
+
+static void computeWaterTopCorners(const Cube* blocks, const uint8_t* waterLevels,
+                                   int bx, int by, int bz, int uSign, int vSign, float out[4],
+                                   const Chunk::NeighborChunks& nc) {
+    computeWaterTopCornersT(bx, by, bz, uSign, vSign, out, [&](int x, int y, int z) {
+        return sampleSync(blocks, waterLevels, nc, x, y, z);
+    });
 }
 
 // Water side face corner indices into topCorners[4] (computed with u_sign=1, v_sign=-1).
@@ -697,13 +729,16 @@ static bool isOpaqueCross(Chunk* self, int i, int j, int k, Chunk* nx_neg, Chunk
     return t != AIR && t != WATER;
 }
 
-void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos,
-                          Chunk* d_nn, Chunk* d_np, Chunk* d_pn, Chunk* d_pp) {
+void Chunk::buildMeshData(const NeighborChunks& nc) {
     ZoneScopedN("Chunk::buildMeshData");
     double _buildStart = glfwGetTime();
 
-    // Snapshot which sections we're about to rebuild so uploadMesh
-    // clears only these bits (new dirty bits set during the build survive).
+    // Local aliases — keeps the long body unchanged while signature is clean.
+    Chunk* nx_neg = nc.nxNeg;
+    Chunk* nx_pos = nc.nxPos;
+    Chunk* nz_neg = nc.nzNeg;
+    Chunk* nz_pos = nc.nzPos;
+
     builtDirtyMask = sectionDirty;
 
     // Decompress sections into flat buffer for mesh building
@@ -892,9 +927,7 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                     // Water top face: per-vertex heights averaged with neighbors for a smooth surface.
                     float waterY[4] = {d_val, d_val, d_val, d_val};
                     if (bt == (int)WATER && f == 4) {
-                        computeWaterTopCorners(blocks, waterLevels.get(), u, d, v, fd.u_sign, fd.v_sign, waterY,
-                                               nx_neg, nx_pos, nz_neg, nz_pos,
-                                               d_nn, d_np, d_pn, d_pp);
+                        computeWaterTopCorners(blocks, waterLevels.get(), u, d, v, fd.u_sign, fd.v_sign, waterY, nc);
                     }
 
                     float u_lo = (float)u - 0.5f, u_hi = (float)(u + w) - 0.5f;
@@ -929,8 +962,7 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
                         // edge on adjacent blocks (no gap at junctions).
                         float topCorners[4];
                         computeWaterTopCorners(blocks, waterLevels.get(), bc[0], bc[1], bc[2],
-                                               1, -1, topCorners, nx_neg, nx_pos, nz_neg, nz_pos,
-                                               d_nn, d_np, d_pn, d_pp);
+                                               1, -1, topCorners, nc);
                         vp[1][fd.v] = topCorners[SIDE_TOP_IDX[f][0]];
                         vp[2][fd.v] = topCorners[SIDE_TOP_IDX[f][1]];
                     }
@@ -1140,51 +1172,31 @@ void Chunk::buildMeshData(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz
     g_frame.meshBuilds++;
 }
 
-void Chunk::buildMesh(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos,
-                      Chunk* d_nn, Chunk* d_np, Chunk* d_pn, Chunk* d_pp) {
-    buildMeshData(nx_neg, nx_pos, nz_neg, nz_pos, d_nn, d_np, d_pn, d_pp);
+void Chunk::buildMesh(const NeighborChunks& nc) {
+    buildMeshData(nc);
 }
 
-Chunk::NeighborBorders Chunk::snapshotBorders(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos,
-                                              Chunk* d_nn, Chunk* d_np, Chunk* d_pn, Chunk* d_pp) {
+Chunk::NeighborBorders Chunk::snapshotBorders(const NeighborChunks& nc) {
     NeighborBorders nb;
-    if (nx_neg) {
-        nb.xNeg.valid = true;
-        for (int z = 0; z < CHUNK_SIZE; z++)
+    // Snapshot one cardinal edge column of a neighbor chunk.
+    // (lx,lz) is which local column to read (the edge facing us).
+    // edgeIdx(x,z) picks the flat iteration index (X or Z, whichever runs).
+    auto snapshotEdge = [](Chunk* n, bool xAxis, int edgeLocal, NeighborBorder& out) {
+        if (!n) return;
+        out.valid = true;
+        for (int i = 0; i < CHUNK_SIZE; i++)
             for (int y = 0; y < CHUNK_HEIGHT; y++) {
-                nb.xNeg.types[z][y] = nx_neg->getBlock(CHUNK_SIZE - 1, y, z)->getType();
-                nb.xNeg.lightBorder[z][y] = nx_neg->skyLight[lightIdx(CHUNK_SIZE - 1, y, z)];
-                nb.xNeg.waterBorder[z][y] = nx_neg->getWaterLevel(CHUNK_SIZE - 1, y, z);
+                int lx = xAxis ? edgeLocal : i;
+                int lz = xAxis ? i : edgeLocal;
+                out.types[i][y] = n->getBlock(lx, y, lz)->getType();
+                out.lightBorder[i][y] = n->skyLight[lightIdx(lx, y, lz)];
+                out.waterBorder[i][y] = n->getWaterLevel(lx, y, lz);
             }
-    }
-    if (nx_pos) {
-        nb.xPos.valid = true;
-        for (int z = 0; z < CHUNK_SIZE; z++)
-            for (int y = 0; y < CHUNK_HEIGHT; y++) {
-                nb.xPos.types[z][y] = nx_pos->getBlock(0, y, z)->getType();
-                nb.xPos.lightBorder[z][y] = nx_pos->skyLight[lightIdx(0, y, z)];
-                nb.xPos.waterBorder[z][y] = nx_pos->getWaterLevel(0, y, z);
-            }
-    }
-    if (nz_neg) {
-        nb.zNeg.valid = true;
-        for (int x = 0; x < CHUNK_SIZE; x++)
-            for (int y = 0; y < CHUNK_HEIGHT; y++) {
-                nb.zNeg.types[x][y] = nz_neg->getBlock(x, y, CHUNK_SIZE - 1)->getType();
-                nb.zNeg.lightBorder[x][y] = nz_neg->skyLight[lightIdx(x, y, CHUNK_SIZE - 1)];
-                nb.zNeg.waterBorder[x][y] = nz_neg->getWaterLevel(x, y, CHUNK_SIZE - 1);
-            }
-    }
-    if (nz_pos) {
-        nb.zPos.valid = true;
-        for (int x = 0; x < CHUNK_SIZE; x++)
-            for (int y = 0; y < CHUNK_HEIGHT; y++) {
-                nb.zPos.types[x][y] = nz_pos->getBlock(x, y, 0)->getType();
-                nb.zPos.lightBorder[x][y] = nz_pos->skyLight[lightIdx(x, y, 0)];
-                nb.zPos.waterBorder[x][y] = nz_pos->getWaterLevel(x, y, 0);
-            }
-    }
-    // Diagonal corner columns: single block at each of the 4 chunk corners
+    };
+    snapshotEdge(nc.nxNeg, true, CHUNK_SIZE - 1, nb.xNeg);
+    snapshotEdge(nc.nxPos, true, 0, nb.xPos);
+    snapshotEdge(nc.nzNeg, false, CHUNK_SIZE - 1, nb.zNeg);
+    snapshotEdge(nc.nzPos, false, 0, nb.zPos);
     auto snapshotDiag = [](Chunk* dc, int lx, int lz, DiagonalCorner& out) {
         if (!dc) return;
         out.valid = true;
@@ -1193,84 +1205,62 @@ Chunk::NeighborBorders Chunk::snapshotBorders(Chunk* nx_neg, Chunk* nx_pos, Chun
             out.waterBorder[y] = dc->getWaterLevel(lx, y, lz);
         }
     };
-    snapshotDiag(d_nn, CHUNK_SIZE - 1, CHUNK_SIZE - 1, nb.dNN);
-    snapshotDiag(d_np, CHUNK_SIZE - 1, 0, nb.dNP);
-    snapshotDiag(d_pn, 0, CHUNK_SIZE - 1, nb.dPN);
-    snapshotDiag(d_pp, 0, 0, nb.dPP);
+    snapshotDiag(nc.dNN, CHUNK_SIZE - 1, CHUNK_SIZE - 1, nb.dNN);
+    snapshotDiag(nc.dNP, CHUNK_SIZE - 1, 0, nb.dNP);
+    snapshotDiag(nc.dPN, 0, CHUNK_SIZE - 1, nb.dPN);
+    snapshotDiag(nc.dPP, 0, 0, nb.dPP);
     return nb;
 }
 
-// Cross-chunk water height using NeighborBorders (for async mesh building)
-static float waterCellHeightBorder(const Cube* blocks, const uint8_t* waterLevels,
-                                   int bx, int by, int bz,
-                                   const Chunk::NeighborBorders& nb) {
-    if (by < 0 || by >= CHUNK_HEIGHT) return -1.0f;
+// Async sampler: reads in-chunk from blocks[]/waterLevels[], cross-chunk
+// from the snapshotted NeighborBorders (cardinal edges + diagonal corners).
+static WaterCellSample sampleBorder(const Cube* blocks, const uint8_t* waterLevels,
+                                    const Chunk::NeighborBorders& nb, int bx, int by, int bz) {
+    auto classify = [](block_type t, uint8_t raw) -> WaterCellSample {
+        if (t == WATER) return {CellKind::Water, raw};
+        if (t == AIR) return {CellKind::Air, 0};
+        return {CellKind::Solid, 0};
+    };
+    if (by < 0 || by >= CHUNK_HEIGHT) return {CellKind::Solid, 0};
     bool xNeg = bx < 0, xPos = bx >= CHUNK_SIZE;
     bool zNeg = bz < 0, zPos = bz >= CHUNK_SIZE;
-    // Diagonal: use the dedicated corner column
     if ((xNeg || xPos) && (zNeg || zPos)) {
-        const Chunk::DiagonalCorner* diag = nullptr;
-        if (xNeg && zNeg) diag = &nb.dNN;
-        else if (xNeg && zPos) diag = &nb.dNP;
-        else if (xPos && zNeg) diag = &nb.dPN;
-        else diag = &nb.dPP;
-        if (!diag->valid || diag->types[by] != WATER) return -1.0f;
-        if (by + 1 < CHUNK_HEIGHT && diag->types[by + 1] == WATER) return 1.0f;
-        return waterHeightFromRaw(diag->waterBorder[by]);
+        const Chunk::DiagonalCorner* d = nullptr;
+        if (xNeg && zNeg) d = &nb.dNN;
+        else if (xNeg && zPos) d = &nb.dNP;
+        else if (xPos && zNeg) d = &nb.dPN;
+        else d = &nb.dPP;
+        if (!d->valid) return {CellKind::Solid, 0};
+        return classify(d->types[by], d->waterBorder[by]);
     }
     if (xNeg || xPos || zNeg || zPos) {
-        const Chunk::NeighborBorder* border = nullptr;
+        const Chunk::NeighborBorder* b = nullptr;
         int bi = 0;
-        if (xNeg) { border = &nb.xNeg; bi = bz; }
-        else if (xPos) { border = &nb.xPos; bi = bz; }
-        else if (zNeg) { border = &nb.zNeg; bi = bx; }
-        else { border = &nb.zPos; bi = bx; }
-        if (!border || !border->valid || border->types[bi][by] != WATER) return -1.0f;
-        if (by + 1 < CHUNK_HEIGHT && border->types[bi][by + 1] == WATER) return 1.0f;
-        return waterHeightFromRaw(border->waterBorder[bi][by]);
+        if (xNeg) { b = &nb.xNeg; bi = bz; }
+        else if (xPos) { b = &nb.xPos; bi = bz; }
+        else if (zNeg) { b = &nb.zNeg; bi = bx; }
+        else { b = &nb.zPos; bi = bx; }
+        if (!b->valid) return {CellKind::Solid, 0};
+        return classify(b->types[bi][by], b->waterBorder[bi][by]);
     }
     size_t i = static_cast<size_t>(bx) * CHUNK_HEIGHT * CHUNK_SIZE + by * CHUNK_SIZE + bz;
-    if (blocks[i].getType() != WATER) return -1.0f;
-    // Water with water above = full block height
-    if (by + 1 < CHUNK_HEIGHT) {
-        size_t above = static_cast<size_t>(bx) * CHUNK_HEIGHT * CHUNK_SIZE + (by + 1) * CHUNK_SIZE + bz;
-        if (blocks[above].getType() == WATER) return 1.0f;
-    }
     uint8_t raw = waterLevels ? waterLevels[i] : 0;
-    return waterHeightFromRaw(raw);
+    return classify(blocks[i].getType(), raw);
 }
 
-// Compute water top corners using NeighborBorders for async path
+static float waterCellHeightBorder(const Cube* blocks, const uint8_t* waterLevels,
+                                   int bx, int by, int bz, const Chunk::NeighborBorders& nb) {
+    return waterCellHeightT(bx, by, bz, [&](int x, int y, int z) {
+        return sampleBorder(blocks, waterLevels, nb, x, y, z);
+    });
+}
+
 static void computeWaterTopCornersBorder(const Cube* blocks, const uint8_t* waterLevels,
-                                         int bx, int by, int bz,
-                                         int uSign, int vSign, float out[4],
+                                         int bx, int by, int bz, int uSign, int vSign, float out[4],
                                          const Chunk::NeighborBorders& nb) {
-    int cdx[4] = {-1, -1, 1, 1};
-    int cdz[4] = {-1, 1, 1, -1};
-    if (uSign < 0) {
-        std::swap(cdx[0], cdx[3]); std::swap(cdx[1], cdx[2]);
-        std::swap(cdz[0], cdz[3]); std::swap(cdz[1], cdz[2]);
-    }
-    if (vSign < 0) {
-        std::swap(cdx[0], cdx[1]); std::swap(cdx[2], cdx[3]);
-        std::swap(cdz[0], cdz[1]); std::swap(cdz[2], cdz[3]);
-    }
-    float cH = waterCellHeightBorder(blocks, waterLevels, bx, by, bz, nb);
-    for (int ci = 0; ci < 4; ci++) {
-        float h[4] = {cH,
-            waterCellHeightBorder(blocks, waterLevels, bx + cdx[ci], by, bz, nb),
-            waterCellHeightBorder(blocks, waterLevels, bx, by, bz + cdz[ci], nb),
-            waterCellHeightBorder(blocks, waterLevels, bx + cdx[ci], by, bz + cdz[ci], nb)};
-        bool anyFull = false;
-        for (int i = 0; i < 4; i++) if (h[i] >= 1.0f) anyFull = true;
-        if (anyFull) {
-            out[ci] = (float)by + 0.5f;
-        } else {
-            float sum = 0; int cnt = 0;
-            for (int i = 0; i < 4; i++) if (h[i] >= 0) { sum += h[i]; cnt++; }
-            out[ci] = (float)by - 0.5f + sum / cnt;
-        }
-    }
+    computeWaterTopCornersT(bx, by, bz, uSign, vSign, out, [&](int x, int y, int z) {
+        return sampleBorder(blocks, waterLevels, nb, x, y, z);
+    });
 }
 
 // Free function: build mesh from raw data — fully thread-safe, no GL calls
@@ -1653,12 +1643,11 @@ void Chunk::uploadMesh() {
     pendingMesh.ready = false;
 }
 
-std::vector<Cube*> Chunk::render(const Shader& /*shaderProgram*/, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg,
-                                 Chunk* nz_pos, Chunk* d_nn, Chunk* d_np, Chunk* d_pn, Chunk* d_pp) {
+std::vector<Cube*> Chunk::render(const Shader& /*shaderProgram*/, const NeighborChunks& nc) {
     if (pendingMesh.ready) {
         uploadMesh();
     } else if (isMeshDirty() && !meshBuildInFlight && g_frame.meshBuildBudget > 0) {
-        buildMesh(nx_neg, nx_pos, nz_neg, nz_pos, d_nn, d_np, d_pn, d_pp);
+        buildMesh(nc);
         uploadMesh();
         g_frame.meshBuildBudget--;
     }

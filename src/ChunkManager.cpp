@@ -175,11 +175,16 @@ void ChunkManager::queueMeshBuild(glm::ivec2 pos) {
     if (chunk.meshBuildInFlight) return;
 
     // Snapshot neighbor borders (including diagonals for 4-chunk corner averaging)
-    Chunk::NeighborBorders borders = Chunk::snapshotBorders(
-        getChunk(pos.x - 1, pos.y), getChunk(pos.x + 1, pos.y),
-        getChunk(pos.x, pos.y - 1), getChunk(pos.x, pos.y + 1),
-        getChunk(pos.x - 1, pos.y - 1), getChunk(pos.x - 1, pos.y + 1),
-        getChunk(pos.x + 1, pos.y - 1), getChunk(pos.x + 1, pos.y + 1));
+    Chunk::NeighborChunks nc;
+    nc.nxNeg = getChunk(pos.x - 1, pos.y);
+    nc.nxPos = getChunk(pos.x + 1, pos.y);
+    nc.nzNeg = getChunk(pos.x, pos.y - 1);
+    nc.nzPos = getChunk(pos.x, pos.y + 1);
+    nc.dNN = getChunk(pos.x - 1, pos.y - 1);
+    nc.dNP = getChunk(pos.x - 1, pos.y + 1);
+    nc.dPN = getChunk(pos.x + 1, pos.y - 1);
+    nc.dPP = getChunk(pos.x + 1, pos.y + 1);
+    Chunk::NeighborBorders borders = Chunk::snapshotBorders(nc);
 
     MeshRequest req;
     req.pos = pos;

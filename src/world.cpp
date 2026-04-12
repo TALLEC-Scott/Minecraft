@@ -350,15 +350,16 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
     shaderProgram.setInt("materialType", 0);
     int rendered = 0;
     for (auto& vc : visible) {
-        Chunk* nx_neg = chunkManager->getChunk(vc.pos.x - 1, vc.pos.y);
-        Chunk* nx_pos = chunkManager->getChunk(vc.pos.x + 1, vc.pos.y);
-        Chunk* nz_neg = chunkManager->getChunk(vc.pos.x, vc.pos.y - 1);
-        Chunk* nz_pos = chunkManager->getChunk(vc.pos.x, vc.pos.y + 1);
-        Chunk* d_nn = chunkManager->getChunk(vc.pos.x - 1, vc.pos.y - 1);
-        Chunk* d_np = chunkManager->getChunk(vc.pos.x - 1, vc.pos.y + 1);
-        Chunk* d_pn = chunkManager->getChunk(vc.pos.x + 1, vc.pos.y - 1);
-        Chunk* d_pp = chunkManager->getChunk(vc.pos.x + 1, vc.pos.y + 1);
-        vc.chunk->render(shaderProgram, nx_neg, nx_pos, nz_neg, nz_pos, d_nn, d_np, d_pn, d_pp);
+        Chunk::NeighborChunks nc;
+        nc.nxNeg = chunkManager->getChunk(vc.pos.x - 1, vc.pos.y);
+        nc.nxPos = chunkManager->getChunk(vc.pos.x + 1, vc.pos.y);
+        nc.nzNeg = chunkManager->getChunk(vc.pos.x, vc.pos.y - 1);
+        nc.nzPos = chunkManager->getChunk(vc.pos.x, vc.pos.y + 1);
+        nc.dNN = chunkManager->getChunk(vc.pos.x - 1, vc.pos.y - 1);
+        nc.dNP = chunkManager->getChunk(vc.pos.x - 1, vc.pos.y + 1);
+        nc.dPN = chunkManager->getChunk(vc.pos.x + 1, vc.pos.y - 1);
+        nc.dPP = chunkManager->getChunk(vc.pos.x + 1, vc.pos.y + 1);
+        vc.chunk->render(shaderProgram, nc);
         rendered++;
         g_frame.chunksRendered++;
     }
