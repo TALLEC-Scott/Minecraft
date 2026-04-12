@@ -1186,12 +1186,18 @@ Chunk::NeighborBorders Chunk::snapshotBorders(const NeighborChunks& nc) {
     auto snapshotEdge = [](Chunk* n, bool xAxis, int edgeLocal, NeighborBorder& out) {
         if (!n) return;
         out.valid = true;
+        // Read light from flat skyLight when it's allocated (may contain
+        // recent BFS writes not yet compressed into sparse). Fall back to
+        // sparse otherwise — both forms stay in sync except during active
+        // BFS mutation windows.
+        const uint8_t* flat = n->skyLight.get();
         for (int i = 0; i < CHUNK_SIZE; i++)
             for (int y = 0; y < CHUNK_HEIGHT; y++) {
                 int lx = xAxis ? edgeLocal : i;
                 int lz = xAxis ? i : edgeLocal;
                 out.types[i][y] = n->getBlock(lx, y, lz)->getType();
-                out.lightBorder[i][y] = n->sparseLight.get(lx, y, lz);
+                out.lightBorder[i][y] = flat ? flat[lightIdx(lx, y, lz)]
+                                             : n->sparseLight.get(lx, y, lz);
                 out.waterBorder[i][y] = n->getWaterLevel(lx, y, lz);
             }
     };

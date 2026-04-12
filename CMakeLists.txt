@@ -188,6 +188,8 @@ else()
         tests/test_collision.cpp
         tests/test_chunk_section.cpp
         tests/test_water.cpp
+        tests/test_sparse_light.cpp
+        tests/test_world_resolver.cpp
         src/TerrainGenerator.cpp
         src/perlin_noise.cpp
         src/game_state.cpp
