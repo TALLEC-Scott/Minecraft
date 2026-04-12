@@ -587,7 +587,6 @@ float testWaterCellHeight(World& world, int wx, int wy, int wz) {
 // Exact copy of computeWaterTopCorners from chunk.cpp.
 // Uses canonical signs (uSign=1, vSign=-1) matching the side face path.
 void testWaterTopCorners(World& world, int wx, int wy, int wz, float out[4]) {
-    float cH = testWaterCellHeight(world, wx, wy, wz);
     // After uSign=1 (no swap), vSign=-1 swap:
     int cdx[4] = {-1, -1, 1, 1};
     int cdz[4] = { 1, -1, -1, 1};

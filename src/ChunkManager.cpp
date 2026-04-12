@@ -251,7 +251,8 @@ void ChunkManager::queueMeshBuild(glm::ivec2 pos) {
     MeshRequest req;
     req.pos = pos;
     req.blocks = chunk.decompressBlocks();
-    req.skyLight = chunk.skyLight;     // shared_ptr copy (packed sky+block)
+    chunk.ensureSkyLightFlat();        // async worker needs the flat array
+    req.skyLight = chunk.skyLight;     // shared_ptr copy; worker holds ref
     req.waterLevels = chunk.waterLevels; // shared_ptr copy of per-block flow levels
     req.maxSolidY = chunk.maxSolidY;
     req.chunkX = chunk.chunkX;

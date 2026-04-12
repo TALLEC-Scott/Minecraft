@@ -73,7 +73,6 @@ static GLuint cloudVAO, cloudVBO, cloudEBO;
 static GLuint starVAO, starVBO;
 static int starCount = 0;
 static GLuint cloudWallVAO, cloudWallVBO, cloudWallEBO;
-static int cloudIndexCount = 0;
 static GLuint highlightVAO, highlightVBO;
 static GLuint armVAO, armVBO, armEBO;
 static GLuint heldBlockVAO, heldBlockVBO, heldBlockEBO;
@@ -1143,7 +1142,6 @@ int main(int argc, char* argv[]) {
 
             // Stars
             if (sunH < 0.1f) {
-                float starAlpha = 1.0f - sunH / 0.1f;
                 float starRotation = timeValue * 0.3f;
 
                 glm::mat4 starModel = glm::translate(glm::mat4(1.0f), cameraPos);

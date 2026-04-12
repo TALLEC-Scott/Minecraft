@@ -140,13 +140,6 @@ static WaterCellSample sampleSync(const Cube* blocks, const uint8_t* waterLevels
     return classify(blocks[i].getType(), raw);
 }
 
-static float waterCellHeight(const Cube* blocks, const uint8_t* waterLevels,
-                             int bx, int by, int bz, const Chunk::NeighborChunks& nc) {
-    return waterCellHeightT(bx, by, bz, [&](int x, int y, int z) {
-        return sampleSync(blocks, waterLevels, nc, x, y, z);
-    });
-}
-
 // Compute the four top-face corner heights of a water block by averaging
 // this cell with the up-to-three neighbors sharing each corner. Corner
 // offsets are flipped based on the face axis signs so they match the
@@ -480,6 +473,7 @@ Chunk::Chunk(int chunkX, int chunkY, TerrainGenerator& terrain) : Chunk(generate
 Chunk::Chunk(ChunkData&& data) {
     for (int i = 0; i < NUM_SECTIONS; i++) sections[i] = std::move(data.sections[i]);
     skyLight = std::move(data.skyLight);
+    if (skyLight) sparseLight.loadFromFlat(skyLight.get());
     waterLevels = std::move(data.waterLevels);
     this->chunkX = data.chunkX;
     this->chunkY = data.chunkZ;
@@ -586,8 +580,9 @@ static void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY) 
 
 void Chunk::computeSkyLight() {
     auto flat = decompressBlocks();
-    ensureSkyLightDecompressed();
+    ensureSkyLightFlat();
     computeSkyLightData(flat.get(), skyLight.get(), maxSolidY);
+    sparseLight.loadFromFlat(skyLight.get());
 }
 
 Chunk::MemBreakdown Chunk::memoryBreakdown() const {
@@ -596,7 +591,7 @@ Chunk::MemBreakdown Chunk::memoryBreakdown() const {
         if (sections[s]) mb.sections += sizeof(ChunkSection) + sections[s]->memoryUsage();
     }
     if (skyLight) mb.skyLight += static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE;
-    if (skyLightCompressed) mb.skyLight += sizeof(SkyLight) + skyLightCompressed->memoryUsage();
+    mb.skyLight += sparseLight.memoryUsage();
     if (waterLevels) mb.waterLevels += static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE;
     for (int s = 0; s < NUM_SECTIONS; s++) {
         mb.meshCache += sectionMeshes[s].verts.capacity();
@@ -615,20 +610,17 @@ size_t Chunk::memoryUsage() const {
     return mb.sections + mb.skyLight + mb.waterLevels + mb.meshCache + mb.pendingMesh;
 }
 
-void Chunk::compactSkyLight() {
+void Chunk::compressSkyLight() {
     if (!skyLight) return; // already compact
-    if (!skyLightCompressed) skyLightCompressed = std::make_unique<SkyLight>();
-    skyLightCompressed->compressAll(skyLight.get());
-    skyLight.reset(); // free the 32 KB flat array
+    sparseLight.loadFromFlat(skyLight.get());
+    skyLight.reset(); // free 32 KB flat buffer
 }
 
-void Chunk::ensureSkyLightDecompressed() {
-    if (skyLight) return; // already decompressed
+void Chunk::ensureSkyLightFlat() {
+    if (skyLight) return;
     skyLight = std::shared_ptr<uint8_t[]>(
         new uint8_t[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]());
-    if (skyLightCompressed) {
-        skyLightCompressed->decompressAll(skyLight.get());
-    }
+    sparseLight.exportToFlat(skyLight.get());
 }
 
 uint8_t Chunk::getSkyLight(int x, int y, int z) const {
@@ -636,8 +628,7 @@ uint8_t Chunk::getSkyLight(int x, int y, int z) const {
     if (skyLight) {
         return unpackSky(skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
     }
-    if (skyLightCompressed) return unpackSky(skyLightCompressed->get(x, y, z));
-    return 15;
+    return unpackSky(sparseLight.get(x, y, z));
 }
 
 uint8_t Chunk::getBlockLight(int x, int y, int z) const {
@@ -645,8 +636,7 @@ uint8_t Chunk::getBlockLight(int x, int y, int z) const {
     if (skyLight) {
         return unpackBlock(skyLight[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
     }
-    if (skyLightCompressed) return unpackBlock(skyLightCompressed->get(x, y, z));
-    return 0;
+    return unpackBlock(sparseLight.get(x, y, z));
 }
 
 void Chunk::propagateBorderLight(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Chunk* nz_pos) {
@@ -660,6 +650,7 @@ void Chunk::propagateBorderLight(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Ch
     blkQueue.reserve(CHUNK_SIZE * CHUNK_HEIGHT);
     auto packCoord = [](int x, int y, int z) -> int32_t { return (x << 20) | (y << 8) | z; };
 
+    ensureSkyLightFlat(); // BFS needs flat read/write access
     uint8_t* lt = skyLight.get(); // packed light array
     auto flatBlocks = decompressBlocks();
     Cube* blks = flatBlocks.get();
@@ -759,6 +750,7 @@ void Chunk::propagateBorderLight(Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg, Ch
     };
     floodBFSSky(skyQueue);
     floodBFSBlock(blkQueue);
+    sparseLight.loadFromFlat(skyLight.get()); // persist BFS writes back to sparse
 }
 
 Cube* Chunk::getBlock(int i, int j, int k) {
@@ -780,18 +772,10 @@ static Cube* getBlockCross(Chunk* self, int i, int j, int k, Chunk* nx_neg, Chun
     return self->getBlock(i, j, k);
 }
 
-// Check if block at (i,j,k) is opaque (solid, not air/water). Uses cross-chunk lookup.
-static bool isOpaqueCross(Chunk* self, int i, int j, int k, Chunk* nx_neg, Chunk* nx_pos, Chunk* nz_neg,
-                          Chunk* nz_pos) {
-    Cube* b = getBlockCross(self, i, j, k, nx_neg, nx_pos, nz_neg, nz_pos);
-    if (!b) return false;
-    block_type t = b->getType();
-    return t != AIR && t != WATER;
-}
-
 void Chunk::buildMeshData(const NeighborChunks& nc) {
     ZoneScopedN("Chunk::buildMeshData");
     double _buildStart = glfwGetTime();
+    ensureSkyLightFlat(); // mesh builder reads from the flat skyLight ptr
 
     // Local aliases — keeps the long body unchanged while signature is clean.
     Chunk* nx_neg = nc.nxNeg;
@@ -903,7 +887,6 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
 
     for (int f = 0; f < 6; f++) {
         const FaceDef& fd = FACE_DEFS[f];
-        const glm::vec3& norm = FACE_NORMALS[f];
         const int d_dim = std::min(DIM[fd.d], effDIM[fd.d]);
         const int u_dim = std::min(DIM[fd.u], effDIM[fd.u]);
         const int v_dim = std::min(DIM[fd.v], effDIM[fd.v]);
@@ -1246,7 +1229,7 @@ Chunk::NeighborBorders Chunk::snapshotBorders(const NeighborChunks& nc) {
                 int lx = xAxis ? edgeLocal : i;
                 int lz = xAxis ? i : edgeLocal;
                 out.types[i][y] = n->getBlock(lx, y, lz)->getType();
-                out.lightBorder[i][y] = n->skyLight[lightIdx(lx, y, lz)];
+                out.lightBorder[i][y] = n->sparseLight.get(lx, y, lz);
                 out.waterBorder[i][y] = n->getWaterLevel(lx, y, lz);
             }
     };
@@ -1303,13 +1286,6 @@ static WaterCellSample sampleBorder(const Cube* blocks, const uint8_t* waterLeve
     size_t i = static_cast<size_t>(bx) * CHUNK_HEIGHT * CHUNK_SIZE + by * CHUNK_SIZE + bz;
     uint8_t raw = waterLevels ? waterLevels[i] : 0;
     return classify(blocks[i].getType(), raw);
-}
-
-static float waterCellHeightBorder(const Cube* blocks, const uint8_t* waterLevels,
-                                   int bx, int by, int bz, const Chunk::NeighborBorders& nb) {
-    return waterCellHeightT(bx, by, bz, [&](int x, int y, int z) {
-        return sampleBorder(blocks, waterLevels, nb, x, y, z);
-    });
 }
 
 static void computeWaterTopCornersBorder(const Cube* blocks, const uint8_t* waterLevels,
@@ -1408,7 +1384,6 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLe
 
     for (int f = 0; f < 6; f++) {
         const FaceDef& fd = FACE_DEFS[f];
-        const glm::vec3& norm = FACE_NORMALS[f];
         const int d_dim = std::min(DIM[fd.d], effDIM[fd.d]);
         const int u_dim = std::min(DIM[fd.u], effDIM[fd.u]);
         const int v_dim = std::min(DIM[fd.v], effDIM[fd.v]);
@@ -1616,6 +1591,7 @@ Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLe
 void Chunk::buildMeshDataAsync(const NeighborBorders& borders) {
     auto start = std::chrono::steady_clock::now();
     auto flat = decompressBlocks();
+    ensureSkyLightFlat();
     pendingMesh = buildMeshFromData(flat.get(), skyLight.get(), waterLevels.get(), maxSolidY, chunkX, chunkY, borders);
     auto end = std::chrono::steady_clock::now();
     g_frame.meshBuildMs += std::chrono::duration<double, std::milli>(end - start).count();
@@ -1694,6 +1670,9 @@ void Chunk::uploadMesh() {
     // MeshData. Replaces the previous manual clear()/shrink_to_fit()
     // dance that was easy to miss fields in (waterVerts got leaked).
     pendingMesh = MeshData{};
+    // Compress skyLight to sparse form to reclaim the 32 KB flat buffer.
+    // Next access (mesh rebuild, BFS) will decompress on demand.
+    compressSkyLight();
 }
 
 std::vector<Cube*> Chunk::render(const Shader& /*shaderProgram*/, const NeighborChunks& nc) {
@@ -1821,7 +1800,9 @@ void Chunk::placeBlock(int x, int y, int z, block_type type) {
     setWaterLevel(x, y, z, 0);
     if (y > maxSolidY) maxSolidY = y;
     auto flat = decompressBlocks();
+    ensureSkyLightFlat(); // BFS modifies the flat skyLight
     darkenSkyLightLocal(flat.get(), skyLight.get(), x, y, z);
+    sparseLight.loadFromFlat(skyLight.get()); // persist changes back to sparse
     // Note: darkenSkyLightLocal may modify light in adjacent sections,
     // so mark all sections dirty for light-affected rebuilds.
     // TODO: track which sections darkenSkyLightLocal touches for finer-grained dirtyness.

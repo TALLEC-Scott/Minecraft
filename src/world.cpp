@@ -93,6 +93,7 @@ static void floodSkyLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
         auto [bx, by, bz] = queue[head++];
         auto [chunk, idx] = resolve(bx, by, bz);
         if (!chunk) continue;
+        chunk->ensureSkyLightFlat();
         uint8_t light = unpackSky(chunk->skyLight.get()[idx]);
         if (light <= 1) continue;
         for (auto& d : DIRS_6) {
@@ -155,12 +156,14 @@ static void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
         auto [bx, by, bz] = lightQueue[head++];
         auto [chunk, idx] = resolve(bx, by, bz);
         if (!chunk) continue;
+        chunk->ensureSkyLightFlat();
         uint8_t light = unpackBlock(chunk->skyLight.get()[idx]);
         if (light <= 1) continue;
         for (auto& d : DIRS_6) {
             int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
             auto [nc, ni] = resolve(nx, ny, nz);
             if (!nc) continue;
+            nc->ensureSkyLightFlat();
             int lx = worldToLocal(nx, worldToChunk(nx)), lz = worldToLocal(nz, worldToChunk(nz));
             block_type bt = nc->getBlockType(lx, ny, lz);
             if (hasFlag(bt, BF_OPAQUE) && getBlockLightEmission(bt) == 0) continue;
@@ -240,12 +243,14 @@ static void floodBlockLight(ChunkManager* cm, int sx, int sy, int sz, uint8_t em
         auto [bx, by, bz] = queue[head++];
         auto [chunk, idx] = resolve(bx, by, bz);
         if (!chunk) continue;
+        chunk->ensureSkyLightFlat();
         uint8_t light = unpackBlock(chunk->skyLight.get()[idx]);
         if (light <= 1) continue;
         for (auto& d : DIRS_6) {
             int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
             auto [nc, ni] = resolve(nx, ny, nz);
             if (!nc) continue;
+            nc->ensureSkyLightFlat();
             int lx = worldToLocal(nx, worldToChunk(nx));
             int lz = worldToLocal(nz, worldToChunk(nz));
             block_type bt = nc->getBlockType(lx, ny, lz);
