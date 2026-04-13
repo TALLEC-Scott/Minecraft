@@ -5,6 +5,7 @@ Checks: >
   -bugprone-narrowing-conversions,
   -bugprone-reserved-identifier,
   -bugprone-macro-parentheses,
+  -bugprone-implicit-widening-of-multiplication-result,
   performance-*,
   -performance-no-int-to-ptr,
   modernize-use-nullptr,

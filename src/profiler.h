@@ -31,7 +31,10 @@ inline size_t sampleProcessRss() {
     char line[256];
     size_t rss = 0;
     while (std::fgets(line, sizeof(line), f)) {
-        if (std::sscanf(line, "VmRSS: %zu kB", &rss) == 1) { rss *= 1024; break; }
+        if (std::sscanf(line, "VmRSS: %zu kB", &rss) == 1) {
+            rss *= 1024;
+            break;
+        }
     }
     std::fclose(f);
     return rss;
@@ -295,8 +298,7 @@ class Profiler {
                 out << "    meshCache:   " << mb(g_frame.memMeshCacheBytes) << " MB\n";
                 out << "    pendingMesh: " << mb(g_frame.memPendingMeshBytes) << " MB\n";
             }
-            if (g_frame.processRssBytes > 0)
-                out << "  process RSS:  " << mb(g_frame.processRssBytes) << " MB\n";
+            if (g_frame.processRssBytes > 0) out << "  process RSS:  " << mb(g_frame.processRssBytes) << " MB\n";
             out << "\n";
         }
 
