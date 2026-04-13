@@ -119,10 +119,7 @@ void WaterSimulator::tick() {
             bool supported = false;
             if (y + 1 < CHUNK_HEIGHT && loc.chunk->getBlockType(loc.lx, y + 1, loc.lz) == WATER) {
                 uint8_t araw = loc.chunk->getWaterLevel(loc.lx, y + 1, loc.lz);
-                if (waterIsSource(araw) || waterIsFalling(araw))
-                    supported = true;
-                else if (waterFlowLevel(araw) < lvl)
-                    supported = true;
+                if (waterIsSource(araw) || waterIsFalling(araw) || waterFlowLevel(araw) < lvl) supported = true;
             }
             if (!supported) {
                 for (auto& hd : HDIRS) {

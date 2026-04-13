@@ -164,6 +164,7 @@ static void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
     }
 
     std::vector<LightNode> lightQueue;
+    lightQueue.reserve(relightSeeds.size());
     for (auto& s : relightSeeds) lightQueue.push_back(s);
     head = 0;
     while (head < lightQueue.size()) {

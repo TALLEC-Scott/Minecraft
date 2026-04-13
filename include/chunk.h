@@ -336,6 +336,4 @@ class Chunk {
     MeshData pendingMesh;
 };
 
-// Build mesh from raw data — fully thread-safe, no GL calls
-Chunk::MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, int maxSolidY, int chunkX,
-                                  int chunkZ, const Chunk::NeighborBorders& borders);
+// buildMeshFromData is declared in chunk_mesh.h (included above).
