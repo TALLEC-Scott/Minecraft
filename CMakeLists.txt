@@ -144,6 +144,11 @@ else()
     # synthesized move assignment is provably safe.
     target_compile_options(minecraft PRIVATE $<$<CONFIG:Release>:-O3>
                                              $<$<COMPILE_LANGUAGE:CXX>:-Wno-stringop-overflow>)
+    # Compile the Windows resource script so the .exe picks up the grass-block
+    # icon in Explorer / taskbar. enable_language(RC) routes .rc files to
+    # mingw-w64's windres.
+    enable_language(RC)
+    target_sources(minecraft PRIVATE assets/minecraft.rc)
     target_link_options(minecraft PRIVATE
         "LINKER:--start-group"
         "LINKER:--end-group")
