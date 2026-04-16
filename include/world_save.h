@@ -29,6 +29,11 @@ class WorldSave {
     bool loadChunkData(int chunkX, int chunkZ, ChunkData& out, TerrainGenerator& terrain);
     bool chunkExists(int chunkX, int chunkZ) const;
 
+    // Mount persistent storage (IDBFS on web, no-op on desktop)
+    static void mountPersistentStorage();
+    // Sync in-memory filesystem to persistent storage (IDBFS on web, no-op on desktop)
+    static void syncToDisk();
+
   private:
     std::string basePath;
     std::string chunksPath;
