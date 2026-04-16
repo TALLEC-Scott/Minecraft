@@ -31,3 +31,4 @@ trace.*
 tools/
 water_debug_screenshot.*
 *.tracy
+saves/
