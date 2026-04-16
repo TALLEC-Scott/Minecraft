@@ -8,28 +8,32 @@
 
 namespace {
 
-// Face layout mirrors main.cpp's held-block mesh: 6 faces × 4 verts × (pos3 +
-// uv2 + normal3 + layer1 + brightness1) = 10 floats/vert. The chunk vertex
-// shader multiplies aPos by 0.5, so we emit ±1.0 corners → rendered as a
-// unit cube in local space (half-size 0.5), and translate to world via the
-// `model` uniform.
+// Vertex layout matches the chunk shader (assets/Shaders/vert.shd) exactly:
+//   loc 0: pos (3f)
+//   loc 1: uv  (2f)
+//   loc 2: normalIdx (1f, face 0..5 → NORMALS[int(idx)] in the shader)
+//   loc 3: texLayer  (1f)
+//   loc 4: aAO       (1f, low 2 bits index AO_CURVE — we pack 3 for full bright)
+//   loc 5: aPackedLight (1f, sky*16 + block — 240 = full sky, no block)
+// The chunk shader multiplies aPos by 0.5, so we emit ±1.0 corners and the
+// cube renders at half-size 0.5 (i.e. a 1×1×1 block) after translation by
+// the `model` uniform.
 struct Face {
-    float nx, ny, nz;
     float v[4][3];
     float u[4][2];
-    int faceIdx; // fed to block_layers::layerForFace
+    int faceIdx; // same index fed to the shader and to block_layers::layerForFace
 };
 
 const Face FACES[6] = {
-    {0, 0, 1, {{-1, -1, 1}, {-1, 1, 1}, {1, 1, 1}, {1, -1, 1}}, {{0, 0}, {0, 1}, {1, 1}, {1, 0}}, 0},
-    {0, 0, -1, {{1, -1, -1}, {1, 1, -1}, {-1, 1, -1}, {-1, -1, -1}}, {{0, 0}, {0, 1}, {1, 1}, {1, 0}}, 1},
-    {-1, 0, 0, {{-1, -1, -1}, {-1, 1, -1}, {-1, 1, 1}, {-1, -1, 1}}, {{0, 0}, {0, 1}, {1, 1}, {1, 0}}, 2},
-    {1, 0, 0, {{1, -1, 1}, {1, 1, 1}, {1, 1, -1}, {1, -1, -1}}, {{0, 0}, {0, 1}, {1, 1}, {1, 0}}, 3},
-    {0, 1, 0, {{-1, 1, 1}, {-1, 1, -1}, {1, 1, -1}, {1, 1, 1}}, {{0, 0}, {0, 1}, {1, 1}, {1, 0}}, 4},
-    {0, -1, 0, {{-1, -1, -1}, {-1, -1, 1}, {1, -1, 1}, {1, -1, -1}}, {{0, 0}, {0, 1}, {1, 1}, {1, 0}}, 5},
+    {{{-1, -1, 1}, {-1, 1, 1}, {1, 1, 1}, {1, -1, 1}}, {{0, 0}, {0, 1}, {1, 1}, {1, 0}}, 0},      // +Z front
+    {{{1, -1, -1}, {1, 1, -1}, {-1, 1, -1}, {-1, -1, -1}}, {{0, 0}, {0, 1}, {1, 1}, {1, 0}}, 1},  // -Z back
+    {{{-1, -1, -1}, {-1, 1, -1}, {-1, 1, 1}, {-1, -1, 1}}, {{0, 0}, {0, 1}, {1, 1}, {1, 0}}, 2},  // -X left
+    {{{1, -1, 1}, {1, 1, 1}, {1, 1, -1}, {1, -1, -1}}, {{0, 0}, {0, 1}, {1, 1}, {1, 0}}, 3},      // +X right
+    {{{-1, 1, 1}, {-1, 1, -1}, {1, 1, -1}, {1, 1, 1}}, {{0, 0}, {0, 1}, {1, 1}, {1, 0}}, 4},      // +Y top
+    {{{-1, -1, -1}, {-1, -1, 1}, {1, -1, 1}, {1, -1, -1}}, {{0, 0}, {0, 1}, {1, 1}, {1, 0}}, 5},  // -Y bottom
 };
 
-constexpr int VERT_FLOATS = 10;
+constexpr int VERT_FLOATS = 9;
 constexpr int NUM_VERTS = 24;
 constexpr int NUM_INDICES = 36;
 
@@ -46,18 +50,19 @@ void EntityCubeRenderer::init() {
     int vi = 0;
     for (int f = 0; f < 6; ++f) {
         float layer = static_cast<float>(TextureArray::layerForFace(TNT, FACES[f].faceIdx));
+        float normalIdx = static_cast<float>(FACES[f].faceIdx);
         for (int v = 0; v < 4; ++v) {
             verts[vi++] = FACES[f].v[v][0];
             verts[vi++] = FACES[f].v[v][1];
             verts[vi++] = FACES[f].v[v][2];
             verts[vi++] = FACES[f].u[v][0];
             verts[vi++] = FACES[f].u[v][1];
-            verts[vi++] = FACES[f].nx;
-            verts[vi++] = FACES[f].ny;
-            verts[vi++] = FACES[f].nz;
+            verts[vi++] = normalIdx;
             verts[vi++] = layer;
-            // Full skylight (15<<4 | 0 = 240) so lighting matches an exposed
-            // block; sun/moon contribution still scales by time of day.
+            // AO byte: low 2 bits = AO_CURVE index (3 → full bright).
+            verts[vi++] = 3.0f;
+            // Full skylight (15<<4 | 0 = 240); sun/moon contribution still
+            // scales by time of day.
             verts[vi++] = 240.0f;
         }
         int b = f * 4;
@@ -79,22 +84,21 @@ void EntityCubeRenderer::init() {
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
     constexpr int STRIDE = VERT_FLOATS * sizeof(float);
-    // Match main.cpp held-block attribute layout (loc 0..5, normal at 2 is
-    // a vec3 here even though the chunk shader expects normalIdx — the held
-    // block takes the same shortcut, which works because the shader only
-    // reads `aNormalIdx` and we stuff the X component of our 3-float normal
-    // into that slot. Keep the brightness attribute at loc 5.)
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, STRIDE, nullptr);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, STRIDE, (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, STRIDE, (void*)(5 * sizeof(float)));
+    // loc 2: aNormalIdx — single float face index (NOT a vec3). The chunk
+    // shader declares `in float aNormalIdx` and indexes a 6-entry NORMALS
+    // table; passing a 3-float vector would send only nx and mis-index the
+    // table (and trip undefined behaviour on the -X face).
+    glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(5 * sizeof(float)));
     glEnableVertexAttribArray(2);
-    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(8 * sizeof(float)));
+    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(6 * sizeof(float)));
     glEnableVertexAttribArray(3);
-    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(9 * sizeof(float)));
+    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(7 * sizeof(float)));
     glEnableVertexAttribArray(4);
-    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(9 * sizeof(float)));
+    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(8 * sizeof(float)));
     glEnableVertexAttribArray(5);
     glBindVertexArray(0);
     glReady = true;

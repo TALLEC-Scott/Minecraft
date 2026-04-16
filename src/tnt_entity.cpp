@@ -89,7 +89,8 @@ bool TntEntity::tick(World* world) {
 }
 
 float TntEntity::flashBrightness(double now) const {
-    // Flash pulses faster as fuse runs out. Last 40 ticks (~2s) go ~5 Hz.
+    // Flash pulses faster as fuse runs out. Last 40 ticks (~2s) run at
+    // 10 Hz (rate=10 → one peak every 0.1s); the slow phase is 4 Hz.
     double age = now - spawnTime;
     if (age < 0) age = 0;
     double rate = (fuseTicks < 40) ? 10.0 : 4.0;
