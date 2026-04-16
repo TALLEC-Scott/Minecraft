@@ -174,25 +174,32 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     }
     leftClickHeld = leftDown;
 
-    // Right click: place block
+    // Right click: ignite TNT if targeted, otherwise place block
     bool rightDown = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
-    if (rightDown && !rightClickHeld && world && hasHighlight && hotbar[selectedSlot] != AIR) {
-        glm::vec3 camPos = camera.getPosition();
-        int px = (int)std::floor(camPos.x);
-        int pzCoord = (int)std::floor(camPos.z);
-        int pyHead = (int)std::floor(camPos.y);
-        int pyFeet = (int)std::floor(camPos.y - PLAYER_HEIGHT);
-        // Don't place inside player body (2 blocks tall)
-        bool blocked = (placementPos.x == px && placementPos.z == pzCoord &&
-                        (placementPos.y == pyHead || placementPos.y == pyFeet));
-        if (!blocked) {
-            playBreakSound(hotbar[selectedSlot]);
-            world->placeBlock(placementPos, hotbar[selectedSlot]);
-            // Arm swing (same feedback as left-click) + outline pop at placement pos
+    if (rightDown && !rightClickHeld && world && hasHighlight) {
+        Cube* targetBlock = world->getBlock(targeted.x, targeted.y, targeted.z);
+        if (targetBlock && targetBlock->getType() == TNT) {
+            world->igniteTnt(targeted, glfwGetTime());
             isPunching = true;
             punchStartTime = glfwGetTime();
-            lastPlacedPos = placementPos;
-            placeAnimStart = glfwGetTime();
+        } else if (hotbar[selectedSlot] != AIR) {
+            glm::vec3 camPos = camera.getPosition();
+            int px = (int)std::floor(camPos.x);
+            int pzCoord = (int)std::floor(camPos.z);
+            int pyHead = (int)std::floor(camPos.y);
+            int pyFeet = (int)std::floor(camPos.y - PLAYER_HEIGHT);
+            // Don't place inside player body (2 blocks tall)
+            bool blocked = (placementPos.x == px && placementPos.z == pzCoord &&
+                            (placementPos.y == pyHead || placementPos.y == pyFeet));
+            if (!blocked) {
+                playBreakSound(hotbar[selectedSlot]);
+                world->placeBlock(placementPos, hotbar[selectedSlot]);
+                // Arm swing (same feedback as left-click) + outline pop at placement pos
+                isPunching = true;
+                punchStartTime = glfwGetTime();
+                lastPlacedPos = placementPos;
+                placeAnimStart = glfwGetTime();
+            }
         }
     }
     rightClickHeld = rightDown;

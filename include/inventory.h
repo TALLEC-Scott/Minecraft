@@ -21,7 +21,7 @@ class Inventory {
     int hoveredBlock = -1;
 
     static constexpr block_type PLACEABLE_BLOCKS[] = {
-        GRASS, DIRT, STONE, COAL_ORE, BEDROCK, WATER, SAND, GLOWSTONE, WOOD, LEAVES, SNOW, GRAVEL, CACTUS,
+        GRASS, DIRT, STONE, COAL_ORE, BEDROCK, WATER, SAND, GLOWSTONE, WOOD, LEAVES, SNOW, GRAVEL, CACTUS, TNT,
     };
     static constexpr int NUM_BLOCKS = sizeof(PLACEABLE_BLOCKS) / sizeof(PLACEABLE_BLOCKS[0]);
     static constexpr int GRID_COLS = 9;

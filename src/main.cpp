@@ -35,6 +35,9 @@
 #include "menu.h"
 #include "inventory.h"
 #include "world_save.h"
+#include "entity_cube_renderer.h"
+#include "entity_manager.h"
+#include "particle_system.h"
 
 #define CURSOR_MODE GLFW_CURSOR
 
@@ -440,7 +443,11 @@ int main(int argc, char* argv[]) {
             std::cout << "Loaded world save" << std::endl;
         }
         world.waterSimulator->initAudio(menuObj.getAudioEngine());
+        world.entityManager->initAudio(menuObj.getAudioEngine());
         w = &world;
+
+        EntityCubeRenderer entityCubes;
+        // GL state for entityCubes + particles is created lazily on first render.
 
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
@@ -987,7 +994,9 @@ int main(int argc, char* argv[]) {
                 TextureArray::bind();
 
                 if (measuring) profiler.beginUpdate();
-                w->update(player.getPosition());
+                // Benchmark runs at a fixed step so frame-rate measurements
+                // aren't perturbed by real dt; entities don't exist here.
+                w->update(player.getPosition(), 1.0f / 60.0f, glfwGetTime());
                 if (measuring) profiler.endUpdate();
 
                 glm::mat4 vp = projection * player.getViewMatrix();
@@ -1172,8 +1181,9 @@ int main(int argc, char* argv[]) {
 
             TextureArray::bind();
             if (currentState == GameState::Playing) {
-                w->update(player.getPosition());
+                w->update(player.getPosition(), dt, glfwGetTime());
             }
+            player.getCamera().setShake(w ? w->cameraShake : 0.0f, glfwGetTime());
             glm::mat4 viewProjection = projection * player.getViewMatrix();
 
             // --- Billboard rendering (separate shader, no terrain features) ---
@@ -1379,8 +1389,19 @@ int main(int argc, char* argv[]) {
 
             // Restore world shader after billboards
             shaderProgram.use();
+            shaderProgram.setFloat("entityTint", 1.0f);
             TextureArray::bind();
             chunksRendered = w->render(shaderProgram, viewProjection, player.getPosition());
+
+            // Primed TNT entities — drawn after opaque chunks so they
+            // correctly sort against the terrain. Chunk shader is already
+            // bound with all its uniforms set.
+            if (w->entityManager) {
+                w->entityManager->render(shaderProgram, viewProjection, entityCubes, glfwGetTime());
+                // Reset model matrix since entity draws mutated it.
+                shaderProgram.setMat4("model", glm::mat4(1.0f));
+                shaderProgram.setFloat("entityTint", 1.0f);
+            }
 
             // Clouds: texture-based infinite tiling with 3D volume
             if (!underwater) {
@@ -1428,6 +1449,26 @@ int main(int argc, char* argv[]) {
                 glDisable(GL_BLEND);
 
                 // Restore world shader
+                shaderProgram.use();
+            }
+
+            // Smoke particles (explosion plumes). Drawn after chunks/clouds
+            // with alpha blending enabled so they fade softly into whatever
+            // is behind them.
+            if (w && w->particles && w->particles->aliveCount() > 0) {
+                billboardShader.use();
+                billboardShader.setMat4("projection", projection);
+                billboardShader.setMat4("view", player.getViewMatrix());
+                billboardShader.setVec3("tintColor", glm::vec3(1.0f));
+                TextureArray::bind();
+                glDepthMask(GL_FALSE);
+                glDisable(GL_CULL_FACE);
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                w->particles->render(billboardShader, cameraPos, player.getFront());
+                glDepthMask(GL_TRUE);
+                glEnable(GL_CULL_FACE);
+                glDisable(GL_BLEND);
                 shaderProgram.use();
             }
 

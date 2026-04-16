@@ -9,14 +9,14 @@ static constexpr int HOTBAR_SIZE = 10;
 
 // Mirror of Inventory::PLACEABLE_BLOCKS — all non-AIR block types
 static constexpr block_type PLACEABLE_BLOCKS[] = {
-    GRASS, DIRT, STONE, COAL_ORE, BEDROCK, WATER, SAND, GLOWSTONE, WOOD, LEAVES, SNOW, GRAVEL, CACTUS,
+    GRASS, DIRT, STONE, COAL_ORE, BEDROCK, WATER, SAND, GLOWSTONE, WOOD, LEAVES, SNOW, GRAVEL, CACTUS, TNT,
 };
 static constexpr int NUM_PLACEABLE = sizeof(PLACEABLE_BLOCKS) / sizeof(PLACEABLE_BLOCKS[0]);
 
 TEST(InventoryTest, AllBlockTypesPresent) {
     // Every non-AIR block_type should appear in the placeable list
     block_type allTypes[] = {GRASS, DIRT, STONE, COAL_ORE, BEDROCK, WATER, SAND,
-                             GLOWSTONE, WOOD, LEAVES, SNOW, GRAVEL, CACTUS};
+                             GLOWSTONE, WOOD, LEAVES, SNOW, GRAVEL, CACTUS, TNT};
     for (auto t : allTypes) {
         bool found = false;
         for (int i = 0; i < NUM_PLACEABLE; i++) {
@@ -42,8 +42,8 @@ TEST(InventoryTest, NoDuplicatesInPlaceable) {
 }
 
 TEST(InventoryTest, PlaceableCount) {
-    // 14 block types total (AIR through CACTUS), minus AIR = 13 placeable
-    EXPECT_EQ(NUM_PLACEABLE, 13);
+    // 15 block types total (AIR through TNT), minus AIR = 14 placeable
+    EXPECT_EQ(NUM_PLACEABLE, 14);
 }
 
 // Simulate hotbar slot assignment (same logic as Player::setHotbarSlot)
