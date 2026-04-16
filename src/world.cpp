@@ -1,10 +1,14 @@
 #include "world.h"
+#include "entity_manager.h"
 #include "light_data.h"
+#include "particle_system.h"
 #include "profiler.h"
+#include "tnt_entity.h"
 #include "tracy_shim.h"
 #include <array>
 #include <algorithm>
 #include <cmath>
+#include <random>
 
 // Extract 6 frustum planes from a combined projection*view matrix (Gribb-Hartmann).
 // Each plane is vec4(normal.xyz, distance). A point p is inside if dot(plane.xyz, p) + plane.w >= 0.
@@ -34,6 +38,8 @@ World::World(unsigned int seed) : seed(seed) {
     this->terrainGenerator = new TerrainGenerator(seed, 0.1, 0, CHUNK_HEIGHT);
     this->chunkManager = new ChunkManager(RENDER_DISTANCE, CHUNK_SIZE, *terrainGenerator);
     this->waterSimulator = new WaterSimulator(this);
+    this->entityManager = new EntityManager();
+    this->particles = new ParticleSystem();
 }
 
 static void markBorderNeighborsDirty(ChunkManager* cm, int chunkX, int chunkZ, int lx, int y, int lz) {
@@ -314,6 +320,8 @@ void World::placeBlock(glm::ivec3 position, block_type type) const {
 }
 
 World::~World() {
+    delete this->particles;
+    delete this->entityManager;
     delete this->waterSimulator;
     delete this->terrainGenerator;
     delete this->chunkManager;
@@ -404,11 +412,83 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
     return rendered;
 }
 
-void World::update(glm::vec3 cameraPosition) const {
+void World::update(glm::vec3 cameraPosition, float dt, double now) const {
     ZoneScopedN("World::update");
+    lastCameraPos = cameraPosition;
     this->chunkManager->update(cameraPosition);
     this->waterSimulator->tick();
     this->waterSimulator->updateAmbient(cameraPosition);
+    this->entityManager->tick(const_cast<World*>(this), dt, now);
+    this->particles->update(dt);
+    // Decay camera shake toward zero so a single explode() call produces a
+    // finite rattle rather than a permanent one.
+    if (cameraShake > 0.0f) {
+        cameraShake -= dt * 1.8f;
+        if (cameraShake < 0.0f) cameraShake = 0.0f;
+    }
+}
+
+void World::igniteTnt(glm::ivec3 pos, double now) const {
+    Cube* b = getBlock(pos.x, pos.y, pos.z);
+    if (!b || b->getType() != TNT) return;
+    setBlock(pos.x, pos.y, pos.z, AIR);
+    floodSkyLightWorld(chunkManager, pos.x, pos.y, pos.z);
+    waterSimulator->activateNeighbors(pos.x, pos.y, pos.z);
+    // Spawn entity at block center so it sits flush with the world grid.
+    entityManager->spawnTnt(glm::vec3(pos.x, pos.y, pos.z), TntEntity::DEFAULT_FUSE, now);
+}
+
+void World::explode(glm::vec3 center, float power, double now) const {
+    static std::mt19937 rng(0xD06F00Du);
+    std::uniform_int_distribution<int> chainFuse(TntEntity::CHAIN_FUSE_MIN, TntEntity::CHAIN_FUSE_MAX);
+
+    int ir = static_cast<int>(std::ceil(power));
+    int cx = static_cast<int>(std::floor(center.x + 0.5f));
+    int cy = static_cast<int>(std::floor(center.y + 0.5f));
+    int cz = static_cast<int>(std::floor(center.z + 0.5f));
+
+    for (int dx = -ir; dx <= ir; ++dx) {
+        for (int dy = -ir; dy <= ir; ++dy) {
+            for (int dz = -ir; dz <= ir; ++dz) {
+                int bx = cx + dx;
+                int by = cy + dy;
+                int bz = cz + dz;
+                if (by < 0 || by >= CHUNK_HEIGHT) continue;
+                float d = std::sqrt(static_cast<float>(dx * dx + dy * dy + dz * dz));
+                if (d > power) continue;
+                Cube* b = getBlock(bx, by, bz);
+                if (!b) continue;
+                block_type t = b->getType();
+                if (t == AIR) continue;
+                if (t == BEDROCK) continue;   // indestructible
+                if (t == WATER) continue;     // don't consume liquid
+                if (t == TNT) {
+                    // Chain reaction — replace with a short-fused primed entity.
+                    // Mirror igniteTnt()'s full transition: light flood +
+                    // water wake, otherwise the now-empty cell keeps its
+                    // stale skyLight=0 byte and adjacent water doesn't learn
+                    // it can flow into the gap until its next scheduled tick.
+                    setBlock(bx, by, bz, AIR);
+                    floodSkyLightWorld(chunkManager, bx, by, bz);
+                    waterSimulator->activateNeighbors(bx, by, bz);
+                    entityManager->spawnTnt(glm::vec3(bx, by, bz), chainFuse(rng), now);
+                    continue;
+                }
+                destroyBlock(glm::vec3(bx, by, bz));
+            }
+        }
+    }
+
+    // Smoke plume + audio
+    particles->spawnSmokePlume(center);
+    entityManager->playExplosion(center);
+
+    // Camera shake: closer = stronger. Max out at magnitude 0.6 when
+    // standing on top of the charge.
+    glm::vec3 toPlayer = lastCameraPos - center;
+    float dist = glm::length(toPlayer);
+    float shake = 0.6f / (1.0f + dist * 0.15f);
+    if (shake > cameraShake) cameraShake = shake;
 }
 
 bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::ivec3& hitPos,

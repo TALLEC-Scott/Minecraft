@@ -16,6 +16,7 @@ const char* Inventory::blockName(block_type t) {
     case SNOW: return "Snow";
     case GRAVEL: return "Gravel";
     case CACTUS: return "Cactus";
+    case TNT: return "TNT";
     default: return "?";
     }
 }

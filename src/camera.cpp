@@ -188,7 +188,20 @@ void Camera::changeDirection(glm::vec3 direction) {
 }
 
 glm::mat4 Camera::getViewMatrix() const {
-    return glm::lookAt(cameraPosition, cameraPosition + cameraFront, cameraUp);
+    glm::vec3 eye = cameraPosition;
+    if (shakeMagnitude > 0.0f) {
+        // Three uncorrelated frequencies so the rattle doesn't fall into a
+        // clean oscillation pattern, and — importantly — all three world
+        // axes are perturbed so the felt intensity is the same regardless
+        // of where the camera is facing. (X+Y only would collapse into a
+        // depth wobble when yawed along ±X.) Magnitude decays externally
+        // via World::update.
+        float t = static_cast<float>(shakeTime);
+        eye.x += std::sin(t * 83.0f) * shakeMagnitude * 0.25f;
+        eye.y += std::cos(t * 67.0f) * shakeMagnitude * 0.25f;
+        eye.z += std::sin(t * 79.0f) * shakeMagnitude * 0.25f;
+    }
+    return glm::lookAt(eye, eye + cameraFront, cameraUp);
 }
 
 void Camera::defineLookAt(const Shader& shaderProgram) {

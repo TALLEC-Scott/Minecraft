@@ -9,14 +9,16 @@ TEST(BlockFlagTest, AirIsNotSolid) {
 }
 
 TEST(BlockFlagTest, SolidBlocks) {
-    block_type solids[] = {GRASS, DIRT, STONE, COAL_ORE, BEDROCK, SAND, GLOWSTONE, WOOD, SNOW, GRAVEL, CACTUS, LEAVES};
+    block_type solids[] = {GRASS,  DIRT,   STONE,  COAL_ORE, BEDROCK, SAND, GLOWSTONE,
+                           WOOD,   SNOW,   GRAVEL, CACTUS,   LEAVES,  TNT};
     for (auto bt : solids) {
         EXPECT_TRUE(hasFlag(bt, BF_SOLID)) << "block_type " << bt << " should be solid";
     }
 }
 
 TEST(BlockFlagTest, OpaqueBlocks) {
-    block_type opaques[] = {GRASS, DIRT, STONE, COAL_ORE, BEDROCK, SAND, GLOWSTONE, WOOD, SNOW, GRAVEL, CACTUS};
+    block_type opaques[] = {GRASS, DIRT,      STONE, COAL_ORE, BEDROCK, SAND, GLOWSTONE,
+                            WOOD,  SNOW,      GRAVEL, CACTUS,   TNT};
     for (auto bt : opaques) {
         EXPECT_TRUE(hasFlag(bt, BF_OPAQUE)) << "block_type " << bt << " should be opaque";
     }
@@ -38,7 +40,7 @@ TEST(BlockFlagTest, LeavesAreFiltering) {
 
 TEST(BlockFlagTest, NoBlockHasConflictingFlags) {
     // A block shouldn't be both opaque and transparent
-    for (int i = 0; i <= CACTUS; i++) {
+    for (int i = 0; i <= TNT; i++) {
         auto bt = static_cast<block_type>(i);
         if (hasFlag(bt, BF_OPAQUE)) {
             EXPECT_FALSE(hasFlag(bt, BF_TRANSPARENT)) << "block_type " << i << " is both opaque and transparent";
@@ -59,7 +61,7 @@ TEST(BlockFlagTest, MultipleFlagQuery) {
 
 TEST(BlockFlagTest, AllBlockTypesCovered) {
     // Ensure getBlockFlags doesn't crash for any valid block type
-    for (int i = 0; i <= CACTUS; i++) {
+    for (int i = 0; i <= TNT; i++) {
         auto bt = static_cast<block_type>(i);
         uint32_t flags = getBlockFlags(bt);
         // Every block should have at least one property
@@ -73,7 +75,7 @@ TEST(BlockFlagTest, AllBlockTypesCovered) {
 TEST(BlockFlagTest, OutOfRangeReturnsNone) {
     // Negative and past-the-end values should return BF_NONE
     EXPECT_EQ(getBlockFlags(static_cast<block_type>(-1)), BF_NONE);
-    EXPECT_EQ(getBlockFlags(static_cast<block_type>(CACTUS + 1)), BF_NONE);
+    EXPECT_EQ(getBlockFlags(static_cast<block_type>(TNT + 1)), BF_NONE);
     EXPECT_EQ(getBlockFlags(static_cast<block_type>(999)), BF_NONE);
 }
 
@@ -88,8 +90,8 @@ TEST(BlockFlagTest, FirstAndLastBlockType) {
     // Boundary: first enum value
     EXPECT_EQ(getBlockFlags(AIR), BF_TRANSPARENT);
     // Boundary: last enum value
-    EXPECT_TRUE(hasFlag(CACTUS, BF_SOLID));
-    EXPECT_TRUE(hasFlag(CACTUS, BF_OPAQUE));
+    EXPECT_TRUE(hasFlag(TNT, BF_SOLID));
+    EXPECT_TRUE(hasFlag(TNT, BF_OPAQUE));
 }
 
 TEST(BlockFlagTest, ZeroFlagQueryAlwaysFalse) {

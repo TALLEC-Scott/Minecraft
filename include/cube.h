@@ -40,7 +40,8 @@ enum block_type : uint8_t {
     LEAVES,
     SNOW,
     GRAVEL,
-    CACTUS
+    CACTUS,
+    TNT
 };
 
 enum Biome { BIOME_OCEAN, BIOME_BEACH, BIOME_PLAINS, BIOME_FOREST, BIOME_DESERT, BIOME_TUNDRA, BIOME_COUNT };
@@ -97,6 +98,7 @@ inline uint32_t getBlockFlags(block_type t) {
         /* SNOW      */ BF_SOLID | BF_OPAQUE,
         /* GRAVEL    */ BF_SOLID | BF_OPAQUE,
         /* CACTUS    */ BF_SOLID | BF_OPAQUE,
+        /* TNT       */ BF_SOLID | BF_OPAQUE,
     };
     // clang-format on
     int idx = static_cast<int>(t);
@@ -142,6 +144,7 @@ inline StepSound getStepSound(block_type t) {
         /* SNOW      */ STEP_SNOW,
         /* GRAVEL    */ STEP_GRAVEL,
         /* CACTUS    */ STEP_CLOTH,
+        /* TNT       */ STEP_CLOTH,
     };
     // clang-format on
     int idx = static_cast<int>(t);
