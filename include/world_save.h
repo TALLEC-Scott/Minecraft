@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <unordered_set>
 #include <glm/glm.hpp>
 #include "cube.h"
 #include "player.h"
@@ -37,7 +38,17 @@ class WorldSave {
   private:
     std::string basePath;
     std::string chunksPath;
+    // In-memory index of saved chunks — avoids filesystem stat() per lookup
+    struct ChunkKeyHash {
+        std::size_t operator()(std::pair<int, int> k) const {
+            std::size_t seed = std::hash<int>()(k.first);
+            seed ^= std::hash<int>()(k.second) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            return seed;
+        }
+    };
+    std::unordered_set<std::pair<int, int>, ChunkKeyHash> savedChunks;
 
     std::string chunkFilePath(int x, int z) const;
     void ensureDirectories();
+    void scanSavedChunks();
 };
