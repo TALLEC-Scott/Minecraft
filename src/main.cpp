@@ -346,40 +346,37 @@ int main(int argc, char* argv[]) {
 
 #ifndef __EMSCRIPTEN__
 #ifdef _WIN32
-    // Register a stable AppUserModelID so Windows treats this as a real
-    // app in the taskbar (otherwise the shell groups us under a generic
-    // "unassigned" button that often ignores the per-window icon). We
-    // resolve the function dynamically because mingw-w64's shobjidl.h
-    // doesn't always forward-declare it, and its absence (pre-Win7)
-    // should be a silent no-op.
+    // Register a stable AppUserModelID so the Windows shell treats this as
+    // a distinct app (otherwise the taskbar button groups under a generic
+    // "unassigned" owner that ignores the per-window icon). Resolved
+    // dynamically because mingw-w64's shobjidl.h doesn't always
+    // forward-declare it.
     {
+        static constexpr PCWSTR APP_USER_MODEL_ID = L"TALLEC.Minecraft.POGL";
         using SetAppIDFn = HRESULT(WINAPI*)(PCWSTR);
-        HMODULE shell32 = LoadLibraryW(L"shell32.dll");
-        if (shell32) {
-            // Double-cast through void* to silence -Wcast-function-type: the
-            // two signatures are known-compatible (the winapi prototype).
+        // shell32 is always loaded — use GetModuleHandle so we don't bump
+        // the DLL refcount and need a matching FreeLibrary.
+        if (HMODULE shell32 = GetModuleHandleW(L"shell32.dll")) {
             FARPROC raw = GetProcAddress(shell32, "SetCurrentProcessExplicitAppUserModelID");
             auto setAppID = reinterpret_cast<SetAppIDFn>(reinterpret_cast<void*>(raw));
-            if (setAppID) setAppID(L"TALLEC.Minecraft.POGL");
+            if (setAppID) setAppID(APP_USER_MODEL_ID);
         }
     }
 #endif
-    // Set window icons at runtime. GLFW picks the closest size for each
-    // slot (ICON_SMALL ~16 for title bar, ICON_BIG ~32 for taskbar). We
-    // provide a 16/32/48/64 set so Windows doesn't have to scale.
     {
-        const char* iconPaths[] = {
+        static constexpr const char* ICON_PATHS[] = {
             "assets/minecraft_icon_16.png",
             "assets/minecraft_icon_32.png",
             "assets/minecraft_icon_48.png",
             "assets/minecraft_icon_64.png",
         };
-        GLFWimage images[4];
-        unsigned char* pixels[4] = {nullptr, nullptr, nullptr, nullptr};
+        constexpr int ICON_COUNT = sizeof(ICON_PATHS) / sizeof(ICON_PATHS[0]);
+        GLFWimage images[ICON_COUNT];
+        unsigned char* pixels[ICON_COUNT] = {};
         int count = 0;
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < ICON_COUNT; ++i) {
             int iw, ih, ichan;
-            pixels[i] = stbi_load(iconPaths[i], &iw, &ih, &ichan, 4);
+            pixels[i] = stbi_load(ICON_PATHS[i], &iw, &ih, &ichan, 4);
             if (!pixels[i]) continue;
             images[count].width = iw;
             images[count].height = ih;
@@ -387,13 +384,11 @@ int main(int argc, char* argv[]) {
             ++count;
         }
         if (count > 0) glfwSetWindowIcon(window, count, images);
-        for (int i = 0; i < 4; ++i)
-            if (pixels[i]) stbi_image_free(pixels[i]);
-        // Pump events now: GLFW issue #2753 — if glfwPollEvents isn't
-        // called within ~500 ms of setWindowIcon, Windows silently drops
-        // the taskbar icon update. Subsequent init (world gen, texture
-        // arrays, menu) can take >500 ms before the main loop pumps, so
-        // we nudge the event loop here.
+        for (auto* p : pixels)
+            if (p) stbi_image_free(p);
+        // GLFW issue #2753: Windows drops the taskbar icon update if
+        // glfwPollEvents isn't called within ~500 ms of setWindowIcon,
+        // and our init easily exceeds that. Pump once here.
         glfwPollEvents();
     }
 #endif
