@@ -4,6 +4,15 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
+#ifdef _WIN32
+// SetCurrentProcessExplicitAppUserModelID lives in shell32 since Windows 7.
+// Request the header by bumping _WIN32_WINNT before including windows.h.
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
+#include <windows.h>
+#include <shobjidl.h>
+#endif
 
 #include <glm/glm.hpp>
 #include <glm/geometric.hpp>
@@ -334,6 +343,60 @@ int main(int argc, char* argv[]) {
     }
     std::cout << "Window successfully created" << std::endl;
     glfwMakeContextCurrent(window);
+
+#ifndef __EMSCRIPTEN__
+#ifdef _WIN32
+    // Register a stable AppUserModelID so Windows treats this as a real
+    // app in the taskbar (otherwise the shell groups us under a generic
+    // "unassigned" button that often ignores the per-window icon). We
+    // resolve the function dynamically because mingw-w64's shobjidl.h
+    // doesn't always forward-declare it, and its absence (pre-Win7)
+    // should be a silent no-op.
+    {
+        using SetAppIDFn = HRESULT(WINAPI*)(PCWSTR);
+        HMODULE shell32 = LoadLibraryW(L"shell32.dll");
+        if (shell32) {
+            // Double-cast through void* to silence -Wcast-function-type: the
+            // two signatures are known-compatible (the winapi prototype).
+            FARPROC raw = GetProcAddress(shell32, "SetCurrentProcessExplicitAppUserModelID");
+            auto setAppID = reinterpret_cast<SetAppIDFn>(reinterpret_cast<void*>(raw));
+            if (setAppID) setAppID(L"TALLEC.Minecraft.POGL");
+        }
+    }
+#endif
+    // Set window icons at runtime. GLFW picks the closest size for each
+    // slot (ICON_SMALL ~16 for title bar, ICON_BIG ~32 for taskbar). We
+    // provide a 16/32/48/64 set so Windows doesn't have to scale.
+    {
+        const char* iconPaths[] = {
+            "assets/minecraft_icon_16.png",
+            "assets/minecraft_icon_32.png",
+            "assets/minecraft_icon_48.png",
+            "assets/minecraft_icon_64.png",
+        };
+        GLFWimage images[4];
+        unsigned char* pixels[4] = {nullptr, nullptr, nullptr, nullptr};
+        int count = 0;
+        for (int i = 0; i < 4; ++i) {
+            int iw, ih, ichan;
+            pixels[i] = stbi_load(iconPaths[i], &iw, &ih, &ichan, 4);
+            if (!pixels[i]) continue;
+            images[count].width = iw;
+            images[count].height = ih;
+            images[count].pixels = pixels[i];
+            ++count;
+        }
+        if (count > 0) glfwSetWindowIcon(window, count, images);
+        for (int i = 0; i < 4; ++i)
+            if (pixels[i]) stbi_image_free(pixels[i]);
+        // Pump events now: GLFW issue #2753 — if glfwPollEvents isn't
+        // called within ~500 ms of setWindowIcon, Windows silently drops
+        // the taskbar icon update. Subsequent init (world gen, texture
+        // arrays, menu) can take >500 ms before the main loop pumps, so
+        // we nudge the event loop here.
+        glfwPollEvents();
+    }
+#endif
 
 #ifndef __EMSCRIPTEN__
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {

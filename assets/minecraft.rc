@@ -1,0 +1,5 @@
+// Numeric ID 1 — Windows picks the lowest-numbered ICON resource as the
+// application icon for Explorer / taskbar. Using a symbolic name like
+// IDI_ICON1 (which expands to 101 if <windows.h> is included, or stays
+// as a string otherwise) is less reliable.
+1 ICON "minecraft.ico"
