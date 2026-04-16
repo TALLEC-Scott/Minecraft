@@ -44,6 +44,7 @@ set(COMMON_SOURCES
     src/miniaudio.cpp
     src/WaterSimulator.cpp
     src/inventory.cpp
+    src/world_save.cpp
 )
 
 if(EMSCRIPTEN)
@@ -193,6 +194,8 @@ else()
         tests/test_sparse_light.cpp
         tests/test_world_resolver.cpp
         tests/test_chunk_mesh.cpp
+        tests/test_world_save.cpp
+        tests/test_inventory.cpp
         src/TerrainGenerator.cpp
         src/perlin_noise.cpp
         src/game_state.cpp

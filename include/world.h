@@ -13,6 +13,7 @@ using WorldResolver = WorldResolverT<ChunkManager, Chunk>;
 class World {
   public:
     World(unsigned int seed = 0);
+    unsigned int getSeed() const { return seed; }
 
     // void render(Shader& shaderProgram);
     void destroyBlock(glm::vec3 position) const;
@@ -24,6 +25,8 @@ class World {
     ChunkManager* chunkManager;
     WaterSimulator* waterSimulator;
     ~World();
+
+    unsigned int seed = 0;
 
     int render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const;
     void update(glm::vec3 cameraPosition) const;

@@ -61,6 +61,8 @@ struct ChunkData {
 
 // Generate chunk data on any thread (no GL calls)
 ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain);
+// Compute sky + block light on flat arrays (safe for worker threads)
+void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY);
 
 class Chunk {
   public:
@@ -79,7 +81,8 @@ class Chunk {
     Chunk(Chunk&& other) noexcept
         : skyLight(std::move(other.skyLight)), waterLevels(std::move(other.waterLevels)),
           sparseLight(std::move(other.sparseLight)), maxSolidY(other.maxSolidY), chunkX(other.chunkX),
-          chunkY(other.chunkY), meshBuildInFlight(other.meshBuildInFlight), sectionDirty(other.sectionDirty),
+          chunkY(other.chunkY), modified(other.modified), meshBuildInFlight(other.meshBuildInFlight),
+          sectionDirty(other.sectionDirty),
           chunkVAO(other.chunkVAO), chunkVBO(other.chunkVBO), chunkEBO(other.chunkEBO),
           opaqueIndexCount(other.opaqueIndexCount), waterVAO(other.waterVAO), waterVBO(other.waterVBO),
           waterEBO(other.waterEBO), waterIndexCount(other.waterIndexCount), pendingMesh(std::move(other.pendingMesh)) {
@@ -110,6 +113,7 @@ class Chunk {
             sparseLight = std::move(other.sparseLight);
             chunkX = other.chunkX;
             chunkY = other.chunkY;
+            modified = other.modified;
             chunkVAO = other.chunkVAO;
             chunkVBO = other.chunkVBO;
             chunkEBO = other.chunkEBO;
@@ -215,6 +219,7 @@ class Chunk {
             sections[sy] = std::make_unique<ChunkSection>();
         }
         sections[sy]->setBlock(x, y % 16, z, t);
+        modified = true;
         // Extend maxSolidY so the mesh builder's iteration range includes
         // this block. Without this, water/blocks placed above the terrain
         // height (e.g., falling water columns) would be outside the face
@@ -294,9 +299,11 @@ class Chunk {
         }
         waterLevels[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z] =
             level;
+        modified = true;
     }
     int chunkX = -1;
     int chunkY = -1;
+    bool modified = false;
     bool meshBuildInFlight = false;
     // Frames since render() was last called. Used by ChunkManager to
     // flush pendingMesh to GPU for chunks that went invisible (otherwise
