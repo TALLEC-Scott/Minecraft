@@ -43,6 +43,7 @@ set(COMMON_SOURCES
     src/menu.cpp
     src/miniaudio.cpp
     src/WaterSimulator.cpp
+    src/inventory.cpp
 )
 
 if(EMSCRIPTEN)

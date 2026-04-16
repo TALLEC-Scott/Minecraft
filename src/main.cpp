@@ -33,13 +33,9 @@
 #include "game_state.h"
 #include "ui_renderer.h"
 #include "menu.h"
+#include "inventory.h"
 
-// WSL2 needs GLFW_CURSOR_NORMAL as the mode param; Emscripten needs GLFW_CURSOR
-#ifdef __EMSCRIPTEN__
 #define CURSOR_MODE GLFW_CURSOR
-#else
-#define CURSOR_MODE GLFW_CURSOR_NORMAL
-#endif
 
 #define WINDOW_WIDTH 1000
 #define WINDOW_HEIGHT 1000
@@ -62,6 +58,8 @@ bool previousDaylight = false;
 GameState currentState = GameState::MainMenu;
 GameSettings gameSettings;
 bool escKeyPressed = false;
+Inventory inventory;
+bool eKeyPressed = false;
 
 // Frame state (moved to file scope for Emscripten main loop compatibility)
 static GLFWwindow* g_window = nullptr;
@@ -104,11 +102,11 @@ void framebuffer_size_callback(GLFWwindow* /*window*/, int width, int height) {
 }
 
 void cursorPositionCallback(GLFWwindow* /*window*/, double xPos, double yPos) {
-    if (currentState == GameState::Playing) player.updateMouseLook(xPos, yPos, windowWidth, windowHeight);
+    if (currentState == GameState::Playing && !inventory.isOpen()) player.updateMouseLook(xPos, yPos, windowWidth, windowHeight);
 }
 
 void scrollCallback(GLFWwindow* /*window*/, double /*xOffset*/, double yOffset) {
-    if (currentState == GameState::Playing) {
+    if (currentState == GameState::Playing && !inventory.isOpen()) {
         int slot = player.getSelectedSlot();
         slot -= (int)yOffset; // scroll up = previous slot
         slot = ((slot % Player::HOTBAR_SIZE) + Player::HOTBAR_SIZE) % Player::HOTBAR_SIZE;
@@ -215,9 +213,16 @@ void processInput(GLFWwindow* window) {
     bool pauseDown = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
 #endif
     if (pauseDown && !escKeyPressed) {
-        currentState = GameState::Paused;
-        glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
-        if (g_menu) g_menu->stopMusic();
+        if (inventory.isOpen()) {
+            // Close inventory instead of pausing
+            inventory.close();
+            glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
+            player.resetMouseState();
+        } else {
+            currentState = GameState::Paused;
+            glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
+            if (g_menu) g_menu->stopMusic();
+        }
         escKeyPressed = pauseDown;
         return;
     }
@@ -236,6 +241,22 @@ void processInput(GLFWwindow* window) {
     }
     xKeyPressed = xKeyDown;
 #endif
+
+    // Inventory toggle: 'E' key (edge-triggered)
+    bool eKeyDown = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
+    if (eKeyDown && !eKeyPressed) {
+        inventory.toggle();
+        if (inventory.isOpen()) {
+            glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
+        } else {
+            glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
+            player.resetMouseState();
+        }
+    }
+    eKeyPressed = eKeyDown;
+
+    // Skip player input while inventory is open
+    if (inventory.isOpen()) return;
 
     // Player input
     player.handleInput(window, w);
@@ -1613,6 +1634,11 @@ int main(int argc, char* argv[]) {
                     uiRenderer.drawTextShadow(num, sx + 2, sy + 2, 1.0f);
                 }
                 uiRenderer.end();
+            }
+
+            // Inventory overlay (rendered over hotbar)
+            if (currentState == GameState::Playing && inventory.isOpen()) {
+                inventory.draw(uiRenderer, windowWidth, windowHeight, window, player);
             }
 
             // Pause menu overlay (rendered after the world)
