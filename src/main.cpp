@@ -1293,7 +1293,7 @@ int main(int argc, char* argv[]) {
 
                 // Render moon billboard (opposite side of sun)
                 if (lightPos.y < 200.0f) { // moon rises before sun fully sets
-                    glm::vec3 moonDir = glm::normalize(-lightPos + 2.0f * cameraPos); // opposite of sun
+                    glm::vec3 moonDir = glm::normalize(cameraPos - lightPos); // opposite of sun
                     glm::vec3 moonCenter = cameraPos + moonDir * SUN_DISTANCE;
                     constexpr float MOON_SIZE = 45.0f;
                     glm::vec3 upRef = (glm::abs(moonDir.y) > 0.99f) ? glm::vec3(1, 0, 0) : glm::vec3(0, 1, 0);
