@@ -16,7 +16,22 @@
 static constexpr uint32_t CHUNK_MAGIC = 0x4D434348; // "MCCH"
 static constexpr uint16_t CHUNK_VERSION = 1;
 
-WorldSave::WorldSave(const std::string& savePath) : basePath(savePath), chunksPath(savePath + "/chunks") {}
+WorldSave::WorldSave(const std::string& savePath) : basePath(savePath), chunksPath(savePath + "/chunks") {
+    scanSavedChunks();
+}
+
+void WorldSave::scanSavedChunks() {
+    if (!std::filesystem::exists(chunksPath)) return;
+    for (auto& entry : std::filesystem::directory_iterator(chunksPath)) {
+        auto name = entry.path().stem().string(); // "c.5.-3"
+        if (name.size() < 4 || name[0] != 'c' || name[1] != '.') continue;
+        auto dot = name.find('.', 2);
+        if (dot == std::string::npos) continue;
+        int x = std::stoi(name.substr(2, dot - 2));
+        int z = std::stoi(name.substr(dot + 1));
+        savedChunks.insert({x, z});
+    }
+}
 
 void WorldSave::ensureDirectories() {
     std::filesystem::create_directories(chunksPath);
@@ -88,7 +103,7 @@ bool WorldSave::loadLevelData(unsigned int& seed, PlayerSaveData& player) {
 // --- Chunk binary I/O ---
 
 bool WorldSave::chunkExists(int chunkX, int chunkZ) const {
-    return std::filesystem::exists(chunkFilePath(chunkX, chunkZ));
+    return savedChunks.count({chunkX, chunkZ}) > 0;
 }
 
 template <typename T> static void writeVal(std::ofstream& f, T v) { f.write(reinterpret_cast<const char*>(&v), sizeof(v)); }
@@ -98,6 +113,7 @@ void WorldSave::saveChunk(const Chunk& chunk) {
     ensureDirectories();
     std::ofstream f(chunkFilePath(chunk.chunkX, chunk.chunkY), std::ios::binary);
     if (!f.is_open()) return;
+    savedChunks.insert({chunk.chunkX, chunk.chunkY});
 
     // Header
     writeVal<uint32_t>(f, CHUNK_MAGIC);
