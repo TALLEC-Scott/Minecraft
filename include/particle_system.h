@@ -25,6 +25,8 @@ class ParticleSystem {
   public:
     static constexpr int POOL_SIZE = 512;
 
+    ~ParticleSystem() { destroy(); }
+
     void init();
     void destroy();
 

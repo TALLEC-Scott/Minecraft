@@ -463,8 +463,14 @@ void World::explode(glm::vec3 center, float power, double now) const {
                 if (t == BEDROCK) continue;   // indestructible
                 if (t == WATER) continue;     // don't consume liquid
                 if (t == TNT) {
-                    // Chain reaction — replace with a short-fused primed entity
+                    // Chain reaction — replace with a short-fused primed entity.
+                    // Mirror igniteTnt()'s full transition: light flood +
+                    // water wake, otherwise the now-empty cell keeps its
+                    // stale skyLight=0 byte and adjacent water doesn't learn
+                    // it can flow into the gap until its next scheduled tick.
                     setBlock(bx, by, bz, AIR);
+                    floodSkyLightWorld(chunkManager, bx, by, bz);
+                    waterSimulator->activateNeighbors(bx, by, bz);
                     entityManager->spawnTnt(glm::vec3(bx, by, bz), chainFuse(rng), now);
                     continue;
                 }

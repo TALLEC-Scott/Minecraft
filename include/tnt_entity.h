@@ -38,8 +38,8 @@ class TntEntity {
     // the fuse has just reached zero — the caller should detonate now.
     bool tick(World* world);
 
-    // Brightness multiplier used by the flashing effect. Scales up in the
-    // final 2 seconds (40 ticks) to a white pulse at ~5 Hz, matching
-    // Minecraft's visual signalling that detonation is imminent.
+    // Brightness multiplier used by the flashing effect. In the final 40
+    // ticks (~2 s) the pulse rate jumps from 4 Hz to 10 Hz as Minecraft-
+    // style visual signalling that detonation is imminent.
     float flashBrightness(double now) const;
 };

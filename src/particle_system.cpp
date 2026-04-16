@@ -96,14 +96,18 @@ void ParticleSystem::update(float dt) {
             p.alive = false;
             continue;
         }
-        // Buoyancy: smoke accelerates upward slightly; horizontal drag so it
-        // spreads then settles. Tuned by eye to look like a Minecraft plume.
-        p.velocity.y += 0.8f * dt;
-        float drag = std::exp(-1.2f * dt);
-        p.velocity.x *= drag;
-        p.velocity.z *= drag;
+        // Cartoonish buoyancy: a mild upward lift plus heavy drag so puffs
+        // float rather than fly. Minecraft smoke reads as slow drifting
+        // clumps, not fast streamers.
+        p.velocity.y += 0.25f * dt;
+        float drag = std::exp(-2.5f * dt);
+        p.velocity *= drag;
         p.pos += p.velocity * dt;
-        p.size += p.growth * dt;
+        // Growth tapers off: most expansion happens in the first 40% of
+        // the life, then the puff holds size as it fades.
+        float lifeT = p.life / p.maxLife;
+        float growthCurve = (lifeT < 0.4f) ? (1.0f - lifeT / 0.4f) : 0.0f;
+        p.size += p.growth * growthCurve * dt;
     }
 }
 
@@ -126,14 +130,12 @@ void ParticleSystem::render(const Shader& billboardShader, glm::vec3 cameraPos, 
         glm::vec3 up = glm::normalize(glm::cross(toCam, right / p.size)) * p.size;
         (void)cameraFront;
 
-        // Alpha fade: strong in middle, fades edges. Packed into the
-        // brightness attribute — billboard_frag multiplies both RGB and
-        // alpha by it, so we get a smooth disappearance.
+        // Cartoonish alpha curve: fully opaque for ~1/3 of life, then a
+        // steep linear fade. Reads as a solid puff that suddenly
+        // disappears rather than smoothly dissolving.
         float t = p.life / p.maxLife;
-        float alpha = (1.0f - t) * (1.0f - t);
-        // Cap brightness at 0.85 so multiple particles don't blow out to
-        // pure white when they stack; still reads as "thick smoke".
-        float bright = 0.85f * alpha;
+        float alpha = (t < 0.33f) ? 1.0f : std::max(0.0f, 1.5f - 1.5f * t);
+        float bright = alpha;
 
         float layer = static_cast<float>(block_layers::SMOKE_LAYER);
         glm::vec3 v0 = p.pos - right - up;
@@ -174,19 +176,20 @@ void ParticleSystem::render(const Shader& billboardShader, glm::vec3 cameraPos, 
 }
 
 void ParticleSystem::spawnSmokePlume(glm::vec3 pos) {
-    constexpr int COUNT = 40;
+    // Fewer, bigger, slower puffs — reads as cartoony Minecraft smoke
+    // clouds rather than a fast realistic plume.
+    constexpr int COUNT = 14;
     for (int i = 0; i < COUNT; ++i) {
         Particle& p = allocParticle();
         float angle = rand01() * 6.2831853f;
-        float horizSpeed = 0.3f + rand01() * 0.9f;
-        float upSpeed = 1.2f + rand01() * 1.8f;
-        // Jitter spawn position slightly so the plume has volume.
-        p.pos = pos + glm::vec3((rand01() - 0.5f) * 1.5f, (rand01() - 0.2f) * 0.8f, (rand01() - 0.5f) * 1.5f);
+        float horizSpeed = 0.4f + rand01() * 0.6f;
+        float upSpeed = 0.6f + rand01() * 0.8f;
+        p.pos = pos + glm::vec3((rand01() - 0.5f) * 2.0f, (rand01() - 0.3f) * 1.2f, (rand01() - 0.5f) * 2.0f);
         p.velocity = glm::vec3(std::cos(angle) * horizSpeed, upSpeed, std::sin(angle) * horizSpeed);
         p.life = 0.0f;
-        p.maxLife = 1.6f + rand01() * 0.9f;
-        p.size = 0.7f + rand01() * 0.5f;
-        p.growth = 0.8f + rand01() * 0.4f;
+        p.maxLife = 1.8f + rand01() * 0.8f;
+        p.size = 1.4f + rand01() * 0.7f;  // chunky from the start
+        p.growth = 2.5f + rand01() * 1.0f; // pops bigger quickly, then holds
         p.alive = true;
     }
 }
