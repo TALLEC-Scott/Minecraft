@@ -53,6 +53,16 @@
         var APP_VERSION = "0.6.4";
         var Module = {
             locateFile: function(path) { return path + '?v=' + APP_VERSION; },
+            preRun: [function() {
+                FS.mkdir('/saves');
+                FS.mount(IDBFS, {}, '/saves');
+                Module.addRunDependency('idbfs-sync');
+                FS.syncfs(true, function(err) {
+                    if (err) console.error('IDBFS load error:', err);
+                    else console.log('IDBFS: loaded persistent storage');
+                    Module.removeRunDependency('idbfs-sync');
+                });
+            }],
             canvas: (function() {
                 var c = document.getElementById('canvas');
                 c.addEventListener('webglcontextlost', function(e) {

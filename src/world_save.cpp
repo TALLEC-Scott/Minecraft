@@ -7,6 +7,11 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
+#include <iostream>
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 static constexpr uint32_t CHUNK_MAGIC = 0x4D434348; // "MCCH"
 static constexpr uint16_t CHUNK_VERSION = 1;
@@ -235,4 +240,20 @@ bool WorldSave::loadChunkData(int chunkX, int chunkZ, ChunkData& out, TerrainGen
     computeSkyLightData(flatBlocks.get(), out.skyLight.get(), out.maxSolidY);
 
     return f.good();
+}
+
+void WorldSave::mountPersistentStorage() {
+    // On Emscripten, IDBFS is mounted in shell.html's preRun hook
+    // (with addRunDependency to block main() until sync completes).
+    // On desktop, saves/ is a regular directory — nothing to mount.
+}
+
+void WorldSave::syncToDisk() {
+#ifdef __EMSCRIPTEN__
+    EM_ASM(
+        FS.syncfs(false, function(err) {
+            if (err) console.error('IDBFS sync error:', err);
+        });
+    );
+#endif
 }

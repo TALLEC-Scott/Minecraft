@@ -417,6 +417,7 @@ int main(int argc, char* argv[]) {
 #endif
             Shader billboardShader("assets/Shaders/billboard_vert.shd", "assets/Shaders/billboard_frag.shd");
         // Load existing world or create new one
+        WorldSave::mountPersistentStorage();
 #ifdef __EMSCRIPTEN__
         static
 #endif
@@ -1673,6 +1674,19 @@ int main(int argc, char* argv[]) {
                     applySettings();
                 }
                 if (next == GameState::MainMenu) {
+                    // Save world when returning to main menu
+                    PlayerSaveData pd;
+                    pd.position = player.getPosition();
+                    pd.yaw = player.getYaw();
+                    pd.pitch = player.getPitch();
+                    pd.walkMode = player.isWalkMode();
+                    std::memcpy(pd.hotbar, player.getHotbar(), sizeof(pd.hotbar));
+                    pd.selectedSlot = player.getSelectedSlot();
+                    world.chunkManager->saveAllModifiedChunks();
+                    worldSave.saveLevelData(world.getSeed(), pd);
+                    WorldSave::syncToDisk();
+                    std::cout << "World saved" << std::endl;
+
                     glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
                     menu.stopMusic();
                     menu.startMenuMusic();
@@ -1708,6 +1722,7 @@ int main(int argc, char* argv[]) {
             pd.selectedSlot = player.getSelectedSlot();
             world.chunkManager->saveAllModifiedChunks();
             worldSave.saveLevelData(world.getSeed(), pd);
+            WorldSave::syncToDisk();
             std::cout << "World saved" << std::endl;
         }
 
