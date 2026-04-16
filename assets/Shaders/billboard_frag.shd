@@ -17,7 +17,11 @@ void main() {
         alpha = alpha * alpha; // quadratic falloff for softer edge
         FragColor = vec4(tintColor * brightness, alpha);
     } else {
+        // `brightness` doubles as an alpha multiplier so particle systems
+        // (smoke plume) can fade out without needing a dedicated uniform.
+        // Sun/moon/arm/held-block all pass brightness=1.0 so they're
+        // unaffected.
         vec4 texColor = texture(ourTexture, vec3(TexCoord, texLayer));
-        FragColor = vec4(texColor.rgb * brightness * tintColor, texColor.a);
+        FragColor = vec4(texColor.rgb * brightness * tintColor, texColor.a * brightness);
     }
 }

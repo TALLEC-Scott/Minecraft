@@ -74,6 +74,77 @@ template <typename SolidCheck> VerticalResult resolveVertical(glm::vec3 feetPos,
     return result;
 }
 
+// Generic AABB variants for non-player entities (e.g. primed TNT — 1×1×1 hitbox).
+// `halfW` and `height` parameterize the bounding box; semantics otherwise match
+// the player helpers above. Keeping them as free templates lets entities reuse
+// the voxel-grid walk without dragging the player-specific half-width/height
+// constants into their code paths.
+template <typename SolidCheck> bool collidesAABB(glm::vec3 feetPos, float halfW, float height, SolidCheck isSolid) {
+    int minX = (int)std::floor(feetPos.x - halfW + 0.5f);
+    int maxX = (int)std::floor(feetPos.x + halfW + 0.5f - 0.001f);
+    int minY = (int)std::floor(feetPos.y + 0.5f);
+    int maxY = (int)std::floor(feetPos.y + height + 0.5f - 0.001f);
+    int minZ = (int)std::floor(feetPos.z - halfW + 0.5f);
+    int maxZ = (int)std::floor(feetPos.z + halfW + 0.5f - 0.001f);
+    for (int bx = minX; bx <= maxX; bx++)
+        for (int by = minY; by <= maxY; by++)
+            for (int bz = minZ; bz <= maxZ; bz++)
+                if (isSolid(bx, by, bz)) return true;
+    return false;
+}
+
+template <typename SolidCheck>
+VerticalResult resolveVerticalAABB(glm::vec3 feetPos, float moveY, float halfW, float height, SolidCheck isSolid) {
+    VerticalResult result = {feetPos.y + moveY, false, false};
+    int minX = (int)std::floor(feetPos.x - halfW + 0.5f);
+    int maxX = (int)std::floor(feetPos.x + halfW + 0.5f - 0.001f);
+    int minZ = (int)std::floor(feetPos.z - halfW + 0.5f);
+    int maxZ = (int)std::floor(feetPos.z + halfW + 0.5f - 0.001f);
+    if (moveY < 0) {
+        int newFeetBlockY = (int)std::floor(feetPos.y + moveY + 0.5f);
+        int oldFeetBlockY = (int)std::floor(feetPos.y + 0.5f);
+        for (int by = oldFeetBlockY - 1; by >= newFeetBlockY; by--) {
+            for (int bx = minX; bx <= maxX; bx++) {
+                for (int bz = minZ; bz <= maxZ; bz++) {
+                    if (isSolid(bx, by, bz)) {
+                        result.newFeetY = (float)by + 0.5f;
+                        result.hitGround = true;
+                        return result;
+                    }
+                }
+            }
+        }
+    } else if (moveY > 0) {
+        float headY = feetPos.y + height;
+        int oldHeadBlockY = (int)std::floor(headY + 0.5f - 0.001f);
+        int newHeadBlockY = (int)std::floor(feetPos.y + moveY + height + 0.5f - 0.001f);
+        for (int by = oldHeadBlockY + 1; by <= newHeadBlockY; by++) {
+            for (int bx = minX; bx <= maxX; bx++) {
+                for (int bz = minZ; bz <= maxZ; bz++) {
+                    if (isSolid(bx, by, bz)) {
+                        result.newFeetY = (float)by - 0.5f - height;
+                        result.hitCeiling = true;
+                        return result;
+                    }
+                }
+            }
+        }
+    }
+    return result;
+}
+
+template <typename SolidCheck>
+glm::vec3 resolveMovementAABB(glm::vec3 feetPos, glm::vec3 move, float halfW, float height, SolidCheck isSolid) {
+    glm::vec3 both = {feetPos.x + move.x, feetPos.y, feetPos.z + move.z};
+    if (!collidesAABB(both, halfW, height, isSolid)) return both;
+    glm::vec3 result = feetPos;
+    glm::vec3 tryX = {feetPos.x + move.x, feetPos.y, feetPos.z};
+    if (!collidesAABB(tryX, halfW, height, isSolid)) result.x = tryX.x;
+    glm::vec3 tryZ = {result.x, feetPos.y, feetPos.z + move.z};
+    if (!collidesAABB(tryZ, halfW, height, isSolid)) result.z = tryZ.z;
+    return result;
+}
+
 // Resolve horizontal movement with wall sliding
 template <typename SolidCheck> glm::vec3 resolveMovement(glm::vec3 feetPos, glm::vec3 move, SolidCheck isSolid) {
     // Try both axes

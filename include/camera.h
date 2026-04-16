@@ -53,6 +53,14 @@ class Camera {
     void defineLookAt(const Shader& shaderProgram);
     glm::mat4 getViewMatrix() const;
 
+    // Camera shake (primed-TNT explosion). `magnitude` is the amplitude of
+    // the per-frame sinusoidal jitter applied inside getViewMatrix(); `now`
+    // drives the sine phase so the rattle animates. 0 disables.
+    void setShake(float magnitude, double now) {
+        shakeMagnitude = magnitude;
+        shakeTime = now;
+    }
+
   private:
     bool walkMode = false;
     bool onGround = false;
@@ -65,4 +73,6 @@ class Camera {
     glm::vec3 cameraUp;
     float cameraSpeed;
     float deltaTime = 1.0f / 60.0f;
+    float shakeMagnitude = 0.0f;
+    double shakeTime = 0.0;
 };
