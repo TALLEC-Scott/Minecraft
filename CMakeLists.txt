@@ -65,6 +65,7 @@ if(EMSCRIPTEN)
       -sALLOW_MEMORY_GROWTH=1 \
       -sINITIAL_MEMORY=256MB \
       -sSTACK_SIZE=1MB \
+      -lidbfs.js \
       --preload-file ${CMAKE_SOURCE_DIR}/assets@assets \
       --shell-file ${CMAKE_SOURCE_DIR}/web/shell.html \
     "
