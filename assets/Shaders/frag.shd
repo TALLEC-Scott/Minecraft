@@ -20,6 +20,7 @@ uniform float time;
 uniform vec3 cameraPos;
 uniform int materialType; // 0 = solid, 1 = water
 uniform int fancyLeaves;
+uniform float entityTint; // 1.0 for chunks; >1.0 flashes primed-TNT entities
 
 void main() {
     float isWater = float(materialType);
@@ -90,6 +91,10 @@ void main() {
     vec3 reflectDir = reflect(-sunDir, norm);
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
     litColor += lightColor * spec * 0.5 * sunUp * isWater * step(0.5, norm.y);
+
+    // Entity flash (primed TNT): brighten toward white as fuse runs out.
+    // Chunks pass entityTint=1.0 so this is a no-op for the world mesh.
+    litColor = mix(litColor, vec3(1.0), clamp(entityTint - 1.0, 0.0, 1.0));
 
     // Fog
     vec3 finalColor = mix(fogColor, litColor, fogFactor);
