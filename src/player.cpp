@@ -199,16 +199,12 @@ void Player::handleInput(GLFWwindow* window, World* world) {
 }
 
 void Player::updateMouseLook(double xPos, double yPos, int /*windowWidth*/, int /*windowHeight*/) {
-    if (firstMouse) {
-        firstMouse = false;
-        return;
-    }
-
     static double lastX = 0, lastY = 0;
     static bool initialized = false;
-    if (!initialized) {
+    if (firstMouse || !initialized) {
         lastX = xPos;
         lastY = yPos;
+        firstMouse = false;
         initialized = true;
         return;
     }
