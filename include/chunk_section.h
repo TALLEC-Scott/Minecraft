@@ -73,6 +73,12 @@ class ChunkSection {
 
     const std::vector<uint8_t>& getPalette() const { return palette; }
     uint8_t getBitsPerBlock() const { return bitsPerBlock; }
+    const std::vector<uint64_t>& getPackedData() const { return data; }
+    void loadPacked(std::vector<uint8_t> pal, uint8_t bits, std::vector<uint64_t> packed) {
+        palette = std::move(pal);
+        bitsPerBlock = bits;
+        data = std::move(packed);
+    }
     size_t memoryUsage() const { return palette.size() + data.size() * 8; }
 
   private:

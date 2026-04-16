@@ -125,6 +125,23 @@ void ChunkManager::loadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
     for (int x = minChunk.x; x <= maxChunk.x && generated < MAX_CHUNKS_PER_FRAME; x++) {
         for (int z = minChunk.y; z <= maxChunk.y && generated < MAX_CHUNKS_PER_FRAME; z++) {
             if (chunks.find(glm::ivec2(x, z)) == chunks.end()) {
+                // Try loading from disk first
+                if (worldSave && worldSave->chunkExists(x, z)) {
+                    ChunkData data;
+                    if (worldSave->loadChunkData(x, z, data, terrainGenerator)) {
+                        chunks[glm::ivec2(x, z)] = Chunk(std::move(data));
+                        Chunk& c = chunks[glm::ivec2(x, z)];
+                        c.propagateBorderLight(getChunk(x - 1, z), getChunk(x + 1, z), getChunk(x, z - 1),
+                                               getChunk(x, z + 1));
+                        for (auto& [dx, dz] :
+                             std::initializer_list<std::pair<int, int>>{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}) {
+                            auto it2 = chunks.find(glm::ivec2(x + dx, z + dz));
+                            if (it2 != chunks.end()) it2->second.markDirty();
+                        }
+                        generated++;
+                        continue;
+                    }
+                }
                 generateChunk(x, z);
                 generated++;
             }
@@ -147,10 +164,23 @@ void ChunkManager::loadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
 #endif
 }
 
+void ChunkManager::saveAllModifiedChunks() {
+    if (!worldSave) return;
+    for (auto& [pos, chunk] : chunks) {
+        if (chunk.modified) {
+            worldSave->saveChunk(chunk);
+            chunk.modified = false;
+        }
+    }
+}
+
 void ChunkManager::unloadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
     for (auto it = chunks.begin(); it != chunks.end();) {
         if (it->first.x < minChunk.x || it->first.x > maxChunk.x || it->first.y < minChunk.y ||
             it->first.y > maxChunk.y) {
+            if (worldSave && it->second.modified) {
+                worldSave->saveChunk(it->second);
+            }
             it = chunks.erase(it);
         } else {
             ++it;
@@ -214,7 +244,14 @@ void ChunkManager::workerLoop() {
 
         try {
             if (isChunkGen) {
-                ChunkData data = generateChunkData(pos.x, pos.y, terrainGenerator);
+                ChunkData data;
+                bool loaded = false;
+                if (worldSave && worldSave->chunkExists(pos.x, pos.y)) {
+                    loaded = worldSave->loadChunkData(pos.x, pos.y, data, terrainGenerator);
+                }
+                if (!loaded) {
+                    data = generateChunkData(pos.x, pos.y, terrainGenerator);
+                }
                 std::lock_guard<std::mutex> lock(resultMutex);
                 resultQueue.push(std::move(data));
             } else if (isMeshBuild) {

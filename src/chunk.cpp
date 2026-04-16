@@ -20,7 +20,7 @@ static constexpr int WATER_BYTES_PER_VERT = sizeof(WaterVertex);
 
 static bool isBlockOpaque(block_type t);
 static bool isBlockFiltering(block_type t);
-static void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY);
+void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY);
 
 #include "tracy_shim.h"
 
@@ -362,7 +362,7 @@ static bool isBlockFiltering(block_type t) {
 }
 
 // Free function: compute sky light on raw arrays (safe for worker threads)
-static void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY) {
+void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY) {
     const size_t total = static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE;
     std::memset(skyLight, 0, total);
 
@@ -444,6 +444,37 @@ static void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY) 
             if (unpackSky(skyLight[slIdx(nx, ny, nz)]) >= newLight) continue;
             size_t ni = slIdx(nx, ny, nz);
             skyLight[ni] = (newLight << 4) | (skyLight[ni] & 0xF);
+            queue.push_back(packCoord(nx, ny, nz));
+        }
+    }
+
+    // Phase 3: block light BFS for emissive blocks (e.g. glowstone)
+    // Block light is stored in the low nibble of skyLight.
+    queue.clear();
+    head = 0;
+    for (int x = 0; x < CHUNK_SIZE; x++)
+        for (int y = 0; y <= maxSolidY; y++)
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                uint8_t emission = getBlockLightEmission(blocks[slIdx(x, y, z)].getType());
+                if (emission > 0) {
+                    size_t i = slIdx(x, y, z);
+                    skyLight[i] = (skyLight[i] & 0xF0) | emission;
+                    queue.push_back(packCoord(x, y, z));
+                }
+            }
+    while (head < queue.size()) {
+        int32_t packed = queue[head++];
+        int x = packed >> 20, y = (packed >> 8) & 0xFFF, z = packed & 0xFF;
+        uint8_t light = skyLight[slIdx(x, y, z)] & 0xF;
+        if (light <= 1) continue;
+        for (auto& d : DIRS) {
+            int nx = x + d[0], ny = y + d[1], nz = z + d[2];
+            if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= CHUNK_HEIGHT || nz < 0 || nz >= CHUNK_SIZE) continue;
+            if (ny < scanH && (blockInfo[biIdx(nx, ny, nz)] & 1)) continue;
+            uint8_t newLight = light - 1;
+            size_t ni = slIdx(nx, ny, nz);
+            if ((skyLight[ni] & 0xF) >= newLight) continue;
+            skyLight[ni] = (skyLight[ni] & 0xF0) | newLight;
             queue.push_back(packCoord(nx, ny, nz));
         }
     }

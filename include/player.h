@@ -62,6 +62,17 @@ class Player {
         rightClickHeld = true;
     }
     void setMouseSensitivity(float s) { mouseSensitivity = s; }
+    float getYaw() const { return yaw; }
+    float getPitch() const { return pitch; }
+    void setYawPitch(float y, float p) {
+        yaw = y;
+        pitch = p;
+        glm::vec3 dir;
+        dir.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+        dir.y = sin(glm::radians(pitch));
+        dir.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+        camera.changeDirection(dir);
+    }
 
   private:
     Camera camera;

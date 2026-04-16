@@ -5,6 +5,7 @@
 
 #include <glm/vec3.hpp>
 #include "chunk.h"
+#include "world_save.h"
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -40,6 +41,8 @@ class ChunkManager {
     Chunk* getChunk(int chunkX, int chunkZ);
     void setRenderDistance(int rd) { renderDistance = rd; }
     int getRenderDistance() const { return renderDistance; }
+    void setWorldSave(WorldSave* ws) { worldSave = ws; }
+    void saveAllModifiedChunks();
     // Sum of Chunk::memoryUsage across all loaded chunks, in bytes.
     size_t totalChunkMemory() const;
     Chunk::MemBreakdown totalChunkBreakdown() const;
@@ -47,6 +50,7 @@ class ChunkManager {
   private:
     int renderDistance;
     TerrainGenerator& terrainGenerator;
+    WorldSave* worldSave = nullptr;
 
     void loadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk);
     void unloadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk);

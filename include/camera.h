@@ -47,6 +47,8 @@ class Camera {
     void changeDirection(glm::vec3 direction);
     glm::vec3 getPosition() const;
     glm::vec3 getFront() const { return cameraFront; }
+    void setPosition(glm::vec3 pos) { cameraPosition = pos; }
+    void setWalkMode(bool wm) { walkMode = wm; }
 
     void defineLookAt(const Shader& shaderProgram);
     glm::mat4 getViewMatrix() const;

@@ -30,7 +30,7 @@ static bool aabbInFrustum(const std::array<glm::vec4, 6>& planes, glm::vec3 minP
     return true;
 }
 
-World::World(unsigned int seed) {
+World::World(unsigned int seed) : seed(seed) {
     this->terrainGenerator = new TerrainGenerator(seed, 0.1, 0, CHUNK_HEIGHT);
     this->chunkManager = new ChunkManager(RENDER_DISTANCE, CHUNK_SIZE, *terrainGenerator);
     this->waterSimulator = new WaterSimulator(this);

@@ -34,6 +34,7 @@
 #include "ui_renderer.h"
 #include "menu.h"
 #include "inventory.h"
+#include "world_save.h"
 
 #define CURSOR_MODE GLFW_CURSOR
 
@@ -415,11 +416,28 @@ int main(int argc, char* argv[]) {
         static
 #endif
             Shader billboardShader("assets/Shaders/billboard_vert.shd", "assets/Shaders/billboard_frag.shd");
+        // Load existing world or create new one
+#ifdef __EMSCRIPTEN__
+        static
+#endif
+            WorldSave worldSave("saves/world");
+        PlayerSaveData loadedPlayer;
+        bool hasSave = worldSave.loadLevelData(worldSeed, loadedPlayer);
 #ifdef __EMSCRIPTEN__
         static
 #endif
             World world(worldSeed);
         std::cout << "World seed: " << worldSeed << std::endl;
+        world.chunkManager->setWorldSave(&worldSave);
+        if (hasSave) {
+            player.getCamera().setPosition(loadedPlayer.position);
+            player.setYawPitch(loadedPlayer.yaw, loadedPlayer.pitch);
+            player.getCamera().setWalkMode(loadedPlayer.walkMode);
+            for (int i = 0; i < Player::HOTBAR_SIZE; i++)
+                player.setHotbarSlot(i, loadedPlayer.hotbar[i]);
+            player.setSelectedSlot(loadedPlayer.selectedSlot);
+            std::cout << "Loaded world save" << std::endl;
+        }
         world.waterSimulator->initAudio(menuObj.getAudioEngine());
         w = &world;
 
@@ -1677,6 +1695,20 @@ int main(int argc, char* argv[]) {
 #else
         while (!glfwWindowShouldClose(window)) {
             mainLoopBody();
+        }
+
+        // Save world on exit
+        {
+            PlayerSaveData pd;
+            pd.position = player.getPosition();
+            pd.yaw = player.getYaw();
+            pd.pitch = player.getPitch();
+            pd.walkMode = player.isWalkMode();
+            std::memcpy(pd.hotbar, player.getHotbar(), sizeof(pd.hotbar));
+            pd.selectedSlot = player.getSelectedSlot();
+            world.chunkManager->saveAllModifiedChunks();
+            worldSave.saveLevelData(world.getSeed(), pd);
+            std::cout << "World saved" << std::endl;
         }
 
         shaderProgram.destroy();
