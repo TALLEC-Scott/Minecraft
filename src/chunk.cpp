@@ -315,6 +315,61 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
         }
     }
 
+    // --- Plant placement (tall grass + flowers) ---
+    // Scan every surface cell. Plants seed on grass blocks with biome-
+    // dependent rolls. PLAINS gets grass + both flower types; FOREST
+    // heavier on grass with occasional poppies; TUNDRA/BEACH sparse.
+    // Desert and ocean skip entirely.
+    for (int px = 0; px < CHUNK_SIZE; ++px) {
+        for (int pz = 0; pz < CHUNK_SIZE; ++pz) {
+            Biome bi = d.biomes[px][pz];
+            if (bi == BIOME_OCEAN || bi == BIOME_DESERT) continue;
+            int surface = d.heights[px][pz];
+            if (surface <= WATER_LEVEL) continue;
+            if (surface + 1 >= CHUNK_HEIGHT) continue;
+            Cube* surf = getBlockFromFlat(flatBlocks.get(), px, surface, pz);
+            if (!surf || surf->getType() != GRASS) continue;
+            Cube* above = getBlockFromFlat(flatBlocks.get(), px, surface + 1, pz);
+            if (!above || above->getType() != AIR) continue;
+            // Skip if a tree canopy (leaves or wood) sits in the column above —
+            // otherwise the plant ends up shaded under a tree and looks wrong.
+            bool underTree = false;
+            for (int y = surface + 2; y < CHUNK_HEIGHT && y <= surface + 8; ++y) {
+                block_type bt = getBlockFromFlat(flatBlocks.get(), px, y, pz)->getType();
+                if (bt == WOOD || bt == LEAVES) {
+                    underTree = true;
+                    break;
+                }
+            }
+            if (underTree) continue;
+            int roll = chanceDist(rng); // 0..99
+            block_type pick = AIR;
+            switch (bi) {
+            case BIOME_PLAINS:
+                if (roll < 25)
+                    pick = TALL_GRASS;
+                else if (roll < 28)
+                    pick = DANDELION;
+                else if (roll < 31)
+                    pick = POPPY;
+                break;
+            case BIOME_FOREST:
+                if (roll < 20)
+                    pick = TALL_GRASS;
+                else if (roll < 22)
+                    pick = POPPY;
+                break;
+            case BIOME_TUNDRA:
+            case BIOME_BEACH:
+                if (roll < 4) pick = TALL_GRASS;
+                break;
+            default:
+                break;
+            }
+            if (pick != AIR) above->setType(pick);
+        }
+    }
+
     // Compute maxSolidY
     d.maxSolidY = 0;
     for (int j = CHUNK_HEIGHT - 1; j >= 0; j--) {
@@ -697,7 +752,8 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
         for (int y = 0; y < opaqueH; y++)
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 block_type t = blocks[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].getType();
-                opaq[oIdx(x, y, z)] = (t != AIR && t != WATER) ? 1 : 0;
+                // Cross-quad plants don't occlude — treat as air for AO.
+                opaq[oIdx(x, y, z)] = (t != AIR && t != WATER && !hasFlag(t, BF_CROSS)) ? 1 : 0;
             }
     // Fill borders from neighbors
     for (int y = 0; y < opaqueH; y++)
@@ -808,8 +864,9 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                         c[fd.u] = u;
                         c[fd.v] = v;
                         block_type bt = getBlock(c[0], c[1], c[2])->getType();
-                        // Skip air blocks entirely.
-                        if (bt == AIR) {
+                        // Skip air blocks entirely, and cross plants —
+                        // the latter are emitted as quads after this loop.
+                        if (bt == AIR || hasFlag(bt, BF_CROSS)) {
                             mask[u][v] = -1;
                             continue;
                         }
@@ -824,7 +881,8 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                             // Water: top + 4 sides, skip bottom. Render where neighbor is air.
                             show = (f != 5) && (nbType == AIR);
                         } else {
-                            show = (nbType == AIR) || (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
+                            show = (nbType == AIR) || hasFlag(nbType, BF_CROSS) ||
+                                   (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
                                    (g_fancyLeaves && (hasFlag(bt, BF_TRANSLUCENT) || hasFlag(nbType, BF_TRANSLUCENT)));
                         }
                         int val = show ? (int)bt : -1;
@@ -1098,6 +1156,71 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                         }
                         v += h;
                     }
+                }
+            }
+        }
+
+        // --- Cross-quad pass for plants in this section ---
+        // Same vertex layout as the face mesher above. Plants are drawn
+        // as two crossed planes, each doubled for back-face visibility.
+        for (int x = 0; x < CHUNK_SIZE; ++x) {
+            for (int y = yMin; y < yMax; ++y) {
+                for (int z = 0; z < CHUNK_SIZE; ++z) {
+                    block_type bt = getBlock(x, y, z)->getType();
+                    if (!hasFlag(bt, BF_CROSS)) continue;
+                    float layer = (float)TextureArray::layerForFace(bt, 0);
+                    uint8_t packedLight = (uint8_t)(getSkyLight(x, y, z) * 16 + getBlockLight(x, y, z));
+                    float wx = (float)(x + chunkX * CHUNK_SIZE);
+                    float wy = (float)y;
+                    float wz = (float)z + chunkY * CHUNK_SIZE;
+                    auto push4 = [&](float p[4][3], bool flipWind) {
+                        size_t off = sm.verts.size();
+                        sm.verts.resize(off + 4 * BYTES_PER_VERT);
+                        PackedVertex* dst = reinterpret_cast<PackedVertex*>(&sm.verts[off]);
+                        constexpr uint8_t uv[4][2] = {{0, 0}, {0, 1}, {1, 1}, {1, 0}};
+                        for (int vi = 0; vi < 4; ++vi) {
+                            dst->px = (int16_t)(p[vi][0] * 2.0f);
+                            dst->py = (int16_t)(p[vi][1] * 2.0f);
+                            dst->pz = (int16_t)(p[vi][2] * 2.0f);
+                            dst->u = uv[vi][0];
+                            dst->v = uv[vi][1];
+                            dst->normalIdx = 4;
+                            dst->texLayer = (uint8_t)layer;
+                            dst->ao = 3;
+                            dst->packedLight = packedLight;
+                            dst++;
+                        }
+                        unsigned int b = opaqueBase;
+                        if (flipWind) {
+                            sm.opaqueIdx.push_back(b);
+                            sm.opaqueIdx.push_back(b + 3);
+                            sm.opaqueIdx.push_back(b + 2);
+                            sm.opaqueIdx.push_back(b + 2);
+                            sm.opaqueIdx.push_back(b + 1);
+                            sm.opaqueIdx.push_back(b);
+                        } else {
+                            sm.opaqueIdx.push_back(b);
+                            sm.opaqueIdx.push_back(b + 1);
+                            sm.opaqueIdx.push_back(b + 2);
+                            sm.opaqueIdx.push_back(b + 2);
+                            sm.opaqueIdx.push_back(b + 3);
+                            sm.opaqueIdx.push_back(b);
+                        }
+                        opaqueBase += 4;
+                    };
+                    float y0 = wy - 0.5f, y1 = wy + 0.5f;
+                    float planeA[4][3] = {{wx - 0.5f, y0, wz - 0.5f},
+                                          {wx - 0.5f, y1, wz - 0.5f},
+                                          {wx + 0.5f, y1, wz + 0.5f},
+                                          {wx + 0.5f, y0, wz + 0.5f}};
+                    float planeB[4][3] = {{wx - 0.5f, y0, wz + 0.5f},
+                                          {wx - 0.5f, y1, wz + 0.5f},
+                                          {wx + 0.5f, y1, wz - 0.5f},
+                                          {wx + 0.5f, y0, wz - 0.5f}};
+                    push4(planeA, false);
+                    push4(planeA, true);
+                    push4(planeB, false);
+                    push4(planeB, true);
                 }
             }
         }
