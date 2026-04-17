@@ -200,7 +200,13 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
         }
     }
 
-    // --- Tree placement ---
+    // --- Unified vegetation placement ---
+    // Trees, cacti and plants all share a single `claimed` occupancy map so
+    // each (x,z) cell can grow at most one vegetation type. Trees claim the
+    // full canopy footprint (radius+1 on each side) so plants/cacti don't
+    // end up shadowed under leaves.
+    bool claimed[CHUNK_SIZE][CHUNK_SIZE] = {};
+
     // Deterministic per-chunk PRNG seeded from chunk coordinates
     uint64_t treeSeed = static_cast<uint64_t>(chunkX) * 73856093ULL ^ static_cast<uint64_t>(chunkZ) * 19349663ULL;
     std::mt19937 rng(static_cast<unsigned int>(treeSeed));
@@ -246,18 +252,28 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
         if (!surfaceBlock || surfaceBlock->getType() != tbp.surfaceBlock) continue;
         if (tbp.surfaceBlock != GRASS) continue; // only plant trees on grass
 
-        // Slope check: reject if any neighbor height differs by more than 2
-        bool tooSteep = false;
-        for (int dx = -1; dx <= 1 && !tooSteep; dx++) {
-            for (int dz = -1; dz <= 1 && !tooSteep; dz++) {
-                if (dx == 0 && dz == 0) continue;
+        // Slope check + claim check on the canopy footprint (radius+1 on each
+        // side). The claim check prevents two trees from overlapping and
+        // blocks plants/cacti from landing under this canopy.
+        int footprint = radius + 1;
+        bool tooSteep = false, overlaps = false;
+        for (int dx = -footprint; dx <= footprint && !tooSteep && !overlaps; dx++) {
+            for (int dz = -footprint; dz <= footprint && !tooSteep && !overlaps; dz++) {
                 int nx = tx + dx, nz = tz + dz;
-                if (nx >= 0 && nx < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
+                if (nx < 0 || nx >= CHUNK_SIZE || nz < 0 || nz >= CHUNK_SIZE) continue;
+                if (claimed[nx][nz]) overlaps = true;
+                if (std::abs(dx) <= 1 && std::abs(dz) <= 1 && !(dx == 0 && dz == 0)) {
                     if (std::abs(d.heights[nx][nz] - surface) > 2) tooSteep = true;
                 }
             }
         }
-        if (tooSteep) continue;
+        if (tooSteep || overlaps) continue;
+
+        for (int dx = -footprint; dx <= footprint; dx++)
+            for (int dz = -footprint; dz <= footprint; dz++) {
+                int nx = tx + dx, nz = tz + dz;
+                if (nx >= 0 && nx < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) claimed[nx][nz] = true;
+            }
 
         // Trunk
         for (int y = surface + 1; y <= surface + trunkH; y++) {
@@ -291,11 +307,12 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
         }
     }
 
-    // --- Cactus placement ---
+    // --- Cactus placement (uses shared claimed[] — see tree pass) ---
     std::uniform_int_distribution<int> cactusDist(2, 4);
     for (int t = 0; t < 3; t++) {
         int cx = posDist(rng);
         int cz = posDist(rng);
+        if (claimed[cx][cz]) continue;
         int roll = chanceDist(rng);
         if (roll >= 30) continue;
 
@@ -313,15 +330,15 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
             Cube* b = getBlockFromFlat(flatBlocks.get(), cx, y, cz);
             if (b && b->getType() == AIR) b->setType(CACTUS);
         }
+        claimed[cx][cz] = true;
     }
 
-    // --- Plant placement (tall grass + flowers) ---
-    // Scan every surface cell. Plants seed on grass blocks with biome-
-    // dependent rolls. PLAINS gets grass + both flower types; FOREST
-    // heavier on grass with occasional poppies; TUNDRA/BEACH sparse.
-    // Desert and ocean skip entirely.
+    // --- Plant placement (uses shared claimed[] — see tree pass) ---
+    // Any cell claimed by a tree canopy or a cactus is skipped, so plants
+    // never appear shadowed under leaves or awkwardly next to a cactus.
     for (int px = 0; px < CHUNK_SIZE; ++px) {
         for (int pz = 0; pz < CHUNK_SIZE; ++pz) {
+            if (claimed[px][pz]) continue;
             Biome bi = d.biomes[px][pz];
             if (bi == BIOME_OCEAN || bi == BIOME_DESERT) continue;
             int surface = d.heights[px][pz];
@@ -331,17 +348,6 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
             if (!surf || surf->getType() != GRASS) continue;
             Cube* above = getBlockFromFlat(flatBlocks.get(), px, surface + 1, pz);
             if (!above || above->getType() != AIR) continue;
-            // Skip if a tree canopy (leaves or wood) sits in the column above —
-            // otherwise the plant ends up shaded under a tree and looks wrong.
-            bool underTree = false;
-            for (int y = surface + 2; y < CHUNK_HEIGHT && y <= surface + 8; ++y) {
-                block_type bt = getBlockFromFlat(flatBlocks.get(), px, y, pz)->getType();
-                if (bt == WOOD || bt == LEAVES) {
-                    underTree = true;
-                    break;
-                }
-            }
-            if (underTree) continue;
             int roll = chanceDist(rng); // 0..99
             block_type pick = AIR;
             switch (bi) {
@@ -366,7 +372,10 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
             default:
                 break;
             }
-            if (pick != AIR) above->setType(pick);
+            if (pick != AIR) {
+                above->setType(pick);
+                claimed[px][pz] = true;
+            }
         }
     }
 
@@ -1161,8 +1170,9 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
         }
 
         // --- Cross-quad pass for plants in this section ---
-        // Same vertex layout as the face mesher above. Plants are drawn
-        // as two crossed planes, each doubled for back-face visibility.
+        // Each plane emits 4 verts and a doubled index list (6 forward + 6
+        // reversed) so the plant is double-sided without duplicating
+        // vertex data. Two planes per plant = 8 verts + 24 indices.
         for (int x = 0; x < CHUNK_SIZE; ++x) {
             for (int y = yMin; y < yMax; ++y) {
                 for (int z = 0; z < CHUNK_SIZE; ++z) {
@@ -1173,7 +1183,7 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                     float wx = (float)(x + chunkX * CHUNK_SIZE);
                     float wy = (float)y;
                     float wz = (float)z + chunkY * CHUNK_SIZE;
-                    auto push4 = [&](float p[4][3], bool flipWind) {
+                    auto emitPlane = [&](float p[4][3]) {
                         size_t off = sm.verts.size();
                         sm.verts.resize(off + 4 * BYTES_PER_VERT);
                         PackedVertex* dst = reinterpret_cast<PackedVertex*>(&sm.verts[off]);
@@ -1191,21 +1201,20 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                             dst++;
                         }
                         unsigned int b = opaqueBase;
-                        if (flipWind) {
-                            sm.opaqueIdx.push_back(b);
-                            sm.opaqueIdx.push_back(b + 3);
-                            sm.opaqueIdx.push_back(b + 2);
-                            sm.opaqueIdx.push_back(b + 2);
-                            sm.opaqueIdx.push_back(b + 1);
-                            sm.opaqueIdx.push_back(b);
-                        } else {
-                            sm.opaqueIdx.push_back(b);
-                            sm.opaqueIdx.push_back(b + 1);
-                            sm.opaqueIdx.push_back(b + 2);
-                            sm.opaqueIdx.push_back(b + 2);
-                            sm.opaqueIdx.push_back(b + 3);
-                            sm.opaqueIdx.push_back(b);
-                        }
+                        // Forward winding
+                        sm.opaqueIdx.push_back(b);
+                        sm.opaqueIdx.push_back(b + 1);
+                        sm.opaqueIdx.push_back(b + 2);
+                        sm.opaqueIdx.push_back(b + 2);
+                        sm.opaqueIdx.push_back(b + 3);
+                        sm.opaqueIdx.push_back(b);
+                        // Reverse winding (back face)
+                        sm.opaqueIdx.push_back(b);
+                        sm.opaqueIdx.push_back(b + 3);
+                        sm.opaqueIdx.push_back(b + 2);
+                        sm.opaqueIdx.push_back(b + 2);
+                        sm.opaqueIdx.push_back(b + 1);
+                        sm.opaqueIdx.push_back(b);
                         opaqueBase += 4;
                     };
                     float y0 = wy - 0.5f, y1 = wy + 0.5f;
@@ -1217,10 +1226,8 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                                           {wx - 0.5f, y1, wz + 0.5f},
                                           {wx + 0.5f, y1, wz - 0.5f},
                                           {wx + 0.5f, y0, wz - 0.5f}};
-                    push4(planeA, false);
-                    push4(planeA, true);
-                    push4(planeB, false);
-                    push4(planeB, true);
+                    emitPlane(planeA);
+                    emitPlane(planeB);
                 }
             }
         }
