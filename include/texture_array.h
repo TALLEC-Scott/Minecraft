@@ -23,6 +23,9 @@ class TextureArray {
     static constexpr int TNT_TOP_LAYER = block_layers::TNT_TOP_LAYER;
     static constexpr int TNT_BOTTOM_LAYER = block_layers::TNT_BOTTOM_LAYER;
     static constexpr int SMOKE_LAYER = block_layers::SMOKE_LAYER;
+    static constexpr int TALL_GRASS_LAYER = block_layers::TALL_GRASS_LAYER;
+    static constexpr int DANDELION_LAYER = block_layers::DANDELION_LAYER;
+    static constexpr int POPPY_LAYER = block_layers::POPPY_LAYER;
     static constexpr int NUM_LAYERS = block_layers::NUM_LAYERS;
     static void initLayerTextures();
     static GLuint getLayerTexture2D(int layer);

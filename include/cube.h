@@ -41,7 +41,10 @@ enum block_type : uint8_t {
     SNOW,
     GRAVEL,
     CACTUS,
-    TNT
+    TNT,
+    TALL_GRASS,
+    DANDELION,
+    POPPY
 };
 
 enum Biome { BIOME_OCEAN, BIOME_BEACH, BIOME_PLAINS, BIOME_FOREST, BIOME_DESERT, BIOME_TUNDRA, BIOME_COUNT };
@@ -79,6 +82,7 @@ enum BlockFlag : uint32_t {
     BF_TRANSPARENT = 1u << 2, // can see through (skip face between same type)
     BF_TRANSLUCENT = 1u << 3, // partially see-through: reduces sky light, don't cull faces (leaves)
     BF_LIQUID = 1u << 4,      // renders with blending, no collision
+    BF_CROSS = 1u << 5,       // cross-quad sprite (plants), alpha cutout, no collision
 };
 
 inline uint32_t getBlockFlags(block_type t) {
@@ -99,6 +103,9 @@ inline uint32_t getBlockFlags(block_type t) {
         /* GRAVEL    */ BF_SOLID | BF_OPAQUE,
         /* CACTUS    */ BF_SOLID | BF_OPAQUE,
         /* TNT       */ BF_SOLID | BF_OPAQUE,
+        /* TALL_GRASS*/ BF_TRANSPARENT | BF_CROSS,
+        /* DANDELION */ BF_TRANSPARENT | BF_CROSS,
+        /* POPPY     */ BF_TRANSPARENT | BF_CROSS,
     };
     // clang-format on
     int idx = static_cast<int>(t);
@@ -145,6 +152,9 @@ inline StepSound getStepSound(block_type t) {
         /* GRAVEL    */ STEP_GRAVEL,
         /* CACTUS    */ STEP_CLOTH,
         /* TNT       */ STEP_CLOTH,
+        /* TALL_GRASS*/ STEP_GRASS,
+        /* DANDELION */ STEP_GRASS,
+        /* POPPY     */ STEP_GRASS,
     };
     // clang-format on
     int idx = static_cast<int>(t);

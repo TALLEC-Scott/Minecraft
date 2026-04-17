@@ -14,6 +14,7 @@ static const char* TEXTURE_PATHS[] = {
     "assets/Textures/cactus.png",   "assets/Textures/cloud.png",       "assets/Textures/skin.png",
     "assets/Textures/moon.png",     "assets/Textures/wood_top.png",    "assets/Textures/tnt.png",
     "assets/Textures/tnt_top.png",  "assets/Textures/tnt_bottom.png",  "assets/Textures/smoke.png",
+    "assets/Textures/tall_grass.png", "assets/Textures/dandelion.png", "assets/Textures/poppy.png",
 };
 static constexpr int NUM_LAYERS = TextureArray::NUM_LAYERS;
 static GLuint layerTextures2D[NUM_LAYERS] = {};

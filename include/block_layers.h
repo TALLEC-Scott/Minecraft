@@ -24,7 +24,10 @@ constexpr int TNT_SIDE_LAYER = 20;
 constexpr int TNT_TOP_LAYER = 21;
 constexpr int TNT_BOTTOM_LAYER = 22;
 constexpr int SMOKE_LAYER = 23;
-constexpr int NUM_LAYERS = 24;
+constexpr int TALL_GRASS_LAYER = 24;
+constexpr int DANDELION_LAYER = 25;
+constexpr int POPPY_LAYER = 26;
+constexpr int NUM_LAYERS = 27;
 
 // Face-aware: grass uses different textures per face (top=grass,
 // bottom=dirt, sides=grass_side). Wood is top/bottom vs sides. Other
@@ -48,11 +51,17 @@ inline int layerForFace(block_type t, int face) {
         if (face == 5) return TNT_BOTTOM_LAYER;
         return TNT_SIDE_LAYER;
     }
+    if (t == TALL_GRASS) return TALL_GRASS_LAYER;
+    if (t == DANDELION) return DANDELION_LAYER;
+    if (t == POPPY) return POPPY_LAYER;
     return static_cast<int>(t);
 }
 
 inline int layerForType(block_type t) {
     if (t == TNT) return TNT_SIDE_LAYER;
+    if (t == TALL_GRASS) return TALL_GRASS_LAYER;
+    if (t == DANDELION) return DANDELION_LAYER;
+    if (t == POPPY) return POPPY_LAYER;
     return static_cast<int>(t);
 }
 

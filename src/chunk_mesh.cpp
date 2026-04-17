@@ -89,7 +89,9 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
         for (int y = 0; y < opaqueH; y++)
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 block_type t = blocks[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].getType();
-                opaq[oIdx(x, y, z)] = (t != AIR && t != WATER) ? 1 : 0;
+                // Cross-quad plants don't occlude neighbors and shouldn't
+                // contribute to AO — treat them as air for the opacity map.
+                opaq[oIdx(x, y, z)] = (t != AIR && t != WATER && !hasFlag(t, BF_CROSS)) ? 1 : 0;
             }
 
     for (int y = 0; y < opaqueH; y++)
@@ -177,7 +179,10 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                     c[fd.u] = u;
                     c[fd.v] = v;
                     block_type bt = blocks[c[0] * CHUNK_HEIGHT * CHUNK_SIZE + c[1] * CHUNK_SIZE + c[2]].getType();
-                    if (bt == AIR) {
+                    // Cross-quad plants are emitted separately after the
+                    // face loop — skip them here so they don't try to emit
+                    // cube faces.
+                    if (bt == AIR || hasFlag(bt, BF_CROSS)) {
                         mask[u][v] = -1;
                         continue;
                     }
@@ -188,7 +193,8 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                     if (hasFlag(bt, BF_LIQUID)) {
                         show = (f != 5) && (nbType == AIR);
                     } else {
-                        show = (nbType == AIR) || (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
+                        show = (nbType == AIR) || hasFlag(nbType, BF_CROSS) ||
+                               (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
                                (g_fancyLeaves && (hasFlag(bt, BF_TRANSLUCENT) || hasFlag(nbType, BF_TRANSLUCENT)));
                     }
                     int val = show ? (int)bt : -1;
@@ -364,6 +370,86 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                     }
                     v += h;
                 }
+            }
+        }
+    }
+
+    // --- Cross-quad pass for plants (BF_CROSS) ---
+    // Each plant is rendered as two intersecting planes (X shape) made
+    // double-sided by emitting each quad twice with opposite winding.
+    // Texture cutout is handled in the fragment shader (alpha < 0.5 →
+    // discard for plant layers).
+    auto emitCross = [&](int lx, int ly, int lz, block_type bt) {
+        float layer = (float)block_layers::layerForFace(bt, 0);
+        int skyL = slDirect(lx, ly, lz);
+        int blkL = blDirect(lx, ly, lz);
+        uint8_t packedLight = (uint8_t)(skyL * 16 + blkL);
+        // World-space bounds of the block cell, with ×2 encoding applied.
+        float wx = (float)(lx + chunkX * CHUNK_SIZE);
+        float wz = (float)(lz + chunkZ * CHUNK_SIZE);
+        float wy = (float)ly;
+        auto push4 = [&](float p[4][3], bool flipWind) {
+            size_t off = opaqueVerts.size();
+            opaqueVerts.resize(off + 4 * BYTES_PER_VERT);
+            PackedVertex* dst = reinterpret_cast<PackedVertex*>(&opaqueVerts[off]);
+            // UVs match emitCross call site: (0,0), (0,1), (1,1), (1,0).
+            constexpr uint8_t uv[4][2] = {{0, 0}, {0, 1}, {1, 1}, {1, 0}};
+            for (int vi = 0; vi < 4; ++vi) {
+                dst->px = (int16_t)(p[vi][0] * 2.0f);
+                dst->py = (int16_t)(p[vi][1] * 2.0f);
+                dst->pz = (int16_t)(p[vi][2] * 2.0f);
+                dst->u = uv[vi][0];
+                dst->v = uv[vi][1];
+                dst->normalIdx = 4; // top normal — gives the +y face-brightness; good enough for plants
+                dst->texLayer = (uint8_t)layer;
+                dst->ao = 3;        // full-bright AO (AO_CURVE[3] = 1.0)
+                dst->packedLight = packedLight;
+                dst++;
+            }
+            unsigned int b = opaqueBase;
+            if (flipWind) {
+                opaqueIdx.push_back(b);
+                opaqueIdx.push_back(b + 3);
+                opaqueIdx.push_back(b + 2);
+                opaqueIdx.push_back(b + 2);
+                opaqueIdx.push_back(b + 1);
+                opaqueIdx.push_back(b);
+            } else {
+                opaqueIdx.push_back(b);
+                opaqueIdx.push_back(b + 1);
+                opaqueIdx.push_back(b + 2);
+                opaqueIdx.push_back(b + 2);
+                opaqueIdx.push_back(b + 3);
+                opaqueIdx.push_back(b);
+            }
+            opaqueBase += 4;
+        };
+        float y0 = wy - 0.5f, y1 = wy + 0.5f;
+        // Plane A: diagonal from (-x,-z) to (+x,+z)
+        float planeA[4][3] = {
+            {wx - 0.5f, y0, wz - 0.5f},
+            {wx - 0.5f, y1, wz - 0.5f},
+            {wx + 0.5f, y1, wz + 0.5f},
+            {wx + 0.5f, y0, wz + 0.5f},
+        };
+        // Plane B: diagonal from (-x,+z) to (+x,-z)
+        float planeB[4][3] = {
+            {wx - 0.5f, y0, wz + 0.5f},
+            {wx - 0.5f, y1, wz + 0.5f},
+            {wx + 0.5f, y1, wz - 0.5f},
+            {wx + 0.5f, y0, wz - 0.5f},
+        };
+        push4(planeA, false);
+        push4(planeA, true); // back-side
+        push4(planeB, false);
+        push4(planeB, true); // back-side
+    };
+
+    for (int x = 0; x < CHUNK_SIZE; ++x) {
+        for (int y = 0; y < opaqueH; ++y) {
+            for (int z = 0; z < CHUNK_SIZE; ++z) {
+                block_type t = blocks[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].getType();
+                if (hasFlag(t, BF_CROSS)) emitCross(x, y, z, t);
             }
         }
     }
