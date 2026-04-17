@@ -6,6 +6,7 @@
 #include <glm/vec3.hpp>
 #include "chunk.h"
 #include "world_save.h"
+#include <climits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -90,11 +91,15 @@ class ChunkManager {
     std::vector<std::thread> workers;
     std::atomic<bool> shutdownFlag{false};
 
-    glm::ivec2 currentMin, currentMax;
-
     void workerLoop();
     void drainResults();
     void queueMeshBuild(glm::ivec2 pos);
     void queueDirtyMeshBuilds();
 #endif
+
+    // Render-distance box from the last update() call. Used to early-out
+    // loadChunks/unloadChunks when the player hasn't crossed a chunk
+    // boundary. Available on both desktop and web builds.
+    glm::ivec2 currentMin{INT_MIN, INT_MIN};
+    glm::ivec2 currentMax{INT_MIN, INT_MIN};
 };
