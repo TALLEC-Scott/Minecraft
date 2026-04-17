@@ -384,15 +384,16 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
         int skyL = slDirect(lx, ly, lz);
         int blkL = blDirect(lx, ly, lz);
         uint8_t packedLight = (uint8_t)(skyL * 16 + blkL);
-        // World-space bounds of the block cell, with ×2 encoding applied.
         float wx = (float)(lx + chunkX * CHUNK_SIZE);
         float wz = (float)(lz + chunkZ * CHUNK_SIZE);
         float wy = (float)ly;
-        auto push4 = [&](float p[4][3], bool flipWind) {
+        // Each plane emits 4 unique verts and 12 indices (6 forward + 6
+        // reversed), so the plant is double-sided without duplicating
+        // vertex data. Two planes per plant → 8 verts + 24 indices.
+        auto emitPlane = [&](float p[4][3]) {
             size_t off = opaqueVerts.size();
             opaqueVerts.resize(off + 4 * BYTES_PER_VERT);
             PackedVertex* dst = reinterpret_cast<PackedVertex*>(&opaqueVerts[off]);
-            // UVs match emitCross call site: (0,0), (0,1), (1,1), (1,0).
             constexpr uint8_t uv[4][2] = {{0, 0}, {0, 1}, {1, 1}, {1, 0}};
             for (int vi = 0; vi < 4; ++vi) {
                 dst->px = (int16_t)(p[vi][0] * 2.0f);
@@ -400,49 +401,40 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                 dst->pz = (int16_t)(p[vi][2] * 2.0f);
                 dst->u = uv[vi][0];
                 dst->v = uv[vi][1];
-                dst->normalIdx = 4; // top normal — gives the +y face-brightness; good enough for plants
+                dst->normalIdx = 4; // +Y — gives the plant full face-brightness
                 dst->texLayer = (uint8_t)layer;
-                dst->ao = 3;        // full-bright AO (AO_CURVE[3] = 1.0)
+                dst->ao = 3;        // AO_CURVE[3] = 1.0 (full bright)
                 dst->packedLight = packedLight;
                 dst++;
             }
             unsigned int b = opaqueBase;
-            if (flipWind) {
-                opaqueIdx.push_back(b);
-                opaqueIdx.push_back(b + 3);
-                opaqueIdx.push_back(b + 2);
-                opaqueIdx.push_back(b + 2);
-                opaqueIdx.push_back(b + 1);
-                opaqueIdx.push_back(b);
-            } else {
-                opaqueIdx.push_back(b);
-                opaqueIdx.push_back(b + 1);
-                opaqueIdx.push_back(b + 2);
-                opaqueIdx.push_back(b + 2);
-                opaqueIdx.push_back(b + 3);
-                opaqueIdx.push_back(b);
-            }
+            // Forward winding
+            opaqueIdx.push_back(b);
+            opaqueIdx.push_back(b + 1);
+            opaqueIdx.push_back(b + 2);
+            opaqueIdx.push_back(b + 2);
+            opaqueIdx.push_back(b + 3);
+            opaqueIdx.push_back(b);
+            // Reverse winding (back face)
+            opaqueIdx.push_back(b);
+            opaqueIdx.push_back(b + 3);
+            opaqueIdx.push_back(b + 2);
+            opaqueIdx.push_back(b + 2);
+            opaqueIdx.push_back(b + 1);
+            opaqueIdx.push_back(b);
             opaqueBase += 4;
         };
         float y0 = wy - 0.5f, y1 = wy + 0.5f;
-        // Plane A: diagonal from (-x,-z) to (+x,+z)
-        float planeA[4][3] = {
-            {wx - 0.5f, y0, wz - 0.5f},
-            {wx - 0.5f, y1, wz - 0.5f},
-            {wx + 0.5f, y1, wz + 0.5f},
-            {wx + 0.5f, y0, wz + 0.5f},
-        };
-        // Plane B: diagonal from (-x,+z) to (+x,-z)
-        float planeB[4][3] = {
-            {wx - 0.5f, y0, wz + 0.5f},
-            {wx - 0.5f, y1, wz + 0.5f},
-            {wx + 0.5f, y1, wz - 0.5f},
-            {wx + 0.5f, y0, wz - 0.5f},
-        };
-        push4(planeA, false);
-        push4(planeA, true); // back-side
-        push4(planeB, false);
-        push4(planeB, true); // back-side
+        float planeA[4][3] = {{wx - 0.5f, y0, wz - 0.5f},
+                              {wx - 0.5f, y1, wz - 0.5f},
+                              {wx + 0.5f, y1, wz + 0.5f},
+                              {wx + 0.5f, y0, wz + 0.5f}};
+        float planeB[4][3] = {{wx - 0.5f, y0, wz + 0.5f},
+                              {wx - 0.5f, y1, wz + 0.5f},
+                              {wx + 0.5f, y1, wz - 0.5f},
+                              {wx + 0.5f, y0, wz - 0.5f}};
+        emitPlane(planeA);
+        emitPlane(planeB);
     };
 
     for (int x = 0; x < CHUNK_SIZE; ++x) {

@@ -68,13 +68,19 @@ void ChunkManager::update(glm::vec3 cameraPosition) {
     glm::ivec2 maxChunk = currentChunk + glm::ivec2(renderDistance);
 
 #ifndef __EMSCRIPTEN__
-    currentMin = minChunk;
-    currentMax = maxChunk;
     drainResults();
 #endif
 
-    loadChunks(minChunk, maxChunk);
-    unloadChunks(minChunk, maxChunk);
+    // Skip the N² box scan in loadChunks/unloadChunks when the player
+    // hasn't crossed a chunk boundary this frame — in steady state this
+    // dominates the update budget for no useful work.
+    bool boxChanged = (minChunk != currentMin) || (maxChunk != currentMax);
+    currentMin = minChunk;
+    currentMax = maxChunk;
+    if (boxChanged) {
+        loadChunks(minChunk, maxChunk);
+        unloadChunks(minChunk, maxChunk);
+    }
 
     // Flush pendingMesh for chunks that haven't been rendered in a while.
     // Without this, async mesh builds for invisible chunks leak the full
