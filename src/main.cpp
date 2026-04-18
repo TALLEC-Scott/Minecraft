@@ -1168,8 +1168,16 @@ int main(int argc, char* argv[]) {
             glm::vec3 skyColor = getSkyColor(timeValue);
             constexpr float WATER_SURFACE = CHUNK_HEIGHT / 2.0f;
             constexpr float WATER_DEPTH_RANGE = 15.0f;
-            const glm::vec3 SHALLOW_BLUE(0.15f, 0.4f, 0.7f);
-            const glm::vec3 DEEP_BLUE(0.02f, 0.05f, 0.15f);
+            // Day-lit underwater colors. Scaled by the sun-height factor
+            // at render time so the water darkens at night instead of
+            // staying bright blue.
+            const glm::vec3 SHALLOW_BLUE_DAY(0.15f, 0.4f, 0.7f);
+            const glm::vec3 DEEP_BLUE_DAY(0.02f, 0.05f, 0.15f);
+            // clamp(sin*2, 0.08, 1): 1.0 at noon → 0.08 floor at deep
+            // night so the tint is still faintly blue, not pitch black.
+            float daylight = std::clamp(std::sin(timeValue) * 2.0f, 0.08f, 1.0f);
+            glm::vec3 SHALLOW_BLUE = SHALLOW_BLUE_DAY * daylight;
+            glm::vec3 DEEP_BLUE = DEEP_BLUE_DAY * daylight;
             bool underwater = player.getCamera().areEyesInWater();
             float waterDepthFactor = 0.0f;
             if (underwater) {
