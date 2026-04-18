@@ -25,10 +25,12 @@
 #include <iomanip>
 #include <fstream>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <optional>
 #include <random>
+#include <thread>
 
 #include "profiler.h"
 #include "tracy_shim.h"
@@ -74,6 +76,23 @@ constexpr const char* SETTINGS_PATH = "settings.txt";
 // browser viewport nor the desktop monitor can report a usable size.
 constexpr int FALLBACK_WINDOW_WIDTH = 1280;
 constexpr int FALLBACK_WINDOW_HEIGHT = 720;
+
+// Cap the frame rate to 60 FPS in menu / loading / pause states so we don't
+// burn GPU cycles when nothing in the world is changing. A real-world render
+// loop in MainMenu on an uncapped card runs 1000+ fps; this brings it to 60
+// so the fans stay quiet. Emscripten handles frame pacing itself via
+// requestAnimationFrame, so the sleep is native-only.
+static void throttleMenuFrame() {
+#ifndef __EMSCRIPTEN__
+    using Clock = std::chrono::steady_clock;
+    static auto lastFrame = Clock::now();
+    constexpr auto TARGET = std::chrono::microseconds(16667); // ~1/60 s
+    auto now = Clock::now();
+    auto elapsed = now - lastFrame;
+    if (elapsed < TARGET) std::this_thread::sleep_for(TARGET - elapsed);
+    lastFrame = Clock::now();
+#endif
+}
 
 // Flush MEMFS → IndexedDB on web so anything we just wrote survives a
 // page reload. No-op on desktop.
@@ -1264,6 +1283,10 @@ int main(int argc, char* argv[]) {
             Shader& shaderProgram = *g_shader;
             UIRenderer& uiRenderer = *g_uiRenderer;
             Menu& menu = *g_menu;
+
+            // Cap the frame rate outside Playing — menus / pause / loading
+            // don't need more than 60 fps.
+            if (currentState != GameState::Playing) throttleMenuFrame();
 
             // --- Menu states ---
             // No chunk pumping in menu states — we don't know which world
