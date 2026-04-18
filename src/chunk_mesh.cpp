@@ -89,16 +89,9 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
         for (int y = 0; y < opaqueH; y++)
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 block_type t = blocks[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].getType();
-                // Cross-quad plants don't occlude neighbors and shouldn't
-                // contribute to AO — treat them as air for the opacity map.
-                opaq[oIdx(x, y, z)] = (t != AIR && t != WATER && !hasFlag(t, BF_CROSS)) ? 1 : 0;
+                opaq[oIdx(x, y, z)] = isAOOccluder(t) ? 1 : 0;
             }
 
-    // Borders from neighbor chunks: cross-quad plants shouldn't cast AO
-    // shadows across chunk seams, same rule as the interior fill.
-    auto isAOOccluder = [](block_type t) {
-        return t != AIR && t != WATER && !hasFlag(t, BF_CROSS);
-    };
     for (int y = 0; y < opaqueH; y++)
         for (int z = 0; z < CHUNK_SIZE; z++) {
             if (nb.xNeg.valid) opaq[oIdx(-1, y, z)] = isAOOccluder(nb.xNeg.types[z][y]) ? 1 : 0;

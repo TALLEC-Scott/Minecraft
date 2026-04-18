@@ -762,11 +762,8 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
         for (int y = 0; y < opaqueH; y++)
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 block_type t = blocks[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].getType();
-                // Cross-quad plants don't occlude — treat as air for AO.
-                opaq[oIdx(x, y, z)] = (t != AIR && t != WATER && !hasFlag(t, BF_CROSS)) ? 1 : 0;
+                opaq[oIdx(x, y, z)] = isAOOccluder(t) ? 1 : 0;
             }
-    // Fill borders from neighbors. Cross plants don't cast AO across seams.
-    auto isAOOccluder = [](block_type t) { return t != AIR && t != WATER && !hasFlag(t, BF_CROSS); };
     for (int y = 0; y < opaqueH; y++)
         for (int z = 0; z < CHUNK_SIZE; z++) {
             if (nx_neg) opaq[oIdx(-1, y, z)] = isAOOccluder(nx_neg->getBlock(CHUNK_SIZE - 1, y, z)->getType()) ? 1 : 0;

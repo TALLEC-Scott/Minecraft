@@ -69,26 +69,23 @@ void ChunkManager::update(glm::vec3 cameraPosition) {
 
 #ifndef __EMSCRIPTEN__
     drainResults();
-    // Native path: workers generate chunks asynchronously, so loadChunks
-    // just queues requests. Skip the N² box scan when the player hasn't
-    // crossed a chunk boundary - workers drain the existing queue on
-    // their own. In steady state this dominates the update budget.
+#endif
     bool boxChanged = (minChunk != currentMin) || (maxChunk != currentMax);
     currentMin = minChunk;
     currentMax = maxChunk;
+#ifdef __EMSCRIPTEN__
+    // Web: loadChunks generates up to MAX_CHUNKS_PER_FRAME chunks
+    // synchronously per call, so we must keep calling it to stream the
+    // render box in. unloadChunks only needs to run when the box moved.
+    loadChunks(minChunk, maxChunk);
+    if (boxChanged) unloadChunks(minChunk, maxChunk);
+#else
+    // Native: workers drain the existing request queue on their own, so
+    // both passes can sit out until the player crosses a chunk boundary.
     if (boxChanged) {
         loadChunks(minChunk, maxChunk);
         unloadChunks(minChunk, maxChunk);
     }
-#else
-    // Web: loadChunks generates MAX_CHUNKS_PER_FRAME chunks synchronously
-    // each call. We MUST call it every frame or the world stops streaming
-    // after the first render-distance-box worth of chunks. unloadChunks
-    // can still early-out since nothing's moved.
-    currentMin = minChunk;
-    currentMax = maxChunk;
-    loadChunks(minChunk, maxChunk);
-    unloadChunks(minChunk, maxChunk);
 #endif
 
     // Flush pendingMesh for chunks that haven't been rendered in a while.

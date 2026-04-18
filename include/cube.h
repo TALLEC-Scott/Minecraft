@@ -117,6 +117,14 @@ inline bool hasFlag(block_type t, uint32_t f) {
     return (getBlockFlags(t) & f) != 0;
 }
 
+// Should this block count as a solid neighbor for ambient-occlusion?
+// Cross-quad plants (BF_CROSS) don't model solid geometry so they must
+// NOT cast AO shadows on adjacent cube faces. Liquid + air are also
+// excluded. Used by the mesh builders' opacity grid.
+inline bool isAOOccluder(block_type t) {
+    return t != AIR && t != WATER && !hasFlag(t, BF_CROSS);
+}
+
 enum StepSound {
     STEP_NONE,
     STEP_GRASS,
