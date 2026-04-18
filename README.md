@@ -162,7 +162,7 @@ make -C build tests && ./build/tests
 | **E** | Toggle inventory |
 | **X** | Wireframe (desktop only) |
 | **F12** | Fullscreen (desktop only) |
-| **Esc** / **Tab** (web) | Pause menu |
+| **Esc** (desktop) / **M** (web) | Pause menu |
 
 ## Project Structure
 

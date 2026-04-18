@@ -219,9 +219,10 @@ static void buildHeldBlockMesh(block_type bt) {
 }
 
 void processInput(GLFWwindow* window) {
-    // Pause: ESC on desktop, TAB on web
+    // Pause: ESC on desktop, M on web (ESC exits pointer lock in browsers
+    // and TAB is intercepted by tab-stop focus cycling).
 #ifdef __EMSCRIPTEN__
-    bool pauseDown = glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS;
+    bool pauseDown = glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS;
 #else
     bool pauseDown = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
 #endif
