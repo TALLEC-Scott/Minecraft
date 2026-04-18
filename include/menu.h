@@ -49,6 +49,9 @@ class Menu {
     // Only apply to whichever input is currently active.
     void onCharInput(unsigned int codepoint);
     void onKeyInput(int key, int action);
+    // Called from main on the Playing→Paused transition so the pause menu's
+    // ESC edge detector knows the key is already held.
+    void notifyEscHeldForPause() { widgets.markEscHeld(); }
     // Refresh cached world list (call when transitioning into WorldList state).
     void refreshWorldList();
 

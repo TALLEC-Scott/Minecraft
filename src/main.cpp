@@ -330,7 +330,10 @@ void processInput(GLFWwindow* window) {
         } else {
             currentState = GameState::Paused;
             glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
-            if (g_menu) g_menu->stopMusic();
+            if (g_menu) {
+                g_menu->stopMusic();
+                g_menu->notifyEscHeldForPause();
+            }
         }
         escKeyPressed = pauseDown;
         return;
@@ -626,6 +629,37 @@ int main(int argc, char* argv[]) {
             return true;
         };
 
+        // Cloud pattern texture. Regenerated each world switch so the cloud
+        // layout tracks the world's seed (pre-refactor behavior). VAO setup
+        // happens later; the texture object is created lazily on first use.
+        constexpr int CLOUD_GRID = 128;
+        constexpr int CLOUD_BLOCK = 12;
+        constexpr float CLOUD_DEPTH = 4.0f;
+        constexpr float CLOUD_EXTENT = 2000.0f;
+        GLuint cloudPatternTex = 0;
+        auto regenerateCloudPattern = [&](unsigned int seed) {
+            TerrainGenerator cloudNoise(seed, 0.1f, 0, 10);
+            std::vector<uint8_t> pixels(CLOUD_GRID * CLOUD_GRID * 4);
+            for (int gx = 0; gx < CLOUD_GRID; gx++) {
+                for (int gz = 0; gz < CLOUD_GRID; gz++) {
+                    int idx = (gz * CLOUD_GRID + gx) * 4;
+                    bool isCloud = cloudNoise.getNoise(gx, gz) >= 0.65f;
+                    pixels[idx + 0] = 255;
+                    pixels[idx + 1] = 255;
+                    pixels[idx + 2] = 255;
+                    pixels[idx + 3] = isCloud ? 255 : 0;
+                }
+            }
+            if (!cloudPatternTex) glGenTextures(1, &cloudPatternTex);
+            glBindTexture(GL_TEXTURE_2D, cloudPatternTex);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, CLOUD_GRID, CLOUD_GRID, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                         pixels.data());
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        };
+
         // Load (or create) the world at saves/<folder>. `seedOverride` forces
         // a specific seed (new-world creation or --seed); otherwise level.dat
         // wins when present.
@@ -646,6 +680,7 @@ int main(int argc, char* argv[]) {
             if (!displayName.empty()) worldSave->setDisplayName(displayName);
 
             std::cout << "World: " << folder << "  seed: " << seed << std::endl;
+            regenerateCloudPattern(seed);
             world.emplace(seed);
             world->chunkManager->setWorldSave(&*worldSave);
             world->waterSimulator->initAudio(menuObj.getAudioEngine());
@@ -716,44 +751,13 @@ int main(int argc, char* argv[]) {
         glEnableVertexAttribArray(4);
         glBindVertexArray(0);
 
-        // Cloud system: texture-based infinite tiling clouds with 3D volume
-        constexpr int CLOUD_GRID = 128;
-        constexpr int CLOUD_BLOCK = 12;
-        constexpr float CLOUD_DEPTH = 4.0f;
-        constexpr float CLOUD_EXTENT = 2000.0f; // half-size of cloud quad
-        GLuint cloudPatternTex = 0;
+        // Cloud shader + VAOs. The pattern texture itself is generated per-world
+        // by regenerateCloudPattern (above) so cloud layout tracks the world seed.
 #ifdef __EMSCRIPTEN__
         static
 #endif
             Shader cloudShader("assets/Shaders/cloud_vert.shd", "assets/Shaders/cloud_frag.shd");
         {
-            // Generate cloud pattern texture from noise. Uses its own
-            // TerrainGenerator (seed 0) so cloud shapes don't depend on
-            // which world is loaded — they look identical across worlds.
-            // scale=0.1 matches what World's generator uses; with scale=1.0
-            // Perlin noise evaluated at integer lattice points is identically
-            // 0, and the >= 0.65 threshold never fires → blank sky.
-            TerrainGenerator cloudNoise(0, 0.1f, 0, 10);
-            std::vector<uint8_t> pixels(CLOUD_GRID * CLOUD_GRID * 4);
-            for (int gx = 0; gx < CLOUD_GRID; gx++) {
-                for (int gz = 0; gz < CLOUD_GRID; gz++) {
-                    int idx = (gz * CLOUD_GRID + gx) * 4;
-                    bool isCloud = cloudNoise.getNoise(gx, gz) >= 0.65f;
-                    pixels[idx + 0] = 255;
-                    pixels[idx + 1] = 255;
-                    pixels[idx + 2] = 255;
-                    pixels[idx + 3] = isCloud ? 255 : 0;
-                }
-            }
-            glGenTextures(1, &cloudPatternTex);
-            glBindTexture(GL_TEXTURE_2D, cloudPatternTex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, CLOUD_GRID, CLOUD_GRID, 0, GL_RGBA, GL_UNSIGNED_BYTE,
-                         pixels.data());
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
             // Cloud quad VAO: just 4 vertices, reused for all 6 faces
             float quadVerts[] = {
                 -CLOUD_EXTENT, 0, -CLOUD_EXTENT, -CLOUD_EXTENT, 0, CLOUD_EXTENT,

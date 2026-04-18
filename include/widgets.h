@@ -70,6 +70,10 @@ class Widgets {
     bool escPressed(GLFWwindow* window);
     // For external widgets that need to consume the current click.
     void consumeClick() { clickConsumed = true; }
+    // Tell the edge detector that ESC is currently held. Call on Playing→Paused
+    // so the pause screen's first escPressed() doesn't fire on the same press
+    // that opened it (which would close the menu immediately).
+    void markEscHeld() { escWasPressed = true; }
 
     // --- Text-input key / char routing (from GLFW callbacks) ---
     void onCharInput(unsigned int codepoint);
