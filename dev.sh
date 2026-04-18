@@ -47,6 +47,13 @@ Misc:
 EOF
 }
 
+bump_version_strings() {
+    local v="$1"
+    sed -i "s/\"v[0-9]*\.[0-9]*\.[0-9]*\"/\"v${v}\"/" src/menu.cpp
+    sed -i "s/APP_VERSION = \"[0-9]*\.[0-9]*\.[0-9]*\"/APP_VERSION = \"${v}\"/" web/shell.html
+    sed -i "s/favicon.png?v=[0-9]*\.[0-9]*\.[0-9]*/favicon.png?v=${v}/" web/shell.html
+}
+
 cmd="${1:-}"
 shift || true
 
@@ -110,6 +117,7 @@ case "$cmd" in
         ;;
     release)
         [ -z "$1" ] && { echo "Usage: ./dev.sh release X.Y.Z"; exit 1; }
+        bump_version_strings "$1"
         ./scripts/release.sh "$1"
         ;;
     bump)
@@ -126,6 +134,7 @@ case "$cmd" in
             patch) new="$maj.$min.$((pat + 1))" ;;
         esac
         echo "Latest: v$latest -> new: v$new ($level bump)"
+        bump_version_strings "$new"
         ./scripts/release.sh "$new"
         ;;
     clean)

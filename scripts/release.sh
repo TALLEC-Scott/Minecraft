@@ -13,11 +13,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "=== Releasing v${VERSION} ==="
-
-# Version string bumps
-sed -i "s/\"v[0-9]*\.[0-9]*\.[0-9]*\"/\"v${VERSION}\"/" src/menu.cpp
-sed -i "s/APP_VERSION = \"[0-9]*\.[0-9]*\.[0-9]*\"/APP_VERSION = \"${VERSION}\"/" web/shell.html
-sed -i "s/favicon.png?v=[0-9]*\.[0-9]*\.[0-9]*/favicon.png?v=${VERSION}/" web/shell.html
+# Expects version strings in src/menu.cpp + web/shell.html to already be at
+# VERSION. `./dev.sh release <ver>` and `./dev.sh bump <level>` call
+# bump_version_strings before delegating here.
 
 echo "Building desktop (release, clang-tidy off)..."
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_CLANG_TIDY=OFF > /dev/null 2>&1
