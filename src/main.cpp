@@ -637,7 +637,17 @@ int main(int argc, char* argv[]) {
         constexpr float CLOUD_DEPTH = 4.0f;
         constexpr float CLOUD_EXTENT = 2000.0f;
         GLuint cloudPatternTex = 0;
-        auto regenerateCloudPattern = [&](unsigned int seed) {
+        auto uploadCloudPixels = [&](const std::vector<uint8_t>& pixels) {
+            if (!cloudPatternTex) glGenTextures(1, &cloudPatternTex);
+            glBindTexture(GL_TEXTURE_2D, cloudPatternTex);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, CLOUD_GRID, CLOUD_GRID, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                         pixels.data());
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        };
+        auto bakeCloudPixels = [&](unsigned int seed) {
             TerrainGenerator cloudNoise(seed, 0.1f, 0, 10);
             std::vector<uint8_t> pixels(CLOUD_GRID * CLOUD_GRID * 4);
             for (int gx = 0; gx < CLOUD_GRID; gx++) {
@@ -650,14 +660,27 @@ int main(int argc, char* argv[]) {
                     pixels[idx + 3] = isCloud ? 255 : 0;
                 }
             }
-            if (!cloudPatternTex) glGenTextures(1, &cloudPatternTex);
-            glBindTexture(GL_TEXTURE_2D, cloudPatternTex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, CLOUD_GRID, CLOUD_GRID, 0, GL_RGBA, GL_UNSIGNED_BYTE,
-                         pixels.data());
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+            return pixels;
+        };
+        // Load cloud pixels from saves/<folder>/clouds.bin if present, else
+        // bake from the world's seed and persist so the next load is a
+        // straight file read. Raw RGBA (64 KB) — negligible, no compression needed.
+        auto loadOrBakeCloudPattern = [&](const std::string& folder, unsigned int seed) {
+            std::string path = "saves/" + folder + "/clouds.bin";
+            constexpr size_t CLOUD_BYTES = static_cast<size_t>(CLOUD_GRID) * CLOUD_GRID * 4;
+            std::vector<uint8_t> pixels;
+            std::ifstream in(path, std::ios::binary);
+            if (in) {
+                pixels.resize(CLOUD_BYTES);
+                in.read(reinterpret_cast<char*>(pixels.data()), CLOUD_BYTES);
+                if (in.gcount() != static_cast<std::streamsize>(CLOUD_BYTES)) pixels.clear();
+            }
+            if (pixels.empty()) {
+                pixels = bakeCloudPixels(seed);
+                std::ofstream out(path, std::ios::binary);
+                if (out) out.write(reinterpret_cast<const char*>(pixels.data()), CLOUD_BYTES);
+            }
+            uploadCloudPixels(pixels);
         };
 
         // Load (or create) the world at saves/<folder>. `seedOverride` forces
@@ -680,7 +703,7 @@ int main(int argc, char* argv[]) {
             if (!displayName.empty()) worldSave->setDisplayName(displayName);
 
             std::cout << "World: " << folder << "  seed: " << seed << std::endl;
-            regenerateCloudPattern(seed);
+            loadOrBakeCloudPattern(folder, seed);
             world.emplace(seed);
             world->chunkManager->setWorldSave(&*worldSave);
             world->waterSimulator->initAudio(menuObj.getAudioEngine());
