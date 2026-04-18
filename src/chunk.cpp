@@ -847,6 +847,7 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
         sm.verts.clear();
         sm.waterVerts.clear();
         sm.opaqueIdx.clear();
+        sm.crossIdx.clear();
         sm.waterIdx.clear();
         unsigned int opaqueBase = 0, waterBase = 0;
 
@@ -1201,20 +1202,12 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                             dst++;
                         }
                         unsigned int b = opaqueBase;
-                        // Forward winding
-                        sm.opaqueIdx.push_back(b);
-                        sm.opaqueIdx.push_back(b + 1);
-                        sm.opaqueIdx.push_back(b + 2);
-                        sm.opaqueIdx.push_back(b + 2);
-                        sm.opaqueIdx.push_back(b + 3);
-                        sm.opaqueIdx.push_back(b);
-                        // Reverse winding (back face)
-                        sm.opaqueIdx.push_back(b);
-                        sm.opaqueIdx.push_back(b + 3);
-                        sm.opaqueIdx.push_back(b + 2);
-                        sm.opaqueIdx.push_back(b + 2);
-                        sm.opaqueIdx.push_back(b + 1);
-                        sm.opaqueIdx.push_back(b);
+                        sm.crossIdx.push_back(b);
+                        sm.crossIdx.push_back(b + 1);
+                        sm.crossIdx.push_back(b + 2);
+                        sm.crossIdx.push_back(b + 2);
+                        sm.crossIdx.push_back(b + 3);
+                        sm.crossIdx.push_back(b);
                         opaqueBase += 4;
                     };
                     float y0 = wy - 0.5f, y1 = wy + 0.5f;
@@ -1240,14 +1233,16 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
         pendingMesh.verts.clear();
         pendingMesh.waterVerts.clear();
         pendingMesh.opaqueIdx.clear();
+        pendingMesh.crossIdx.clear();
         pendingMesh.waterIdx.clear();
 
         unsigned int opaqueVertOff = 0, waterVertOff = 0;
         for (int s = 0; s < NUM_SECTIONS; s++) {
             auto& sm = sectionMeshes[s];
-            // Opaque
+            // Opaque + cross plants share the same VBO, so both use opaqueVertOff.
             pendingMesh.verts.insert(pendingMesh.verts.end(), sm.verts.begin(), sm.verts.end());
             for (auto idx_val : sm.opaqueIdx) pendingMesh.opaqueIdx.push_back(idx_val + opaqueVertOff);
+            for (auto idx_val : sm.crossIdx) pendingMesh.crossIdx.push_back(idx_val + opaqueVertOff);
             opaqueVertOff += (unsigned int)(sm.verts.size() / BYTES_PER_VERT);
             // Water
             pendingMesh.waterVerts.insert(pendingMesh.waterVerts.end(), sm.waterVerts.begin(), sm.waterVerts.end());
@@ -1332,8 +1327,15 @@ void Chunk::uploadMesh() {
     glBindBuffer(GL_ARRAY_BUFFER, chunkVBO);
     glBufferData(GL_ARRAY_BUFFER, pendingMesh.verts.size(), pendingMesh.verts.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, chunkEBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, pendingMesh.opaqueIdx.size() * sizeof(unsigned int),
-                 pendingMesh.opaqueIdx.data(), GL_STATIC_DRAW);
+    // Pack opaque cube-face indices first, then cross-plant indices. Render
+    // splits the draw at the boundary so we can disable GL_CULL_FACE for
+    // the plant tail without emitting reverse-winding duplicates.
+    size_t opaqueIdxBytes = pendingMesh.opaqueIdx.size() * sizeof(unsigned int);
+    size_t crossIdxBytes = pendingMesh.crossIdx.size() * sizeof(unsigned int);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, opaqueIdxBytes + crossIdxBytes, nullptr, GL_STATIC_DRAW);
+    if (opaqueIdxBytes) glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, opaqueIdxBytes, pendingMesh.opaqueIdx.data());
+    if (crossIdxBytes)
+        glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, opaqueIdxBytes, crossIdxBytes, pendingMesh.crossIdx.data());
     constexpr int STRIDE = 12;
     glVertexAttribPointer(0, 3, GL_SHORT, GL_FALSE, STRIDE, nullptr);
     glEnableVertexAttribArray(0);
@@ -1377,6 +1379,7 @@ void Chunk::uploadMesh() {
     glBindVertexArray(0);
 
     opaqueIndexCount = (int)pendingMesh.opaqueIdx.size();
+    crossIndexCount = (int)pendingMesh.crossIdx.size();
     waterIndexCount = (int)pendingMesh.waterIdx.size();
     // Clear the bits that the uploaded mesh was built from, then restore
     // any bits that were re-set during the build (e.g., by the water sim
@@ -1406,12 +1409,25 @@ std::vector<Cube*> Chunk::render(const Shader& /*shaderProgram*/, const Neighbor
         g_frame.meshBuildBudget--;
     }
 
-    if (opaqueIndexCount > 0) {
+    if (opaqueIndexCount > 0 || crossIndexCount > 0) {
         glBindVertexArray(chunkVAO);
-        glDrawElements(GL_TRIANGLES, opaqueIndexCount, GL_UNSIGNED_INT, nullptr);
-        g_frame.opaqueTriangles += opaqueIndexCount / 3;
-        g_frame.vertexCount += opaqueIndexCount / 6 * 4;
-        g_frame.opaqueDrawCalls++;
+        if (opaqueIndexCount > 0) {
+            glDrawElements(GL_TRIANGLES, opaqueIndexCount, GL_UNSIGNED_INT, nullptr);
+            g_frame.opaqueTriangles += opaqueIndexCount / 3;
+            g_frame.vertexCount += opaqueIndexCount / 6 * 4;
+            g_frame.opaqueDrawCalls++;
+        }
+        if (crossIndexCount > 0) {
+            // Cross-plant pass: disable cull so each quad is visible from
+            // both sides without duplicating reverse-winding indices.
+            glDisable(GL_CULL_FACE);
+            const void* crossOffset = (const void*)(static_cast<size_t>(opaqueIndexCount) * sizeof(unsigned int));
+            glDrawElements(GL_TRIANGLES, crossIndexCount, GL_UNSIGNED_INT, crossOffset);
+            glEnable(GL_CULL_FACE);
+            g_frame.opaqueTriangles += crossIndexCount / 3;
+            g_frame.vertexCount += crossIndexCount / 6 * 4;
+            g_frame.opaqueDrawCalls++;
+        }
     }
     return {};
 }

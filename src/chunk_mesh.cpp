@@ -379,6 +379,7 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
     // double-sided by emitting each quad twice with opposite winding.
     // Texture cutout is handled in the fragment shader (alpha < 0.5 →
     // discard for plant layers).
+    std::vector<unsigned int> crossIdx;
     auto emitCross = [&](int lx, int ly, int lz, block_type bt) {
         float layer = (float)block_layers::layerForFace(bt, 0);
         int skyL = slDirect(lx, ly, lz);
@@ -387,9 +388,9 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
         float wx = (float)(lx + chunkX * CHUNK_SIZE);
         float wz = (float)(lz + chunkZ * CHUNK_SIZE);
         float wy = (float)ly;
-        // Each plane emits 4 unique verts and 12 indices (6 forward + 6
-        // reversed), so the plant is double-sided without duplicating
-        // vertex data. Two planes per plant → 8 verts + 24 indices.
+        // Each plane: 4 unique verts + 6 forward-winding indices. Plants
+        // render in a second draw call with GL_CULL_FACE disabled so both
+        // sides of each quad are visible, no reverse-winding dupes needed.
         auto emitPlane = [&](float p[4][3]) {
             size_t off = opaqueVerts.size();
             opaqueVerts.resize(off + 4 * BYTES_PER_VERT);
@@ -408,20 +409,12 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                 dst++;
             }
             unsigned int b = opaqueBase;
-            // Forward winding
-            opaqueIdx.push_back(b);
-            opaqueIdx.push_back(b + 1);
-            opaqueIdx.push_back(b + 2);
-            opaqueIdx.push_back(b + 2);
-            opaqueIdx.push_back(b + 3);
-            opaqueIdx.push_back(b);
-            // Reverse winding (back face)
-            opaqueIdx.push_back(b);
-            opaqueIdx.push_back(b + 3);
-            opaqueIdx.push_back(b + 2);
-            opaqueIdx.push_back(b + 2);
-            opaqueIdx.push_back(b + 1);
-            opaqueIdx.push_back(b);
+            crossIdx.push_back(b);
+            crossIdx.push_back(b + 1);
+            crossIdx.push_back(b + 2);
+            crossIdx.push_back(b + 2);
+            crossIdx.push_back(b + 3);
+            crossIdx.push_back(b);
             opaqueBase += 4;
         };
         float y0 = wy - 0.5f, y1 = wy + 0.5f;
@@ -450,6 +443,7 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
     result.verts = std::move(opaqueVerts);
     result.waterVerts = std::move(waterVerts);
     result.opaqueIdx = std::move(opaqueIdx);
+    result.crossIdx = std::move(crossIdx);
     result.waterIdx = std::move(waterIdx);
     result.ready = true;
     return result;

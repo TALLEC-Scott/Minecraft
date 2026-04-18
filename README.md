@@ -204,7 +204,7 @@ A summary of the non-trivial perf work in this engine - written out since this r
 - **Frustum culling + front-to-back sort** - AABB test per chunk with the Gribb-Hartmann plane extraction, sorted by squared distance for early-Z rejection on the opaque pass; water reversed for back-to-front blending. (`World::render`)
 - **Single texture array** - all block textures packed into one `GL_TEXTURE_2D_ARRAY` keyed by integer layer, cached in the vertex. Zero texture-binding changes per frame. (`TextureArray`)
 - **Shader uniform cache** - `Shader` class caches `glGetUniformLocation` results by name hash; uniform lookups are free after the first call. (`shader.h`)
-- **Cross-quad vertex dedup for plants** - each cross-plant plane emits 4 unique verts + 12 indices (forward winding followed by reversed winding), giving double-sided rendering without duplicating the 4 vertices. Halves plant vertex memory. (`emitCross` / `emitPlane`)
+- **Split plant draw pass** - plant indices live in the same EBO as cube faces but after a boundary offset. Chunks are drawn in two `glDrawElements` calls: cube faces with `GL_CULL_FACE` on, then plants with culling disabled so each quad shows both sides from 6 indices instead of 12. Halves plant index memory at the cost of one state change per chunk. (`Chunk::render`, `emitPlane`)
 - **Branchless shading** - face brightness, AO multiplier, leaf cutout and water tint computed via `step()`/`mix()` chains instead of conditionals so the GPU doesn't serialize warps. (`frag.shd`)
 - **Runtime-toggleable greedy meshing** - adjacent faces merged into larger quads when the user opts in; off by default because per-vertex AO interpolation across merged faces produces dark streaks.
 
@@ -262,10 +262,6 @@ Either would allow re-enabling greedy meshing (~12× fewer triangles) while keep
 ### VBO Consolidation
 
 Each chunk currently owns its own VAO/VBO/EBO - at render distance 16 that's ~4 KB of buffers but real driver overhead ~10–20 KB per buffer. Pooling chunks into a handful of large VBOs with per-chunk slot offsets would cut ~50 MB of driver bookkeeping at the cost of a bump/free-list allocator. WebGL 2.0 can't use persistent-mapped buffers, so updates must go through `glBufferSubData`.
-
-### Separate Entity Draw Pass
-
-Primed-TNT cubes and plants both share the chunk VBO today, which means back-face culling has to stay on (costing the plant pass a duplicated set of reverse-winding indices). Moving entities into a second draw with `GL_CULL_FACE` disabled would halve plant vertex count at the cost of one extra state change per frame.
 
 ## License
 
