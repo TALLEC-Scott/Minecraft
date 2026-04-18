@@ -126,8 +126,7 @@ case "$cmd" in
             patch) new="$maj.$min.$((pat + 1))" ;;
         esac
         echo "Latest: v$latest -> new: v$new ($level bump)"
-        read -rp "Release v$new? [y/N] " confirm
-        [ "$confirm" = "y" ] && ./scripts/release.sh "$new"
+        ./scripts/release.sh "$new"
         ;;
     clean)
         rm -rf build build_debug build_win build_web
