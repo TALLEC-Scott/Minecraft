@@ -1,3 +1,8 @@
 *.wav filter=lfs diff=lfs merge=lfs -text
 *.gif filter=lfs diff=lfs merge=lfs -text
 *.mp4 filter=lfs diff=lfs merge=lfs -text
+# README screenshots (root-level + docs/) — block-texture PNGs in assets/ stay in regular git.
+Minecraft_Screenshot_*.png filter=lfs diff=lfs merge=lfs -text
+Minecraft_0.*.png filter=lfs diff=lfs merge=lfs -text
+docs/*.png filter=lfs diff=lfs merge=lfs -text
+docs/*.jpg filter=lfs diff=lfs merge=lfs -text
