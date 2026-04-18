@@ -27,7 +27,10 @@ struct GameSettings {
     bool greedyMeshing = false;
     bool fancyLeaves = true;
     float musicVolume = 1.0f;
-    int resolutionIndex = 0; // index into RESOLUTION_PRESETS
+    // Default to 1280 x 720 (index 1). Users on a small laptop panel
+    // would be overwhelmed by Auto (full monitor) on first launch; they
+    // can opt in via the Settings cycler.
+    int resolutionIndex = 1;
 
     void load(const std::string& path);
     void save(const std::string& path) const;
