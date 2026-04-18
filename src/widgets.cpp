@@ -140,11 +140,12 @@ bool Widgets::toggle(UIRenderer& ui, const std::string& label, float x, float y,
 
     ui.drawBorderedRect(x, y, w, h, bgColor);
 
+    char buf[96];
+    std::snprintf(buf, sizeof(buf), "%s: %s", label.c_str(), value ? "ON" : "OFF");
     float scale = 2.0f;
-    std::string text = label + ": " + (value ? "ON" : "OFF");
-    float tw = ui.textWidth(text, scale);
+    float tw = ui.textWidth(buf, scale);
     float th = ui.textHeight(scale);
-    ui.drawTextShadow(text, x + (w - tw) / 2.0f, y + (h - th) / 2.0f, scale);
+    ui.drawTextShadow(buf, x + (w - tw) / 2.0f, y + (h - th) / 2.0f, scale);
     return didClick;
 }
 
@@ -183,8 +184,9 @@ bool Widgets::textField(UIRenderer& ui, TextInput& in, float x, float y, float w
     if (in.active) {
         bool visible = std::fmod(glfwGetTime(), 1.0) < 0.5;
         if (visible) {
-            std::string prefix(in.buffer, 0, in.cursor);
-            float caretX = x + padding + ui.textWidth(prefix, scale);
+            // UIRenderer's font is a fixed-width 8 px bitmap, so caret x is a
+            // multiply — no need to allocate a substring just to measure it.
+            float caretX = x + padding + static_cast<float>(in.cursor) * UIRenderer::GLYPH_W * scale;
             float caretH = ui.textHeight(scale);
             ui.drawRect(caretX, textY, 2, caretH, glm::vec4(1.0f));
         }
