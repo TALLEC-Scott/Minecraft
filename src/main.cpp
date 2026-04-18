@@ -77,20 +77,25 @@ constexpr const char* SETTINGS_PATH = "settings.txt";
 constexpr int FALLBACK_WINDOW_WIDTH = 1280;
 constexpr int FALLBACK_WINDOW_HEIGHT = 720;
 
-// Cap the frame rate to 60 FPS in menu / loading / pause states so we don't
-// burn GPU cycles when nothing in the world is changing. A real-world render
-// loop in MainMenu on an uncapped card runs 1000+ fps; this brings it to 60
-// so the fans stay quiet. Emscripten handles frame pacing itself via
-// requestAnimationFrame, so the sleep is native-only.
-static void throttleMenuFrame() {
-#ifndef __EMSCRIPTEN__
+// Cap the frame rate to ~60 FPS in menu / loading / pause states so we don't
+// burn GPU cycles when nothing in the world is changing. Uses the idle slack
+// just before the swap+poll at the bottom of each menu handler. Returns how
+// long the frame should wait — 0 if we've already blown the budget.
+static double menuFrameBudgetSeconds() {
+#ifdef __EMSCRIPTEN__
+    // Browser rAF already paces the main loop; any extra wait would only
+    // pile up in the event queue.
+    return 0.0;
+#else
     using Clock = std::chrono::steady_clock;
     static auto lastFrame = Clock::now();
-    constexpr auto TARGET = std::chrono::microseconds(16667); // ~1/60 s
+    constexpr std::chrono::microseconds TARGET{16667}; // ~1/60 s
     auto now = Clock::now();
     auto elapsed = now - lastFrame;
-    if (elapsed < TARGET) std::this_thread::sleep_for(TARGET - elapsed);
-    lastFrame = Clock::now();
+    lastFrame = now;
+    if (elapsed >= TARGET) return 0.0;
+    auto remaining = std::chrono::duration_cast<std::chrono::microseconds>(TARGET - elapsed);
+    return remaining.count() / 1'000'000.0;
 #endif
 }
 
@@ -1284,9 +1289,14 @@ int main(int argc, char* argv[]) {
             UIRenderer& uiRenderer = *g_uiRenderer;
             Menu& menu = *g_menu;
 
-            // Cap the frame rate outside Playing — menus / pause / loading
-            // don't need more than 60 fps.
-            if (currentState != GameState::Playing) throttleMenuFrame();
+            // Menu / loading / pause states call glfwWaitEventsTimeout below
+            // instead of glfwPollEvents, so the event loop idles up to a
+            // 60 FPS budget rather than spinning the CPU at 1000+ fps. Input
+            // events (mouse, keys) still wake the loop immediately.
+            auto poll = [&]() {
+                if (currentState != GameState::Playing) glfwWaitEventsTimeout(menuFrameBudgetSeconds());
+                else glfwPollEvents();
+            };
 
             // --- Menu states ---
             // No chunk pumping in menu states — we don't know which world
@@ -1301,7 +1311,7 @@ int main(int argc, char* argv[]) {
                 if (next == GameState::Settings) applySettings();
                 currentState = next;
                 glfwSwapBuffers(window);
-                glfwPollEvents();
+                poll();
                 return;
             }
 
@@ -1375,7 +1385,7 @@ int main(int argc, char* argv[]) {
                 }
                 currentState = next;
                 glfwSwapBuffers(window);
-                glfwPollEvents();
+                poll();
                 return;
             }
 
@@ -1401,7 +1411,7 @@ int main(int argc, char* argv[]) {
                 }
                 currentState = next;
                 glfwSwapBuffers(window);
-                glfwPollEvents();
+                poll();
                 return;
             }
 
@@ -1430,7 +1440,7 @@ int main(int argc, char* argv[]) {
                     currentState = GameState::Playing;
                 }
                 glfwSwapBuffers(window);
-                glfwPollEvents();
+                poll();
                 return;
             }
 
@@ -1450,7 +1460,7 @@ int main(int argc, char* argv[]) {
                 }
                 currentState = next;
                 glfwSwapBuffers(window);
-                glfwPollEvents();
+                poll();
                 return;
             }
 
