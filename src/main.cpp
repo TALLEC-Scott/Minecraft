@@ -104,6 +104,26 @@ static void applySettings() {
             for (auto& [pos, chunk] : w->chunkManager->chunks) chunk.markDirty();
         }
     }
+#ifndef __EMSCRIPTEN__
+    // Resize the window to the selected preset. "Auto" (index 0) uses 80%
+    // of the primary monitor's current video mode. Only applies when not
+    // fullscreen - fullscreen mode keeps its monitor-native size and the
+    // preset takes effect again when the user toggles back to windowed.
+    if (g_window && glfwGetWindowMonitor(g_window) == nullptr) {
+        const ResolutionPreset& p = RESOLUTION_PRESETS[gameSettings.resolutionIndex];
+        int tw = p.width, th = p.height;
+        if (tw == 0 || th == 0) {
+            if (const GLFWvidmode* vm = glfwGetVideoMode(glfwGetPrimaryMonitor())) {
+                tw = static_cast<int>(vm->width * 0.8f);
+                th = static_cast<int>(vm->height * 0.8f);
+            } else {
+                tw = 1280;
+                th = 720;
+            }
+        }
+        if (tw != windowWidth || th != windowHeight) glfwSetWindowSize(g_window, tw, th);
+    }
+#endif
 }
 
 void framebuffer_size_callback(GLFWwindow* /*window*/, int width, int height) {
