@@ -20,6 +20,12 @@ https://github.com/user-attachments/assets/b1350ee2-8fe9-47be-8e3b-8c2acb02ed27
 ![Screenshot 4](Minecraft_Screenshot_4.png)
 
 
+### v0.4
+
+<img width="1045" height="1087" alt="image" src="https://github.com/user-attachments/assets/873343f2-0d08-4fd4-9ed6-e7ff83689d14" />
+
+
+
 ### v0.5
 
 https://github.com/user-attachments/assets/c95a33fa-b7e2-41ac-b8ba-79bb7edf997f
