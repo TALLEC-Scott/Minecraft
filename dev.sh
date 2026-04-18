@@ -37,9 +37,8 @@ Web:
   dev-web            build-web + serve in one go
 
 Release:
-  release X.Y.Z      Bump version, build desktop + web, run tests, tag, push, deploy
-  patch              Auto-bump the patch number of the latest tag and release
-  minor              Auto-bump the minor number of the latest tag and release
+  release X.Y.Z           Bump to an explicit version and release
+  bump <major|minor|patch>  Auto-bump from the latest tag and release
 
 Misc:
   clean              Remove build/, build_win/, build_web/
@@ -113,15 +112,20 @@ case "$cmd" in
         [ -z "$1" ] && { echo "Usage: ./dev.sh release X.Y.Z"; exit 1; }
         ./scripts/release.sh "$1"
         ;;
-    patch|minor)
+    bump)
+        level="${1:-}"
+        case "$level" in
+            major|minor|patch) ;;
+            *) echo "Usage: ./dev.sh bump <major|minor|patch>"; exit 1 ;;
+        esac
         latest=$(git tag --sort=-v:refname | head -1 | sed 's/^v//')
         IFS='.' read -r maj min pat <<< "$latest"
-        if [ "$cmd" = "patch" ]; then
-            new="$maj.$min.$((pat + 1))"
-        else
-            new="$maj.$((min + 1)).0"
-        fi
-        echo "Latest: v$latest -> new: v$new"
+        case "$level" in
+            major) new="$((maj + 1)).0.0" ;;
+            minor) new="$maj.$((min + 1)).0" ;;
+            patch) new="$maj.$min.$((pat + 1))" ;;
+        esac
+        echo "Latest: v$latest -> new: v$new ($level bump)"
         read -rp "Release v$new? [y/N] " confirm
         [ "$confirm" = "y" ] && ./scripts/release.sh "$new"
         ;;

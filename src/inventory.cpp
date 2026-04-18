@@ -3,21 +3,36 @@
 
 const char* Inventory::blockName(block_type t) {
     switch (t) {
-    case GRASS: return "Grass";
-    case DIRT: return "Dirt";
-    case STONE: return "Stone";
-    case COAL_ORE: return "Coal Ore";
-    case BEDROCK: return "Bedrock";
-    case WATER: return "Water";
-    case SAND: return "Sand";
-    case GLOWSTONE: return "Glowstone";
-    case WOOD: return "Wood";
-    case LEAVES: return "Leaves";
-    case SNOW: return "Snow";
-    case GRAVEL: return "Gravel";
-    case CACTUS: return "Cactus";
-    case TNT: return "TNT";
-    default: return "?";
+    case GRASS:
+        return "Grass";
+    case DIRT:
+        return "Dirt";
+    case STONE:
+        return "Stone";
+    case COAL_ORE:
+        return "Coal Ore";
+    case BEDROCK:
+        return "Bedrock";
+    case WATER:
+        return "Water";
+    case SAND:
+        return "Sand";
+    case GLOWSTONE:
+        return "Glowstone";
+    case WOOD:
+        return "Wood";
+    case LEAVES:
+        return "Leaves";
+    case SNOW:
+        return "Snow";
+    case GRAVEL:
+        return "Gravel";
+    case CACTUS:
+        return "Cactus";
+    case TNT:
+        return "TNT";
+    default:
+        return "?";
     }
 }
 

@@ -82,11 +82,10 @@ class Chunk {
         : skyLight(std::move(other.skyLight)), waterLevels(std::move(other.waterLevels)),
           sparseLight(std::move(other.sparseLight)), maxSolidY(other.maxSolidY), chunkX(other.chunkX),
           chunkY(other.chunkY), modified(other.modified), meshBuildInFlight(other.meshBuildInFlight),
-          sectionDirty(other.sectionDirty),
-          chunkVAO(other.chunkVAO), chunkVBO(other.chunkVBO), chunkEBO(other.chunkEBO),
-          opaqueIndexCount(other.opaqueIndexCount), crossIndexCount(other.crossIndexCount),
-          waterVAO(other.waterVAO), waterVBO(other.waterVBO),
-          waterEBO(other.waterEBO), waterIndexCount(other.waterIndexCount), pendingMesh(std::move(other.pendingMesh)) {
+          sectionDirty(other.sectionDirty), chunkVAO(other.chunkVAO), chunkVBO(other.chunkVBO),
+          chunkEBO(other.chunkEBO), opaqueIndexCount(other.opaqueIndexCount), crossIndexCount(other.crossIndexCount),
+          waterVAO(other.waterVAO), waterVBO(other.waterVBO), waterEBO(other.waterEBO),
+          waterIndexCount(other.waterIndexCount), pendingMesh(std::move(other.pendingMesh)) {
         for (int i = 0; i < NUM_SECTIONS; i++) {
             sections[i] = std::move(other.sections[i]);
             sectionMeshes[i] = std::move(other.sectionMeshes[i]);

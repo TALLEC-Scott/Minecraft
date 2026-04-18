@@ -188,7 +188,7 @@ void ParticleSystem::spawnSmokePlume(glm::vec3 pos) {
         p.velocity = glm::vec3(std::cos(angle) * horizSpeed, upSpeed, std::sin(angle) * horizSpeed);
         p.life = 0.0f;
         p.maxLife = 1.8f + rand01() * 0.8f;
-        p.size = 1.4f + rand01() * 0.7f;  // chunky from the start
+        p.size = 1.4f + rand01() * 0.7f;   // chunky from the start
         p.growth = 2.5f + rand01() * 1.0f; // pops bigger quickly, then holds
         p.alive = true;
     }

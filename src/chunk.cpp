@@ -20,7 +20,8 @@ static constexpr int WATER_BYTES_PER_VERT = sizeof(WaterVertex);
 
 static bool isBlockOpaque(block_type t);
 static bool isBlockFiltering(block_type t);
-void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY);
+// computeSkyLightData is declared in chunk.h (public API used by
+// World::loadChunkData et al.); repeating it here adds nothing.
 
 #include "tracy_shim.h"
 

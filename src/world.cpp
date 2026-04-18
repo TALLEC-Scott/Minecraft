@@ -65,7 +65,6 @@ static void markBorderNeighborsDirty(ChunkManager* cm, int chunkX, int chunkZ, i
     if (onXPos && onZPos) mark(1, 1);
 }
 
-
 void World::setBlock(int x, int y, int z, block_type type, uint8_t waterLevel) const {
     if (y < 0 || y >= CHUNK_HEIGHT) return;
 
@@ -84,7 +83,6 @@ void World::setBlock(int x, int y, int z, block_type type, uint8_t waterLevel) c
     chunk->setWaterLevel(lx, y, lz, waterLevel);
     markBorderNeighborsDirty(chunkManager, cx, cz, lx, y, lz);
 }
-
 
 void World::destroyBlock(glm::vec3 position) const {
     int bx = (int)std::floor(position.x);
@@ -302,8 +300,8 @@ void World::explode(glm::vec3 center, float power, double now) const {
                 if (!b) continue;
                 block_type t = b->getType();
                 if (t == AIR) continue;
-                if (t == BEDROCK) continue;   // indestructible
-                if (t == WATER) continue;     // don't consume liquid
+                if (t == BEDROCK) continue; // indestructible
+                if (t == WATER) continue;   // don't consume liquid
                 if (t == TNT) {
                     // Chain reaction — replace with a short-fused primed entity.
                     // Mirror igniteTnt()'s full transition: light flood +
