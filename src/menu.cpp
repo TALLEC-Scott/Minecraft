@@ -15,16 +15,19 @@ void Menu::init() {
                                     &clickSound) == MA_SUCCESS) {
             clickLoaded = true;
         }
-        // Load background music (decoded into memory for smooth playback)
-        if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/music/calm1.mp3", MA_SOUND_FLAG_DECODE, nullptr,
-                                    nullptr, &musicSound) == MA_SUCCESS) {
+        // Stream music from disk instead of pre-decoding — MA_SOUND_FLAG_DECODE
+        // would eagerly decompress these multi-MB MP3s at startup (~17 MB
+        // compressed → ~170 MB PCM), stalling the main menu for seconds.
+        // Streaming decodes chunk-by-chunk during playback.
+        constexpr ma_uint32 MUSIC_FLAGS = MA_SOUND_FLAG_STREAM | MA_SOUND_FLAG_ASYNC;
+        if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/music/calm1.mp3", MUSIC_FLAGS, nullptr, nullptr,
+                                    &musicSound) == MA_SUCCESS) {
             musicLoaded = true;
             ma_sound_set_looping(&musicSound, MA_TRUE);
             ma_sound_set_volume(&musicSound, 1.0f);
         }
-        // Load menu music
-        if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/music/menu2.mp3", MA_SOUND_FLAG_DECODE, nullptr,
-                                    nullptr, &menuMusicSound) == MA_SUCCESS) {
+        if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/music/menu2.mp3", MUSIC_FLAGS, nullptr, nullptr,
+                                    &menuMusicSound) == MA_SUCCESS) {
             menuMusicLoaded = true;
             ma_sound_set_looping(&menuMusicSound, MA_TRUE);
             ma_sound_set_volume(&menuMusicSound, 1.0f);
@@ -283,7 +286,7 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
 
     // Version text
     float verScale = 1.0f;
-    ui.drawTextShadow("v0.7.9", 4.0f, (float)windowH - 12.0f, verScale, glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
+    ui.drawTextShadow("v0.7.10", 4.0f, (float)windowH - 12.0f, verScale, glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
 
     ui.end();
     return next;

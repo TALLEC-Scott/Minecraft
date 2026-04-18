@@ -1,0 +1,38 @@
+
+=== Profile: worldlist-staleset-1 ===
+NVIDIA GeForce RTX 2080 Ti/PCIe/SSE2 (NVIDIA Corporation)
+3.3.0 NVIDIA 591.86
+600 measured frames
+
+Frame Time Breakdown (avg):
+  total:     1.15 ms  (867 fps)
+  update:    0.54 ms  [47.12%]
+  render:    0.12 ms  [10.54%]  <- includes mesh builds
+  swap:      0.49 ms  [42.10%]
+
+Render Breakdown (avg):
+  mesh builds:  0.00 ms  [0.00% of render]  (0.00 builds/frame)
+  draw calls:   0.12 ms  [100.00% of render]  (419.85 calls/frame)
+
+GPU Time:
+  avg:  0.17 ms  <- GPU-bound
+  p99:  0.80 ms
+
+Geometry (avg per frame):
+  chunks:    252 rendered / 1072 loaded
+  triangles: 405355 opaque + 0 water = 405355 total
+  vertices:  810711
+
+Memory:
+  chunks (CPU): 26 MB
+    sections:    3 MB
+    skyLight:    5 MB
+    waterLevels: 0 MB
+    meshCache:   0 MB
+    pendingMesh: 16 MB
+  process RSS:  954 MB
+
+Percentiles (ms):
+  total:  avg=1.15  p50=0.83  p95=2.49  p99=2.92  max=4.18
+  render: avg=0.12  p50=0.09  p95=0.29  p99=0.56  max=0.84
+  gpu:    avg=0.17  p50=0.14  p95=0.26  p99=0.80  max=1.94
