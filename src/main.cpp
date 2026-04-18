@@ -115,7 +115,8 @@ void framebuffer_size_callback(GLFWwindow* /*window*/, int width, int height) {
 }
 
 void cursorPositionCallback(GLFWwindow* /*window*/, double xPos, double yPos) {
-    if (currentState == GameState::Playing && !inventory.isOpen()) player.updateMouseLook(xPos, yPos, windowWidth, windowHeight);
+    if (currentState == GameState::Playing && !inventory.isOpen())
+        player.updateMouseLook(xPos, yPos, windowWidth, windowHeight);
 }
 
 void scrollCallback(GLFWwindow* /*window*/, double /*xOffset*/, double yOffset) {
@@ -505,8 +506,7 @@ int main(int argc, char* argv[]) {
             player.getCamera().setPosition(loadedPlayer.position);
             player.setYawPitch(loadedPlayer.yaw, loadedPlayer.pitch);
             player.getCamera().setWalkMode(loadedPlayer.walkMode);
-            for (int i = 0; i < Player::HOTBAR_SIZE; i++)
-                player.setHotbarSlot(i, loadedPlayer.hotbar[i]);
+            for (int i = 0; i < Player::HOTBAR_SIZE; i++) player.setHotbarSlot(i, loadedPlayer.hotbar[i]);
             player.setSelectedSlot(loadedPlayer.selectedSlot);
             std::cout << "Loaded world save" << std::endl;
         }
@@ -1376,7 +1376,7 @@ int main(int argc, char* argv[]) {
                 }
 
                 // Render moon billboard (opposite side of sun)
-                if (lightPos.y < 200.0f) { // moon rises before sun fully sets
+                if (lightPos.y < 200.0f) {                                    // moon rises before sun fully sets
                     glm::vec3 moonDir = glm::normalize(cameraPos - lightPos); // opposite of sun
                     glm::vec3 moonCenter = cameraPos + moonDir * SUN_DISTANCE;
                     constexpr float MOON_SIZE = 45.0f;

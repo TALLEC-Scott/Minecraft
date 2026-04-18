@@ -404,7 +404,7 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                 dst->v = uv[vi][1];
                 dst->normalIdx = 4; // +Y — gives the plant full face-brightness
                 dst->texLayer = (uint8_t)layer;
-                dst->ao = 3;        // AO_CURVE[3] = 1.0 (full bright)
+                dst->ao = 3; // AO_CURVE[3] = 1.0 (full bright)
                 dst->packedLight = packedLight;
                 dst++;
             }

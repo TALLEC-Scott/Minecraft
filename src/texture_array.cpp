@@ -6,15 +6,15 @@ GLuint TextureArray::id = 0;
 
 // Must match block_type enum order: AIR, GRASS, DIRT, STONE, COAL_ORE, BEDROCK, WATER, SAND, GLOWSTONE
 static const char* TEXTURE_PATHS[] = {
-    "assets/Textures/none.png",     "assets/Textures/grass.png",       "assets/Textures/dirt.png",
-    "assets/Textures/stone.png",    "assets/Textures/coal_ore.png",    "assets/Textures/bedrock.png",
-    "assets/Textures/water.png",    "assets/Textures/sand.png",        "assets/Textures/glowstone.png",
-    "assets/Textures/wood.png",     "assets/Textures/leaves.png",      "assets/Textures/grass_side.png",
-    "assets/Textures/sun.png",      "assets/Textures/snow.png",        "assets/Textures/gravel.png",
-    "assets/Textures/cactus.png",   "assets/Textures/cloud.png",       "assets/Textures/skin.png",
-    "assets/Textures/moon.png",     "assets/Textures/wood_top.png",    "assets/Textures/tnt.png",
-    "assets/Textures/tnt_top.png",  "assets/Textures/tnt_bottom.png",  "assets/Textures/smoke.png",
-    "assets/Textures/tall_grass.png", "assets/Textures/dandelion.png", "assets/Textures/poppy.png",
+    "assets/Textures/none.png",       "assets/Textures/grass.png",      "assets/Textures/dirt.png",
+    "assets/Textures/stone.png",      "assets/Textures/coal_ore.png",   "assets/Textures/bedrock.png",
+    "assets/Textures/water.png",      "assets/Textures/sand.png",       "assets/Textures/glowstone.png",
+    "assets/Textures/wood.png",       "assets/Textures/leaves.png",     "assets/Textures/grass_side.png",
+    "assets/Textures/sun.png",        "assets/Textures/snow.png",       "assets/Textures/gravel.png",
+    "assets/Textures/cactus.png",     "assets/Textures/cloud.png",      "assets/Textures/skin.png",
+    "assets/Textures/moon.png",       "assets/Textures/wood_top.png",   "assets/Textures/tnt.png",
+    "assets/Textures/tnt_top.png",    "assets/Textures/tnt_bottom.png", "assets/Textures/smoke.png",
+    "assets/Textures/tall_grass.png", "assets/Textures/dandelion.png",  "assets/Textures/poppy.png",
 };
 static constexpr int NUM_LAYERS = TextureArray::NUM_LAYERS;
 static GLuint layerTextures2D[NUM_LAYERS] = {};

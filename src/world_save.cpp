@@ -106,8 +106,13 @@ bool WorldSave::chunkExists(int chunkX, int chunkZ) const {
     return savedChunks.count({chunkX, chunkZ}) > 0;
 }
 
-template <typename T> static void writeVal(std::ofstream& f, T v) { f.write(reinterpret_cast<const char*>(&v), sizeof(v)); }
-template <typename T> static bool readVal(std::ifstream& f, T& v) { f.read(reinterpret_cast<char*>(&v), sizeof(v)); return f.good(); }
+template <typename T> static void writeVal(std::ofstream& f, T v) {
+    f.write(reinterpret_cast<const char*>(&v), sizeof(v));
+}
+template <typename T> static bool readVal(std::ifstream& f, T& v) {
+    f.read(reinterpret_cast<char*>(&v), sizeof(v));
+    return f.good();
+}
 
 void WorldSave::saveChunk(const Chunk& chunk) {
     ensureDirectories();
@@ -266,10 +271,9 @@ void WorldSave::mountPersistentStorage() {
 
 void WorldSave::syncToDisk() {
 #ifdef __EMSCRIPTEN__
-    EM_ASM(
-        FS.syncfs(false, function(err) {
+    EM_ASM(FS.syncfs(
+        false, function(err) {
             if (err) console.error('IDBFS sync error:', err);
-        });
-    );
+        }););
 #endif
 }

@@ -42,7 +42,9 @@ class Player {
     int getSelectedSlot() const { return selectedSlot; }
     void setSelectedSlot(int s) { selectedSlot = s; }
     block_type getSelectedBlockType() const { return hotbar[selectedSlot]; }
-    void setHotbarSlot(int slot, block_type type) { if (slot >= 0 && slot < HOTBAR_SIZE) hotbar[slot] = type; }
+    void setHotbarSlot(int slot, block_type type) {
+        if (slot >= 0 && slot < HOTBAR_SIZE) hotbar[slot] = type;
+    }
     const block_type* getHotbar() const { return hotbar; }
 
     bool isWalkMode() const { return camera.isWalkMode(); }

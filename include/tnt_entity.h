@@ -20,8 +20,8 @@ class TntEntity {
 
     // All physics constants are per-tick (20 TPS). Using Minecraft's published
     // values so behaviour matches the reference description.
-    static constexpr float TICK_GRAVITY = 0.04f;    // blocks / tick²
-    static constexpr float DRAG = 0.98f;       // per-tick vertical velocity retention
+    static constexpr float TICK_GRAVITY = 0.04f;   // blocks / tick²
+    static constexpr float DRAG = 0.98f;           // per-tick vertical velocity retention
     static constexpr float GROUND_FRICTION = 0.7f; // per-tick horizontal retention on ground
     static constexpr int DEFAULT_FUSE = 80;
     static constexpr int CHAIN_FUSE_MIN = 10;
