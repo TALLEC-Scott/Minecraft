@@ -84,7 +84,8 @@ class Chunk {
           chunkY(other.chunkY), modified(other.modified), meshBuildInFlight(other.meshBuildInFlight),
           sectionDirty(other.sectionDirty),
           chunkVAO(other.chunkVAO), chunkVBO(other.chunkVBO), chunkEBO(other.chunkEBO),
-          opaqueIndexCount(other.opaqueIndexCount), waterVAO(other.waterVAO), waterVBO(other.waterVBO),
+          opaqueIndexCount(other.opaqueIndexCount), crossIndexCount(other.crossIndexCount),
+          waterVAO(other.waterVAO), waterVBO(other.waterVBO),
           waterEBO(other.waterEBO), waterIndexCount(other.waterIndexCount), pendingMesh(std::move(other.pendingMesh)) {
         for (int i = 0; i < NUM_SECTIONS; i++) {
             sections[i] = std::move(other.sections[i]);
@@ -121,6 +122,7 @@ class Chunk {
             waterVBO = other.waterVBO;
             waterEBO = other.waterEBO;
             opaqueIndexCount = other.opaqueIndexCount;
+            crossIndexCount = other.crossIndexCount;
             waterIndexCount = other.waterIndexCount;
             sectionDirty = other.sectionDirty;
             maxSolidY = other.maxSolidY;
@@ -167,6 +169,7 @@ class Chunk {
         std::vector<uint8_t> verts;      // opaque (PackedVertex)
         std::vector<uint8_t> waterVerts; // water (WaterVertex)
         std::vector<unsigned int> opaqueIdx;
+        std::vector<unsigned int> crossIdx; // cross-quad plants, drawn cull-off
         std::vector<unsigned int> waterIdx;
     };
 
@@ -335,6 +338,10 @@ class Chunk {
     GLuint chunkVBO = 0;
     GLuint chunkEBO = 0;
     int opaqueIndexCount = 0;
+    // Plant indices live in the same EBO, appended after cube-face indices.
+    // Drawn in a second glDrawElements call with GL_CULL_FACE disabled so
+    // each cross quad shows from both sides with only 6 indices.
+    int crossIndexCount = 0;
     // Water geometry — separate VBO with float32 positions for sub-block precision
     GLuint waterVAO = 0;
     GLuint waterVBO = 0;

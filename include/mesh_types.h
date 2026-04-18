@@ -70,6 +70,10 @@ struct MeshData {
     std::vector<uint8_t> verts;      // opaque vertices (PackedVertex)
     std::vector<uint8_t> waterVerts; // water vertices (WaterVertex)
     std::vector<unsigned int> opaqueIdx;
+    // Cross-quad plant indices, appended to opaqueIdx in the EBO and drawn
+    // with GL_CULL_FACE disabled so each plane renders from both sides with
+    // only 6 indices (no reverse-winding duplicate).
+    std::vector<unsigned int> crossIdx;
     std::vector<unsigned int> waterIdx;
     bool ready = false;
 };
