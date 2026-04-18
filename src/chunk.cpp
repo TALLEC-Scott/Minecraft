@@ -352,22 +352,22 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
             block_type pick = AIR;
             switch (bi) {
             case BIOME_PLAINS:
-                if (roll < 25)
+                if (roll < 10)
                     pick = TALL_GRASS;
-                else if (roll < 28)
+                else if (roll < 11)
                     pick = DANDELION;
-                else if (roll < 31)
+                else if (roll < 12)
                     pick = POPPY;
                 break;
             case BIOME_FOREST:
-                if (roll < 20)
+                if (roll < 8)
                     pick = TALL_GRASS;
-                else if (roll < 22)
+                else if (roll < 9)
                     pick = POPPY;
                 break;
             case BIOME_TUNDRA:
             case BIOME_BEACH:
-                if (roll < 4) pick = TALL_GRASS;
+                if (roll < 2) pick = TALL_GRASS;
                 break;
             default:
                 break;
