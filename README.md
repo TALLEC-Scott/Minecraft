@@ -13,14 +13,11 @@ A Minecraft-like voxel terrain renderer built with C++ and OpenGL 3.3 Core Profi
 
 ### v0.2
 
-[![Watch the demo](docs/v02-thumb.jpg)](https://i.imgur.com/WYfonMc.mp4)
+https://github.com/user-attachments/assets/b1350ee2-8fe9-47be-8e3b-8c2acb02ed27
+
 
 ### v0.3
 ![Screenshot 4](Minecraft_Screenshot_4.png)
-
-
-### v0.4
-https://github.com/user-attachments/assets/b1350ee2-8fe9-47be-8e3b-8c2acb02ed27
 
 
 ### v0.5
