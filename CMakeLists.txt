@@ -45,6 +45,7 @@ set(COMMON_SOURCES
     src/WaterSimulator.cpp
     src/inventory.cpp
     src/world_save.cpp
+    src/world_directory.cpp
     src/light_propagation.cpp
     src/tnt_entity.cpp
     src/entity_manager.cpp
@@ -209,6 +210,7 @@ else()
         tests/test_inventory.cpp
         tests/test_tnt.cpp
         tests/test_block_light.cpp
+        tests/test_world_directory.cpp
         src/TerrainGenerator.cpp
         src/perlin_noise.cpp
         src/game_state.cpp
@@ -217,6 +219,7 @@ else()
         src/chunk_mesh.cpp
         src/tnt_entity.cpp
         src/light_propagation.cpp
+        src/world_directory.cpp
     )
     # tests/stubs is searched before include/ so the water-sim tests can
     # compile src/WaterSimulator.cpp against minimal stubs of chunk.h /

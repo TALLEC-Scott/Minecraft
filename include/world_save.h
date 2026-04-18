@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ctime>
 #include <string>
 #include <unordered_set>
 #include <glm/glm.hpp>
@@ -26,6 +27,13 @@ class WorldSave {
     void saveLevelData(unsigned int seed, const PlayerSaveData& player);
     bool loadLevelData(unsigned int& seed, PlayerSaveData& player);
 
+    // Display-name and last-played metadata. Set before first save on new
+    // worlds; load() populates them from level.dat if present.
+    void setDisplayName(const std::string& name) { displayName = name; }
+    const std::string& getDisplayName() const { return displayName; }
+    std::time_t getLastPlayed() const { return lastPlayed; }
+    const std::string& getBasePath() const { return basePath; }
+
     void saveChunk(const Chunk& chunk);
     bool loadChunkData(int chunkX, int chunkZ, ChunkData& out, TerrainGenerator& terrain);
     bool chunkExists(int chunkX, int chunkZ) const;
@@ -38,6 +46,8 @@ class WorldSave {
   private:
     std::string basePath;
     std::string chunksPath;
+    std::string displayName;
+    std::time_t lastPlayed = 0;
     // In-memory index of saved chunks — avoids filesystem stat() per lookup
     struct ChunkKeyHash {
         std::size_t operator()(std::pair<int, int> k) const {

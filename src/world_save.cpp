@@ -47,7 +47,10 @@ void WorldSave::saveLevelData(unsigned int seed, const PlayerSaveData& player) {
     ensureDirectories();
     std::ofstream f(basePath + "/level.dat");
     if (!f.is_open()) return;
+    lastPlayed = std::time(nullptr);
     f << "seed=" << seed << "\n";
+    if (!displayName.empty()) f << "worldName=" << displayName << "\n";
+    f << "lastPlayed=" << static_cast<long long>(lastPlayed) << "\n";
     f << "posX=" << player.position.x << "\n";
     f << "posY=" << player.position.y << "\n";
     f << "posZ=" << player.position.z << "\n";
@@ -74,6 +77,10 @@ bool WorldSave::loadLevelData(unsigned int& seed, PlayerSaveData& player) {
         std::string val = line.substr(eq + 1);
         if (key == "seed")
             seed = (unsigned int)std::stoul(val);
+        else if (key == "worldName")
+            displayName = val;
+        else if (key == "lastPlayed")
+            lastPlayed = static_cast<std::time_t>(std::stoll(val));
         else if (key == "posX")
             player.position.x = std::stof(val);
         else if (key == "posY")
