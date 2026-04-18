@@ -3,6 +3,7 @@
 #include <GLFW/glfw3.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <emscripten/html5.h>
 #endif
 #ifdef _WIN32
 // SetCurrentProcessExplicitAppUserModelID lives in shell32 since Windows 7.
@@ -56,6 +57,15 @@
 int windowWidth = WINDOW_WIDTH;
 int windowHeight = WINDOW_HEIGHT;
 
+// On web the settings file has to live under /saves/ (the IDBFS-mounted
+// directory), otherwise it sits in MEMFS and is wiped on page reload.
+// Desktop keeps it next to the executable for easy manual editing.
+#ifdef __EMSCRIPTEN__
+constexpr const char* SETTINGS_PATH = "saves/settings.txt";
+#else
+constexpr const char* SETTINGS_PATH = "settings.txt";
+#endif
+
 Player player;
 World* w = nullptr;
 
@@ -104,14 +114,27 @@ static void applySettings() {
             for (auto& [pos, chunk] : w->chunkManager->chunks) chunk.markDirty();
         }
     }
-#ifndef __EMSCRIPTEN__
     // Resize the window to the selected preset. "Auto" (index 0) uses 80%
-    // of the primary monitor's current video mode. Only applies when not
-    // fullscreen - fullscreen mode keeps its monitor-native size and the
-    // preset takes effect again when the user toggles back to windowed.
+    // of the primary monitor's current video mode on desktop, or the
+    // visible viewport on web. Only applies when not in fullscreen -
+    // fullscreen mode keeps its monitor-native size and the preset takes
+    // effect again when the user toggles back to windowed.
     if (g_window && glfwGetWindowMonitor(g_window) == nullptr) {
         const ResolutionPreset& p = RESOLUTION_PRESETS[gameSettings.resolutionIndex];
         int tw = p.width, th = p.height;
+#ifdef __EMSCRIPTEN__
+        if (tw == 0 || th == 0) {
+            // "Auto" on web: use the full browser viewport, not the
+            // current canvas size (which would never shrink - and never
+            // grow past whatever the last preset set it to).
+            tw = EM_ASM_INT({ return window.innerWidth; });
+            th = EM_ASM_INT({ return window.innerHeight; });
+            if (tw <= 0 || th <= 0) {
+                tw = 1280;
+                th = 720;
+            }
+        }
+#else
         if (tw == 0 || th == 0) {
             if (const GLFWvidmode* vm = glfwGetVideoMode(glfwGetPrimaryMonitor())) {
                 tw = static_cast<int>(vm->width * 0.8f);
@@ -121,9 +144,9 @@ static void applySettings() {
                 th = 720;
             }
         }
+#endif
         if (tw != windowWidth || th != windowHeight) glfwSetWindowSize(g_window, tw, th);
     }
-#endif
 }
 
 void framebuffer_size_callback(GLFWwindow* /*window*/, int width, int height) {
@@ -433,9 +456,11 @@ int main(int argc, char* argv[]) {
     glfwSetCursorPosCallback(window, cursorPositionCallback);
     glfwSetScrollCallback(window, scrollCallback);
 
-    // Load settings
-    gameSettings.load("settings.txt");
-    glfwSwapInterval(gameSettings.vsync ? 1 : 0);
+    // Load settings and apply them so the resolution preset + vsync are
+    // honoured from the very first frame (otherwise "Auto" on web stays
+    // at the default canvas size until the user opens the Settings menu).
+    gameSettings.load(SETTINGS_PATH);
+    applySettings();
 
 #ifndef __EMSCRIPTEN__
     // Headless mode: create an FBO so rendering goes to an offscreen buffer
@@ -1163,7 +1188,13 @@ int main(int argc, char* argv[]) {
                 if (w) w->chunkManager->update(player.getPosition());
                 GameState next = menu.drawSettings(uiRenderer, windowWidth, windowHeight, window, gameSettings);
                 if (next != GameState::Settings) {
-                    gameSettings.save("settings.txt");
+                    gameSettings.save(SETTINGS_PATH);
+#ifdef __EMSCRIPTEN__
+                    // Push to IndexedDB so settings survive a page reload.
+                    EM_ASM(FS.syncfs(false, function(err) {
+                        if (err) console.error('IDBFS settings sync error:', err);
+                    }););
+#endif
                     applySettings();
                     if (next == GameState::Playing) {
                         glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
@@ -1821,7 +1852,13 @@ int main(int argc, char* argv[]) {
                     menu.startMusic();
                 }
                 if (next == GameState::Settings) {
-                    gameSettings.save("settings.txt");
+                    gameSettings.save(SETTINGS_PATH);
+#ifdef __EMSCRIPTEN__
+                    // Push to IndexedDB so settings survive a page reload.
+                    EM_ASM(FS.syncfs(false, function(err) {
+                        if (err) console.error('IDBFS settings sync error:', err);
+                    }););
+#endif
                     applySettings();
                 }
                 if (next == GameState::MainMenu) {
