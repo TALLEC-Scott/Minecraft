@@ -2,7 +2,7 @@
 
 #include <string>
 
-enum class GameState { MainMenu, Settings, Playing, Paused };
+enum class GameState { MainMenu, WorldList, CreateWorld, Settings, Loading, Playing, Paused };
 
 // Window resolution presets. Index 0 ("Auto") picks 80% of the primary
 // monitor's current video mode at apply time. Queried via glfwGetVideoMode

@@ -26,6 +26,8 @@
 #include <fstream>
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <optional>
 #include <random>
 
 #include "profiler.h"
@@ -38,6 +40,7 @@
 #include "camera.h"
 #include "world.h"
 #include "ChunkManager.h"
+#include "TerrainGenerator.h"
 #include "texture_array.h"
 #include "player.h"
 #include "game_state.h"
@@ -45,6 +48,7 @@
 #include "menu.h"
 #include "inventory.h"
 #include "world_save.h"
+#include "world_directory.h"
 #include "entity_cube_renderer.h"
 #include "entity_manager.h"
 #include "particle_system.h"
@@ -83,6 +87,13 @@ static void syncToPersistentStorage() {
 
 Player player;
 World* w = nullptr;
+
+// Loading-state tracking: the chunk the player will spawn in, plus a start
+// time used to render progress (and enforce a safety timeout).
+int g_loadingSpawnCx = 0;
+int g_loadingSpawnCz = 0;
+double g_loadingStartTime = 0.0;
+std::string g_loadingWorldName;
 
 bool xKeyPressed = false;
 bool wireframeMode = false;
@@ -176,6 +187,15 @@ void scrollCallback(GLFWwindow* /*window*/, double /*xOffset*/, double yOffset) 
         slot = ((slot % Player::HOTBAR_SIZE) + Player::HOTBAR_SIZE) % Player::HOTBAR_SIZE;
         player.setSelectedSlot(slot);
     }
+}
+
+void charCallback(GLFWwindow* /*window*/, unsigned int codepoint) {
+    if (g_menu) g_menu->onCharInput(codepoint);
+}
+
+void keyCallback(GLFWwindow* /*window*/, int key, int /*scancode*/, int action, int /*mods*/) {
+    // Forward to menu for active text inputs — menu gates by whether an input is active.
+    if (g_menu) g_menu->onKeyInput(key, action);
 }
 
 glm::vec3 getSkyColor(float angle) {
@@ -344,15 +364,16 @@ void processInput(GLFWwindow* window) {
 }
 
 int main(int argc, char* argv[]) {
-#ifndef __EMSCRIPTEN__
+#ifdef __EMSCRIPTEN__
+    (void)argc;
+    (void)argv;
+#else
     bool benchmarkMode = false;
     bool headlessMode = false;
     bool stressWater = false;
-#endif
     unsigned int worldSeed = 0;
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
-#ifndef __EMSCRIPTEN__
         if (arg == "--benchmark")
             benchmarkMode = true;
         else if (arg == "--headless")
@@ -360,11 +381,9 @@ int main(int argc, char* argv[]) {
         else if (arg == "--stress-water")
             stressWater = true;
         else if (arg == "--seed" && i + 1 < argc)
-#else
-        if (arg == "--seed" && i + 1 < argc)
-#endif
             worldSeed = std::stoul(argv[++i]);
     }
+#endif
     if (!glfwInit()) {
         std::cout << "Failed to initialize GLFW" << std::endl;
         return -1;
@@ -462,6 +481,8 @@ int main(int argc, char* argv[]) {
 
     glfwSetCursorPosCallback(window, cursorPositionCallback);
     glfwSetScrollCallback(window, scrollCallback);
+    glfwSetCharCallback(window, charCallback);
+    glfwSetKeyCallback(window, keyCallback);
 
     // Load settings and apply them so the resolution preset + vsync are
     // honoured from the very first frame (otherwise "Auto" on web stays
@@ -531,40 +552,114 @@ int main(int argc, char* argv[]) {
         static
 #endif
             Shader billboardShader("assets/Shaders/billboard_vert.shd", "assets/Shaders/billboard_frag.shd");
-        // Load existing world or create new one
+        // World / WorldSave are optional so we can tear down one world and
+        // load another mid-run (when the user picks or creates a world in
+        // the singleplayer menu). Static on Emscripten since main() never
+        // returns; plain auto on desktop.
         WorldSave::mountPersistentStorage();
 #ifdef __EMSCRIPTEN__
         static
 #endif
-            WorldSave worldSave("saves/world");
-        PlayerSaveData loadedPlayer;
-        bool hasSave = worldSave.loadLevelData(worldSeed, loadedPlayer);
+            std::optional<WorldSave> worldSave;
 #ifdef __EMSCRIPTEN__
         static
 #endif
-            World world(worldSeed);
-        std::cout << "World seed: " << worldSeed << std::endl;
-        world.chunkManager->setWorldSave(&worldSave);
-        // Benchmark mode always spawns at the default position so runs
-        // are directly comparable across saves — otherwise the camera
-        // starts wherever the player last walked and each run measures
-        // a different scene.
+            std::optional<World> world;
 #ifndef __EMSCRIPTEN__
         bool skipPlayerRestore = benchmarkMode;
 #else
         bool skipPlayerRestore = false;
 #endif
-        if (hasSave && !skipPlayerRestore) {
-            player.getCamera().setPosition(loadedPlayer.position);
-            player.setYawPitch(loadedPlayer.yaw, loadedPlayer.pitch);
-            player.getCamera().setWalkMode(loadedPlayer.walkMode);
-            for (int i = 0; i < Player::HOTBAR_SIZE; i++) player.setHotbarSlot(i, loadedPlayer.hotbar[i]);
-            player.setSelectedSlot(loadedPlayer.selectedSlot);
-            std::cout << "Loaded world save" << std::endl;
+
+#ifndef __EMSCRIPTEN__
+        // Benchmark-only default-world picker: most-recent in saves/, else
+        // legacy "world", else a fresh "World" folder. Interactive runs use
+        // the Singleplayer menu instead.
+        auto pickInitialFolder = []() -> std::string {
+            auto all = listWorlds();
+            if (!all.empty()) return all[0].folder;
+            if (std::filesystem::exists("saves/world/level.dat")) return "world";
+            return uniqueFolderName("World");
+        };
+#endif
+
+        auto captureCurrentPlayer = [&]() {
+            PlayerSaveData pd;
+            pd.position = player.getPosition();
+            pd.yaw = player.getYaw();
+            pd.pitch = player.getPitch();
+            pd.walkMode = player.isWalkMode();
+            std::memcpy(pd.hotbar, player.getHotbar(), sizeof(pd.hotbar));
+            pd.selectedSlot = player.getSelectedSlot();
+            return pd;
+        };
+
+        auto saveCurrentWorld = [&]() {
+            if (!world || !worldSave) return;
+            world->chunkManager->saveAllModifiedChunks();
+            worldSave->saveLevelData(world->getSeed(), captureCurrentPlayer());
+            WorldSave::syncToDisk();
+        };
+
+        // Load (or create) the world at saves/<folder>. `seedOverride` forces
+        // a specific seed (new-world creation or --seed); otherwise level.dat
+        // wins when present.
+        auto switchToWorld = [&](const std::string& folder, std::optional<unsigned int> seedOverride,
+                                 const std::string& displayName) {
+            saveCurrentWorld();
+            world.reset();
+            worldSave.reset();
+            w = nullptr;
+
+            std::filesystem::create_directories("saves/" + folder + "/chunks");
+            worldSave.emplace("saves/" + folder);
+
+            unsigned int seed = seedOverride.value_or(0);
+            PlayerSaveData loaded;
+            bool hadSave = worldSave->loadLevelData(seed, loaded);
+            if (seedOverride.has_value()) seed = *seedOverride;  // creation overrides stored seed
+            if (!displayName.empty()) worldSave->setDisplayName(displayName);
+
+            std::cout << "World: " << folder << "  seed: " << seed << std::endl;
+            world.emplace(seed);
+            world->chunkManager->setWorldSave(&*worldSave);
+            world->waterSimulator->initAudio(menuObj.getAudioEngine());
+            world->entityManager->initAudio(menuObj.getAudioEngine());
+            world->chunkManager->setRenderDistance(gameSettings.renderDistance);
+            w = &*world;
+
+            if (hadSave && !skipPlayerRestore) {
+                player.getCamera().setPosition(loaded.position);
+                player.setYawPitch(loaded.yaw, loaded.pitch);
+                player.getCamera().setWalkMode(loaded.walkMode);
+                for (int i = 0; i < Player::HOTBAR_SIZE; i++) player.setHotbarSlot(i, loaded.hotbar[i]);
+                player.setSelectedSlot(loaded.selectedSlot);
+            } else {
+                player.getCamera().setPosition(glm::vec3(15, 90, 15));
+                player.setYawPitch(-90.0f, 0.0f);
+                player.getCamera().setWalkMode(false);
+            }
+
+            // Persist so the new world shows up in listWorlds() immediately.
+            // The player position has been restored to the saved (x, y, z,
+            // yaw, pitch) but chunks are still streaming — the Loading state
+            // pumps chunks and renders a progress bar before Playing starts.
+            worldSave->saveLevelData(seed, captureCurrentPlayer());
+            WorldSave::syncToDisk();
+        };
+
+        // Benchmark runs without showing a menu — load the world up front.
+        // Interactive runs defer world loading until the user picks / creates
+        // one in the Singleplayer menu.
+#ifndef __EMSCRIPTEN__
+        if (benchmarkMode) {
+            std::string initialFolder = pickInitialFolder();
+            bool freshWorld = !std::filesystem::exists("saves/" + initialFolder + "/level.dat");
+            std::optional<unsigned int> cliSeed;
+            if (worldSeed != 0 && freshWorld) cliSeed = worldSeed;
+            switchToWorld(initialFolder, cliSeed, freshWorld ? initialFolder : "");
         }
-        world.waterSimulator->initAudio(menuObj.getAudioEngine());
-        world.entityManager->initAudio(menuObj.getAudioEngine());
-        w = &world;
+#endif
 
         EntityCubeRenderer entityCubes;
         // GL state for entityCubes + particles is created lazily on first render.
@@ -607,12 +702,15 @@ int main(int argc, char* argv[]) {
 #endif
             Shader cloudShader("assets/Shaders/cloud_vert.shd", "assets/Shaders/cloud_frag.shd");
         {
-            // Generate cloud pattern texture from noise
+            // Generate cloud pattern texture from noise. Uses its own
+            // TerrainGenerator (seed 0) so cloud shapes don't depend on
+            // which world is loaded — they look identical across worlds.
+            TerrainGenerator cloudNoise(0, 1.0f, 0, 10);
             std::vector<uint8_t> pixels(CLOUD_GRID * CLOUD_GRID * 4);
             for (int gx = 0; gx < CLOUD_GRID; gx++) {
                 for (int gz = 0; gz < CLOUD_GRID; gz++) {
                     int idx = (gz * CLOUD_GRID + gx) * 4;
-                    bool isCloud = world.terrainGenerator->getNoise(gx, gz) >= 0.65f;
+                    bool isCloud = cloudNoise.getNoise(gx, gz) >= 0.65f;
                     pixels[idx + 0] = 255;
                     pixels[idx + 1] = 255;
                     pixels[idx + 2] = 255;
@@ -1157,7 +1255,7 @@ int main(int argc, char* argv[]) {
 
         // Apply initial settings
         player.setMouseSensitivity(gameSettings.mouseSensitivity);
-        w->chunkManager->setRenderDistance(gameSettings.renderDistance);
+        if (w) w->chunkManager->setRenderDistance(gameSettings.renderDistance);
 
         // Extract loop body into a lambda for Emscripten compatibility
         auto mainLoopBody = [&]() {
@@ -1167,23 +1265,146 @@ int main(int argc, char* argv[]) {
             Menu& menu = *g_menu;
 
             // --- Menu states ---
+            // No chunk pumping in menu states — we don't know which world
+            // the user will pick, so any pre-loaded chunks would usually be
+            // thrown away. switchToWorld() blocks until spawn chunks are
+            // generated before returning Playing.
             if (currentState == GameState::MainMenu) {
                 glClearColor(0.2f, 0.15f, 0.1f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-                // Pump chunk streaming while the menu is up — workers start
-                // generating spawn-area chunks so they're ready by the time
-                // the player clicks Play (otherwise the world pops in over
-                // the first ~1s of Playing).
-                if (w) w->chunkManager->update(player.getPosition());
                 GameState next = menu.drawMainMenu(uiRenderer, windowWidth, windowHeight, window);
-                if (next == GameState::Playing && currentState != GameState::Playing) {
+                if (next == GameState::WorldList) menu.refreshWorldList();
+                if (next == GameState::Settings) applySettings();
+                currentState = next;
+                glfwSwapBuffers(window);
+                glfwPollEvents();
+                return;
+            }
+
+            if (currentState == GameState::WorldList) {
+                glClearColor(0.2f, 0.15f, 0.1f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                WorldListResult res;
+                GameState next = menu.drawWorldList(uiRenderer, windowWidth, windowHeight, window, res);
+                auto currentFolder = [&]() -> std::string {
+                    if (!worldSave) return "";
+                    auto base = worldSave->getBasePath();
+                    auto slash = base.find_last_of('/');
+                    return slash == std::string::npos ? base : base.substr(slash + 1);
+                };
+                switch (res.action) {
+                    case WorldListResult::PlaySelected:
+                        if (res.folder != currentFolder()) switchToWorld(res.folder, std::nullopt, "");
+                        if (world) {
+                            glm::vec3 p = player.getPosition();
+                            g_loadingSpawnCx = (int)std::floor(p.x / (float)CHUNK_SIZE);
+                            g_loadingSpawnCz = (int)std::floor(p.z / (float)CHUNK_SIZE);
+                            g_loadingStartTime = glfwGetTime();
+                            g_loadingWorldName = worldSave ? worldSave->getDisplayName() : res.folder;
+                            next = GameState::Loading;
+                        }
+                        break;
+                    case WorldListResult::DeleteConfirmed: {
+                        bool isCurrent = (res.folder == currentFolder());
+                        if (isCurrent) {
+                            world.reset();
+                            worldSave.reset();
+                            w = nullptr;
+                        }
+                        deleteWorld(res.folder);
+                        WorldSave::syncToDisk();
+                        menu.refreshWorldList();
+                        if (isCurrent) {
+                            // Re-load whichever world is now most-recent (or create a fresh one).
+                            auto all = listWorlds();
+                            std::string next = all.empty() ? uniqueFolderName("World") : all[0].folder;
+                            switchToWorld(next, std::nullopt, "");
+                        }
+                        break;
+                    }
+                    case WorldListResult::RenameConfirmed: {
+                        std::string newFolder;
+                        bool isCurrent = (res.renameOld == currentFolder());
+                        if (isCurrent) {
+                            saveCurrentWorld();
+                            world.reset();
+                            worldSave.reset();
+                            w = nullptr;
+                        }
+                        renameWorld(res.renameOld, res.renameNew, newFolder);
+                        WorldSave::syncToDisk();
+                        menu.refreshWorldList();
+                        if (isCurrent) switchToWorld(newFolder, std::nullopt, "");
+                        break;
+                    }
+                    case WorldListResult::CreateRequested:
+                    case WorldListResult::BackToTitle:
+                    case WorldListResult::None:
+                    default:
+                        break;
+                }
+                if (next == GameState::Playing) {
                     glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
                     player.resetMouseState();
                     player.consumeMouseButtons();
                     menu.startMusic();
                 }
-                if (next == GameState::Settings) applySettings();
                 currentState = next;
+                glfwSwapBuffers(window);
+                glfwPollEvents();
+                return;
+            }
+
+            if (currentState == GameState::CreateWorld) {
+                glClearColor(0.2f, 0.15f, 0.1f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                CreateWorldResult res;
+                GameState next = menu.drawCreateWorld(uiRenderer, windowWidth, windowHeight, window, res);
+                if (res.create) {
+                    std::string displayName = sanitizeWorldName(res.name);
+                    std::string folder = uniqueFolderName(displayName);
+                    unsigned int seed = resolveSeed(res.seed);
+                    switchToWorld(folder, std::optional<unsigned int>(seed), displayName);
+                    glm::vec3 p = player.getPosition();
+                    g_loadingSpawnCx = (int)std::floor(p.x / (float)CHUNK_SIZE);
+                    g_loadingSpawnCz = (int)std::floor(p.z / (float)CHUNK_SIZE);
+                    g_loadingStartTime = glfwGetTime();
+                    g_loadingWorldName = displayName;
+                    next = GameState::Loading;
+                }
+                if (next == GameState::WorldList) {
+                    menu.refreshWorldList();
+                }
+                currentState = next;
+                glfwSwapBuffers(window);
+                glfwPollEvents();
+                return;
+            }
+
+            if (currentState == GameState::Loading) {
+                glClearColor(0.2f, 0.15f, 0.1f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                // Pump chunk streaming and count how many of the 3x3 spawn
+                // chunks are ready. Progress drives the bar on screen.
+                int ready = 0;
+                if (w) {
+                    w->chunkManager->update(player.getPosition());
+                    for (int dx = -1; dx <= 1; ++dx)
+                        for (int dz = -1; dz <= 1; ++dz)
+                            if (w->chunkManager->getChunk(g_loadingSpawnCx + dx, g_loadingSpawnCz + dz)) ready++;
+                }
+                float progress = ready / 9.0f;
+                // 10-second safety timeout — if chunks still haven't loaded,
+                // enter Playing anyway so the user isn't stuck on this screen.
+                bool timedOut = (glfwGetTime() - g_loadingStartTime) > 10.0;
+                menu.drawLoadingScreen(uiRenderer, windowWidth, windowHeight, progress, g_loadingWorldName);
+                if (ready >= 9 || timedOut || !w) {
+                    glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
+                    player.resetMouseState();
+                    player.consumeMouseButtons();
+                    menu.startMusic();
+                    currentState = GameState::Playing;
+                }
                 glfwSwapBuffers(window);
                 glfwPollEvents();
                 return;
@@ -1192,7 +1413,6 @@ int main(int argc, char* argv[]) {
             if (currentState == GameState::Settings) {
                 glClearColor(0.2f, 0.15f, 0.1f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-                if (w) w->chunkManager->update(player.getPosition());
                 GameState next = menu.drawSettings(uiRenderer, windowWidth, windowHeight, window, gameSettings);
                 if (next != GameState::Settings) {
                     gameSettings.save(SETTINGS_PATH);
@@ -1859,17 +2079,7 @@ int main(int argc, char* argv[]) {
                     applySettings();
                 }
                 if (next == GameState::MainMenu) {
-                    // Save world when returning to main menu
-                    PlayerSaveData pd;
-                    pd.position = player.getPosition();
-                    pd.yaw = player.getYaw();
-                    pd.pitch = player.getPitch();
-                    pd.walkMode = player.isWalkMode();
-                    std::memcpy(pd.hotbar, player.getHotbar(), sizeof(pd.hotbar));
-                    pd.selectedSlot = player.getSelectedSlot();
-                    world.chunkManager->saveAllModifiedChunks();
-                    worldSave.saveLevelData(world.getSeed(), pd);
-                    WorldSave::syncToDisk();
+                    saveCurrentWorld();
                     std::cout << "World saved" << std::endl;
 
                     glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
@@ -1897,19 +2107,8 @@ int main(int argc, char* argv[]) {
         }
 
         // Save world on exit
-        {
-            PlayerSaveData pd;
-            pd.position = player.getPosition();
-            pd.yaw = player.getYaw();
-            pd.pitch = player.getPitch();
-            pd.walkMode = player.isWalkMode();
-            std::memcpy(pd.hotbar, player.getHotbar(), sizeof(pd.hotbar));
-            pd.selectedSlot = player.getSelectedSlot();
-            world.chunkManager->saveAllModifiedChunks();
-            worldSave.saveLevelData(world.getSeed(), pd);
-            WorldSave::syncToDisk();
-            std::cout << "World saved" << std::endl;
-        }
+        saveCurrentWorld();
+        std::cout << "World saved" << std::endl;
 
         shaderProgram.destroy();
     }                      // world and shaderProgram destroyed here, while GL context is still valid
