@@ -47,7 +47,17 @@ enum block_type : uint8_t {
     POPPY
 };
 
-enum Biome { BIOME_OCEAN, BIOME_BEACH, BIOME_PLAINS, BIOME_FOREST, BIOME_DESERT, BIOME_TUNDRA, BIOME_COUNT };
+// 16 biomes chosen to cover Minecraft's major climate regions while only
+// using blocks this codebase already knows (GRASS/DIRT/STONE/SAND/SNOW/
+// GRAVEL/WATER). Order here maps to BIOME_TABLE in TerrainGenerator.cpp.
+enum Biome {
+    BIOME_DEEP_OCEAN, BIOME_OCEAN, BIOME_RIVER,
+    BIOME_BEACH, BIOME_SNOWY_BEACH, BIOME_STONE_SHORE,
+    BIOME_PLAINS, BIOME_FOREST, BIOME_TAIGA, BIOME_SWAMP,
+    BIOME_DESERT, BIOME_TUNDRA,
+    BIOME_MEADOW, BIOME_WINDSWEPT_HILLS, BIOME_STONY_PEAKS, BIOME_SNOWY_PEAKS,
+    BIOME_COUNT
+};
 
 // Water level encoding: bits 0-2 hold the flow level (0-7), bit 7 is the
 // "falling" flag. Level 0 without the flag is a source (infinite). Level 0

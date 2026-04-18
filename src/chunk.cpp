@@ -125,78 +125,79 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
     d.chunkX = chunkX;
     d.chunkZ = chunkZ;
 
-    constexpr int WATER_LEVEL = CHUNK_HEIGHT / 2;
+    constexpr int WATER_LEVEL = TerrainGenerator::SEA_LEVEL;
 
+    // --- Phase 1+2: per-column 3D density fill ---
+    // For each (x,z): sample climate+spline once, pick biome, then walk the
+    // column filling STONE where density>0 and carving AIR where inCave. Water
+    // fills any air below sea level; bedrock clamps Y=0.
     for (int i = 0; i < CHUNK_SIZE; i++) {
         for (int k = 0; k < CHUNK_SIZE; k++) {
             int globalX = chunkX * CHUNK_SIZE + i;
             int globalZ = chunkZ * CHUNK_SIZE + k;
 
-            Biome biome;
-            int height = terrain.getHeightAndBiome(globalX, globalZ, biome);
-            d.heights[i][k] = height;
-            d.biomes[i][k] = biome;
-            const BiomeParams& bp = terrain.getBiomeParams(biome);
+            Climate climate = terrain.sampleClimate(globalX, globalZ);
+            double baseH = terrain.splineBaseHeight(climate);
+            double factor = terrain.splineHeightFactor(climate);
 
-            int limit_stone = std::max(1, (int)(0.7 * height));
-
+            int topSolidY = 0;
             for (int j = 0; j < CHUNK_HEIGHT; j++) {
                 Cube* block = &flatBlocks[i * CHUNK_HEIGHT * CHUNK_SIZE + j * CHUNK_SIZE + k];
-                double detailNoise = terrain.getNoise(globalX, globalZ, j);
-
-                if (j > height) {
-                    block->setType(j <= WATER_LEVEL ? WATER : AIR);
-                } else if (j == 0) {
+                if (j == 0) {
                     block->setType(BEDROCK);
-                } else if (j < limit_stone) {
-                    block->setType((detailNoise > 0.45 && detailNoise < 0.5) ? COAL_ORE : STONE);
-                } else if (j == height) {
-                    // Surface: altitude overrides biome at high elevations
-                    int snowLine = WATER_LEVEL + 35;  // ~99
-                    int stoneLine = WATER_LEVEL + 15; // ~79
-                    if (height >= snowLine && biome == BIOME_TUNDRA)
-                        block->setType(SNOW); // snow peaks in cold biomes
-                    else if (height >= stoneLine)
-                        block->setType(STONE); // exposed rock at high altitude
-                    else
-                        block->setType(bp.surfaceBlock); // biome surface (grass/sand/snow)
-                } else {
-                    // Below surface (limit_stone <= j < height): subsurface material
-                    block->setType(bp.subsurfaceBlock);
+                    topSolidY = 0;
+                    continue;
                 }
+                bool solid = terrain.density(globalX, j, globalZ, baseH, factor) > 0.0;
+                bool cave = terrain.inCave(globalX, j, globalZ);
+                if (solid && !cave) {
+                    block->setType(STONE);
+                    topSolidY = j;
+                } else if (j <= WATER_LEVEL) {
+                    block->setType(WATER);
+                } else {
+                    block->setType(AIR);
+                }
+            }
+
+            // Biome picked AFTER we know the surface height, so mountain
+            // biomes (windswept/peaks) actually fire at high elevations.
+            Biome biome = terrain.pickBiome(climate, topSolidY - WATER_LEVEL);
+            d.heights[i][k] = topSolidY;
+            d.biomes[i][k] = biome;
+        }
+    }
+
+    // --- Phase 3: surface rule (top solid → surface block, next 3 → subsurface) ---
+    for (int i = 0; i < CHUNK_SIZE; i++) {
+        for (int k = 0; k < CHUNK_SIZE; k++) {
+            int topY = d.heights[i][k];
+            if (topY <= 0) continue;
+            const BiomeParams& bp = terrain.getBiomeParams(d.biomes[i][k]);
+            Cube* top = &flatBlocks[i * CHUNK_HEIGHT * CHUNK_SIZE + topY * CHUNK_SIZE + k];
+            if (top->getType() != STONE) continue;  // not a normal terrain surface (cave ceiling etc.)
+
+            // Below-water top: paint with underwater surface (sand/gravel).
+            block_type surf = (topY < WATER_LEVEL) ? bp.underwaterSurface : bp.surfaceBlock;
+            top->setType(surf);
+            // Subsurface — 3 blocks of DIRT/SAND/etc. directly beneath.
+            for (int d3 = 1; d3 <= 3 && topY - d3 > 0; ++d3) {
+                Cube* under = &flatBlocks[i * CHUNK_HEIGHT * CHUNK_SIZE + (topY - d3) * CHUNK_SIZE + k];
+                if (under->getType() != STONE) break;
+                under->setType(bp.subsurfaceBlock);
             }
         }
     }
 
-    // --- Shore post-pass: convert blocks adjacent to water ---
+    // --- Phase 4: ore veins (3D noise over STONE in the coal band) ---
     for (int i = 0; i < CHUNK_SIZE; i++) {
-        block_type shoreBlock = (d.biomes[i][0] == BIOME_TUNDRA) ? GRAVEL : SAND;
         for (int k = 0; k < CHUNK_SIZE; k++) {
-            if (d.biomes[i][k] == BIOME_TUNDRA)
-                shoreBlock = GRAVEL;
-            else
-                shoreBlock = SAND;
-
-            for (int j = 0; j <= WATER_LEVEL + 1 && j < CHUNK_HEIGHT; j++) {
-                Cube* block = getBlockFromFlat(flatBlocks.get(), i, j, k);
-                block_type bt = block->getType();
-                if (bt != DIRT && bt != GRASS && bt != STONE && bt != GRAVEL) continue;
-
-                if (j < WATER_LEVEL) {
-                    Cube* above = getBlockFromFlat(flatBlocks.get(), i, j + 1, k);
-                    if (above && above->getType() == WATER) {
-                        block->setType(shoreBlock);
-                        continue;
-                    }
-                }
-                static const int dirs[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
-                for (auto& dir : dirs) {
-                    Cube* nb = getBlockFromFlat(flatBlocks.get(), i + dir[0], j + dir[1], k + dir[2]);
-                    if (nb && nb->getType() == WATER) {
-                        block->setType(shoreBlock);
-                        break;
-                    }
-                }
+            int globalX = chunkX * CHUNK_SIZE + i;
+            int globalZ = chunkZ * CHUNK_SIZE + k;
+            for (int j = 4; j <= 90 && j < CHUNK_HEIGHT; j++) {
+                Cube* block = &flatBlocks[i * CHUNK_HEIGHT * CHUNK_SIZE + j * CHUNK_SIZE + k];
+                if (block->getType() != STONE) continue;
+                if (terrain.oreHit(globalX, j, globalZ)) block->setType(COAL_ORE);
             }
         }
     }
@@ -341,7 +342,7 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
         for (int pz = 0; pz < CHUNK_SIZE; ++pz) {
             if (claimed[px][pz]) continue;
             Biome bi = d.biomes[px][pz];
-            if (bi == BIOME_OCEAN || bi == BIOME_DESERT) continue;
+            if (bi == BIOME_OCEAN || bi == BIOME_DEEP_OCEAN || bi == BIOME_DESERT) continue;
             int surface = d.heights[px][pz];
             if (surface <= WATER_LEVEL) continue;
             if (surface + 1 >= CHUNK_HEIGHT) continue;
@@ -353,6 +354,7 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
             block_type pick = AIR;
             switch (bi) {
             case BIOME_PLAINS:
+            case BIOME_MEADOW:
                 if (roll < 10)
                     pick = TALL_GRASS;
                 else if (roll < 11)
@@ -361,13 +363,18 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
                     pick = POPPY;
                 break;
             case BIOME_FOREST:
+            case BIOME_TAIGA:
                 if (roll < 8)
                     pick = TALL_GRASS;
                 else if (roll < 9)
                     pick = POPPY;
                 break;
+            case BIOME_SWAMP:
+                if (roll < 15) pick = TALL_GRASS;
+                break;
             case BIOME_TUNDRA:
             case BIOME_BEACH:
+            case BIOME_SNOWY_BEACH:
                 if (roll < 2) pick = TALL_GRASS;
                 break;
             default:
