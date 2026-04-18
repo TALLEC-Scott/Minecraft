@@ -22,7 +22,7 @@ https://github.com/user-attachments/assets/c95a33fa-b7e2-41ac-b8ba-79bb7edf997f
 
 ### v0.6
 
-<img width="2351" height="1164" alt="image" src="https://github.com/user-attachments/assets/a3e615a3-d169-46c1-a61c-00a576691cef" />
+![Screenshot 5](Minecraft_Screenshot_5.png)
 
 ### v0.7
 
