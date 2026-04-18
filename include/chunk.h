@@ -63,6 +63,8 @@ struct ChunkData {
 ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain);
 // Compute sky + block light on flat arrays (safe for worker threads)
 void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY);
+// computeBlockLightData moved to light_propagation.h so the tests (which
+// can't link the GL-dependent chunk.cpp) can call it via the test target.
 
 class Chunk {
   public:
@@ -350,3 +352,25 @@ class Chunk {
 };
 
 // buildMeshFromData is declared in chunk_mesh.h (included above).
+
+// Live-neighbor variant of the packed-light sampler (see light_sampler.h for
+// the snapshot-based variant). Used by the sync mesh rebuild path in
+// Chunk::buildMeshData, where we have Chunk* pointers to each cardinal
+// neighbor directly rather than a captured NeighborBorders.
+inline uint8_t sampleLightNeighbors(const uint8_t* light, Chunk* xNeg, Chunk* xPos, Chunk* zNeg, Chunk* zPos,
+                                    int x, int y, int z) {
+    if (y < 0 || y >= CHUNK_HEIGHT) return packLight(15, 0);
+    if (x >= 0 && x < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE) {
+        return light[lightIdx(x, y, z)];
+    }
+    auto fromNeighbor = [y](Chunk* n, int lx, int lz) -> uint8_t {
+        if (!n) return packLight(15, 0);
+        if (n->skyLight) return n->skyLight.get()[lightIdx(lx, y, lz)];
+        return n->sparseLight.get(lx, y, lz);
+    };
+    if (x < 0) return fromNeighbor(xNeg, CHUNK_SIZE - 1, z);
+    if (x >= CHUNK_SIZE) return fromNeighbor(xPos, 0, z);
+    if (z < 0) return fromNeighbor(zNeg, x, CHUNK_SIZE - 1);
+    if (z >= CHUNK_SIZE) return fromNeighbor(zPos, x, 0);
+    return packLight(15, 0);
+}

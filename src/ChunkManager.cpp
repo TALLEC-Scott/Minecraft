@@ -174,10 +174,16 @@ void ChunkManager::loadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
                         Chunk& c = chunks[glm::ivec2(x, z)];
                         c.propagateBorderLight(getChunk(x - 1, z), getChunk(x + 1, z), getChunk(x, z - 1),
                                                getChunk(x, z + 1));
+                        // Re-propagate on each existing neighbor so they pull
+                        // in light newly-contributed by this chunk (e.g. a
+                        // glowstone inside it that otherwise stops at its edge).
                         for (auto& [dx, dz] :
                              std::initializer_list<std::pair<int, int>>{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}) {
-                            auto it2 = chunks.find(glm::ivec2(x + dx, z + dz));
-                            if (it2 != chunks.end()) it2->second.markDirty();
+                            Chunk* nbr = getChunk(x + dx, z + dz);
+                            if (!nbr) continue;
+                            nbr->propagateBorderLight(getChunk(x + dx - 1, z + dz), getChunk(x + dx + 1, z + dz),
+                                                      getChunk(x + dx, z + dz - 1), getChunk(x + dx, z + dz + 1));
+                            nbr->markDirty();
                         }
                         generated++;
                         continue;
@@ -246,8 +252,13 @@ void ChunkManager::generateChunk(int x, int z) {
     Chunk& newChunk = chunks[glm::ivec2(x, z)];
     newChunk.propagateBorderLight(getChunk(x - 1, z), getChunk(x + 1, z), getChunk(x, z - 1), getChunk(x, z + 1));
     for (auto& [dx, dz] : std::initializer_list<std::pair<int, int>>{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}) {
-        auto it = chunks.find(glm::ivec2(x + dx, z + dz));
-        if (it != chunks.end()) it->second.markDirty();
+        Chunk* nbr = getChunk(x + dx, z + dz);
+        if (!nbr) continue;
+        // Re-seed neighbor from all its neighbors so it picks up any fresh
+        // light we just introduced (e.g. glowstones in the new chunk).
+        nbr->propagateBorderLight(getChunk(x + dx - 1, z + dz), getChunk(x + dx + 1, z + dz),
+                                  getChunk(x + dx, z + dz - 1), getChunk(x + dx, z + dz + 1));
+        nbr->markDirty();
     }
 }
 
@@ -392,9 +403,19 @@ void ChunkManager::drainResults() {
 
         chunks[pos] = Chunk(std::move(data));
 
-        // Cross-chunk light propagation
+        // Cross-chunk light propagation. First pull neighbor light INTO the
+        // new chunk, then re-propagate on each already-loaded neighbor so
+        // they pick up any fresh light we're contributing (e.g. glowstones
+        // inside a newly-loaded chunk need to spill into neighbors that were
+        // loaded before us — without this the light stops at our edge).
         chunks[pos].propagateBorderLight(getChunk(pos.x - 1, pos.y), getChunk(pos.x + 1, pos.y),
                                          getChunk(pos.x, pos.y - 1), getChunk(pos.x, pos.y + 1));
+        for (auto& [dx, dz] : std::initializer_list<std::pair<int, int>>{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}) {
+            Chunk* nbr = getChunk(pos.x + dx, pos.y + dz);
+            if (!nbr) continue;
+            nbr->propagateBorderLight(getChunk(pos.x + dx - 1, pos.y + dz), getChunk(pos.x + dx + 1, pos.y + dz),
+                                      getChunk(pos.x + dx, pos.y + dz - 1), getChunk(pos.x + dx, pos.y + dz + 1));
+        }
 
         // Queue async mesh build for the new chunk and its neighbors
         queueMeshBuild(pos);

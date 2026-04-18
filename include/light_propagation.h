@@ -17,7 +17,14 @@
 #include <cstdint>
 
 class ChunkManager;
+class Cube;
 
 void floodSkyLightWorld(ChunkManager* cm, int sx, int sy, int sz);
 void floodBlockLight(ChunkManager* cm, int sx, int sy, int sz, uint8_t emission);
 void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz);
+
+// Intra-chunk block-light BFS: walks the chunk's blocks, seeds from any
+// emissive block (glowstone etc.), floods outward. Writes the low nibble
+// of the packed skyLight buffer; leaves the high (sky) nibble untouched.
+// Cross-chunk propagation is handled separately by Chunk::propagateBorderLight.
+void computeBlockLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY);
