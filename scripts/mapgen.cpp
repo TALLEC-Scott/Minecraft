@@ -89,14 +89,24 @@ int main(int argc, char* argv[]) {
 
     printf("Height range: %d to %d (sea level: %d)\n", minH, maxH, waterLevel);
 
-    // Biome color palette: [r, g, b]
+    // Biome color palette: [r, g, b]. Order matches the Biome enum in cube.h.
     static const unsigned char BIOME_COLORS[BIOME_COUNT][3] = {
-        {20,  50, 180},   // OCEAN - deep blue
-        {220, 200, 140},  // BEACH - sandy yellow
-        {100, 180,  60},  // PLAINS - light green
-        {30,  100,  20},  // FOREST - dark green
-        {210, 190, 100},  // DESERT - tan
-        {200, 220, 230},  // TUNDRA - pale blue-white
+        { 10,  30, 130},  // DEEP_OCEAN
+        { 20,  50, 180},  // OCEAN
+        { 40, 100, 200},  // RIVER
+        {220, 200, 140},  // BEACH
+        {230, 230, 240},  // SNOWY_BEACH
+        {150, 150, 150},  // STONE_SHORE
+        {100, 180,  60},  // PLAINS
+        { 30, 100,  20},  // FOREST
+        { 40, 120,  70},  // TAIGA
+        { 70, 110,  70},  // SWAMP
+        {210, 190, 100},  // DESERT
+        {200, 220, 230},  // TUNDRA
+        {130, 200, 150},  // MEADOW
+        {160, 170, 130},  // WINDSWEPT_HILLS
+        {140, 140, 140},  // STONY_PEAKS
+        {240, 240, 250},  // SNOWY_PEAKS
     };
 
     for (int y = 0; y < mapSize; y++) {
@@ -117,7 +127,7 @@ int main(int argc, char* argv[]) {
             b = (unsigned char)(b * shade);
 
             // Water depth darkening
-            if (biome == BIOME_OCEAN && h <= waterLevel) {
+            if ((biome == BIOME_OCEAN || biome == BIOME_DEEP_OCEAN || biome == BIOME_RIVER) && h <= waterLevel) {
                 float depth = (float)(waterLevel - h) / 20.0f;
                 r = (unsigned char)(r * (1.0f - depth * 0.5f));
                 g = (unsigned char)(g * (1.0f - depth * 0.5f));
