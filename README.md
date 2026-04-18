@@ -4,9 +4,7 @@ A Minecraft-like voxel terrain renderer built with C++ and OpenGL 3.3 Core Profi
 
 ## Screenshots
 
-### v0.7 — TNT, plants, biomes
 
-https://github.com/TALLEC-Scott/Minecraft/raw/main/docs/demo.mp4
 
 ### v0.1
 ![Screenshot 1](Minecraft_Screenshot_1.png)
@@ -17,6 +15,10 @@ https://github.com/TALLEC-Scott/Minecraft/raw/main/docs/demo.mp4
 
 ### v0.3
 ![Screenshot 4](Minecraft_Screenshot_4.png)
+
+### v0.7 — TNT, plants, biomes
+
+https://github.com/user-attachments/assets/4a94017a-34d2-41fa-8707-44ceb98dd80f
 
 ## Features
 
