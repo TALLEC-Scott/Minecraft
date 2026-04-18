@@ -68,23 +68,35 @@ void ChunkManager::update(glm::vec3 cameraPosition) {
     glm::ivec2 maxChunk = currentChunk + glm::ivec2(renderDistance);
 
 #ifndef __EMSCRIPTEN__
-    drainResults();
+    {
+        ZoneScopedN("ChunkMgr::drainResults");
+        drainResults();
+    }
 #endif
     bool boxChanged = (minChunk != currentMin) || (maxChunk != currentMax);
     currentMin = minChunk;
     currentMax = maxChunk;
 #ifdef __EMSCRIPTEN__
-    // Web: loadChunks generates up to MAX_CHUNKS_PER_FRAME chunks
-    // synchronously per call, so we must keep calling it to stream the
-    // render box in. unloadChunks only needs to run when the box moved.
-    loadChunks(minChunk, maxChunk);
-    if (boxChanged) unloadChunks(minChunk, maxChunk);
+    {
+        ZoneScopedN("ChunkMgr::loadChunks");
+        loadChunks(minChunk, maxChunk);
+    }
+    if (boxChanged) {
+        ZoneScopedN("ChunkMgr::unloadChunks");
+        unloadChunks(minChunk, maxChunk);
+    }
 #else
     // Native: workers drain the existing request queue on their own, so
     // both passes can sit out until the player crosses a chunk boundary.
     if (boxChanged) {
-        loadChunks(minChunk, maxChunk);
-        unloadChunks(minChunk, maxChunk);
+        {
+            ZoneScopedN("ChunkMgr::loadChunks");
+            loadChunks(minChunk, maxChunk);
+        }
+        {
+            ZoneScopedN("ChunkMgr::unloadChunks");
+            unloadChunks(minChunk, maxChunk);
+        }
     }
 #endif
 
@@ -94,14 +106,31 @@ void ChunkManager::update(glm::vec3 cameraPosition) {
     // 20 frames (~333ms at 60fps) matches common voxel-engine practice —
     // short enough to reclaim memory, long enough to absorb camera spins
     // and rapid-rebuild transients without redundant GPU uploads.
+    //
+    // Only walk chunks with pending meshes (populated in drainResults /
+    // web sync path). Rendered chunks reset framesSinceRender in
+    // Chunk::render; the remaining pending chunks get their counter
+    // incremented here and uploaded once stale.
     constexpr int STALE_FRAMES = 20;
     constexpr int FLUSH_BUDGET = 16; // cap per-frame uploads to avoid stalls
     int flushed = 0;
-    for (auto& [pos, chunk] : chunks) {
-        chunk.framesSinceRender++;
-        if (chunk.hasPendingMesh() && chunk.framesSinceRender > STALE_FRAMES && flushed < FLUSH_BUDGET) {
-            chunk.uploadMesh();
-            flushed++;
+    {
+        ZoneScopedN("ChunkMgr::staleMeshScan");
+        for (auto it = chunksWithPendingMesh.begin(); it != chunksWithPendingMesh.end();) {
+            auto cIt = chunks.find(*it);
+            if (cIt == chunks.end() || !cIt->second.hasPendingMesh()) {
+                // Chunk unloaded or mesh already uploaded (via render path).
+                it = chunksWithPendingMesh.erase(it);
+                continue;
+            }
+            cIt->second.framesSinceRender++;
+            if (cIt->second.framesSinceRender > STALE_FRAMES && flushed < FLUSH_BUDGET) {
+                cIt->second.uploadMesh();
+                flushed++;
+                it = chunksWithPendingMesh.erase(it);
+            } else {
+                ++it;
+            }
         }
     }
 
@@ -193,6 +222,7 @@ void ChunkManager::unloadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
             if (worldSave && it->second.modified) {
                 worldSave->saveChunk(it->second);
             }
+            chunksWithPendingMesh.erase(it->first);
             it = chunks.erase(it);
         } else {
             ++it;
@@ -395,6 +425,7 @@ void ChunkManager::drainResults() {
         if (it == chunks.end()) continue; // chunk was unloaded
 
         it->second.setPendingMesh(std::move(res.mesh));
+        chunksWithPendingMesh.insert(res.pos);
         meshDrained++;
     }
 }

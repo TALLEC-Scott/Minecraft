@@ -256,10 +256,22 @@ void World::update(glm::vec3 cameraPosition, float dt, double now) const {
     ZoneScopedN("World::update");
     lastCameraPos = cameraPosition;
     this->chunkManager->update(cameraPosition);
-    this->waterSimulator->tick();
-    this->waterSimulator->updateAmbient(cameraPosition);
-    this->entityManager->tick(const_cast<World*>(this), dt, now);
-    this->particles->update(dt);
+    {
+        ZoneScopedN("Water::tick");
+        this->waterSimulator->tick();
+    }
+    {
+        ZoneScopedN("Water::updateAmbient");
+        this->waterSimulator->updateAmbient(cameraPosition);
+    }
+    {
+        ZoneScopedN("Entities::tick");
+        this->entityManager->tick(const_cast<World*>(this), dt, now);
+    }
+    {
+        ZoneScopedN("Particles::update");
+        this->particles->update(dt);
+    }
     // Decay camera shake toward zero so a single explode() call produces a
     // finite rattle rather than a permanent one.
     if (cameraShake > 0.0f) {
