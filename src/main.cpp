@@ -637,7 +637,24 @@ int main(int argc, char* argv[]) {
         constexpr float CLOUD_DEPTH = 4.0f;
         constexpr float CLOUD_EXTENT = 2000.0f;
         GLuint cloudPatternTex = 0;
-        auto uploadCloudPixels = [&](const std::vector<uint8_t>& pixels) {
+        // clouds.bin format: 4-byte magic 'CLDP' | 1-byte version | 2048 bytes
+        // packed bitmask (128 × 128 bits, LSB = cloud-present). Unpacks back
+        // to RGBA at upload time since the shader expects an alpha texture —
+        // the packed form is just for on-disk compactness (2053 B vs 64 KB).
+        constexpr uint32_t CLOUD_MAGIC = 0x50444C43;
+        constexpr uint8_t CLOUD_VERSION = 1;
+        constexpr size_t CLOUD_BITS = static_cast<size_t>(CLOUD_GRID) * CLOUD_GRID;
+        constexpr size_t CLOUD_PACKED_BYTES = (CLOUD_BITS + 7) / 8;
+
+        auto uploadCloudBits = [&](const std::vector<uint8_t>& packed) {
+            std::vector<uint8_t> pixels(CLOUD_BITS * 4);
+            for (size_t i = 0; i < CLOUD_BITS; ++i) {
+                bool cloud = (packed[i >> 3] >> (i & 7)) & 1;
+                pixels[i * 4 + 0] = 255;
+                pixels[i * 4 + 1] = 255;
+                pixels[i * 4 + 2] = 255;
+                pixels[i * 4 + 3] = cloud ? 255 : 0;
+            }
             if (!cloudPatternTex) glGenTextures(1, &cloudPatternTex);
             glBindTexture(GL_TEXTURE_2D, cloudPatternTex);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, CLOUD_GRID, CLOUD_GRID, 0, GL_RGBA, GL_UNSIGNED_BYTE,
@@ -647,40 +664,52 @@ int main(int argc, char* argv[]) {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
         };
-        auto bakeCloudPixels = [&](unsigned int seed) {
+        auto bakeCloudBits = [&](unsigned int seed) {
             TerrainGenerator cloudNoise(seed, 0.1f, 0, 10);
-            std::vector<uint8_t> pixels(CLOUD_GRID * CLOUD_GRID * 4);
+            std::vector<uint8_t> packed(CLOUD_PACKED_BYTES, 0);
             for (int gx = 0; gx < CLOUD_GRID; gx++) {
                 for (int gz = 0; gz < CLOUD_GRID; gz++) {
-                    int idx = (gz * CLOUD_GRID + gx) * 4;
-                    bool isCloud = cloudNoise.getNoise(gx, gz) >= 0.65f;
-                    pixels[idx + 0] = 255;
-                    pixels[idx + 1] = 255;
-                    pixels[idx + 2] = 255;
-                    pixels[idx + 3] = isCloud ? 255 : 0;
+                    if (cloudNoise.getNoise(gx, gz) >= 0.65f) {
+                        size_t bit = static_cast<size_t>(gz) * CLOUD_GRID + gx;
+                        packed[bit >> 3] |= static_cast<uint8_t>(1u << (bit & 7));
+                    }
                 }
             }
-            return pixels;
+            return packed;
         };
-        // Load cloud pixels from saves/<folder>/clouds.bin if present, else
-        // bake from the world's seed and persist so the next load is a
-        // straight file read. Raw RGBA (64 KB) — negligible, no compression needed.
+        // Load packed cloud bits from saves/<folder>/clouds.bin if present,
+        // else bake from the world's seed and persist so the next load is a
+        // straight file read. Files from previous RGBA-blob format lack the
+        // CLDP magic and get silently re-baked into the new format.
         auto loadOrBakeCloudPattern = [&](const std::string& folder, unsigned int seed) {
             std::string path = "saves/" + folder + "/clouds.bin";
-            constexpr size_t CLOUD_BYTES = static_cast<size_t>(CLOUD_GRID) * CLOUD_GRID * 4;
-            std::vector<uint8_t> pixels;
-            std::ifstream in(path, std::ios::binary);
-            if (in) {
-                pixels.resize(CLOUD_BYTES);
-                in.read(reinterpret_cast<char*>(pixels.data()), CLOUD_BYTES);
-                if (in.gcount() != static_cast<std::streamsize>(CLOUD_BYTES)) pixels.clear();
+            std::vector<uint8_t> packed;
+            {
+                std::ifstream in(path, std::ios::binary);
+                if (in) {
+                    uint32_t magic = 0;
+                    uint8_t version = 0;
+                    in.read(reinterpret_cast<char*>(&magic), sizeof(magic));
+                    in.read(reinterpret_cast<char*>(&version), sizeof(version));
+                    if (magic == CLOUD_MAGIC && version == CLOUD_VERSION) {
+                        packed.resize(CLOUD_PACKED_BYTES);
+                        in.read(reinterpret_cast<char*>(packed.data()), CLOUD_PACKED_BYTES);
+                        if (in.gcount() != static_cast<std::streamsize>(CLOUD_PACKED_BYTES)) packed.clear();
+                    }
+                }
             }
-            if (pixels.empty()) {
-                pixels = bakeCloudPixels(seed);
-                std::ofstream out(path, std::ios::binary);
-                if (out) out.write(reinterpret_cast<const char*>(pixels.data()), CLOUD_BYTES);
+            if (packed.empty()) {
+                packed = bakeCloudBits(seed);
+                std::ofstream out(path, std::ios::binary | std::ios::trunc);
+                if (out) {
+                    uint32_t magic = CLOUD_MAGIC;
+                    uint8_t version = CLOUD_VERSION;
+                    out.write(reinterpret_cast<const char*>(&magic), sizeof(magic));
+                    out.write(reinterpret_cast<const char*>(&version), sizeof(version));
+                    out.write(reinterpret_cast<const char*>(packed.data()), CLOUD_PACKED_BYTES);
+                }
             }
-            uploadCloudPixels(pixels);
+            uploadCloudBits(packed);
         };
 
         // Load (or create) the world at saves/<folder>. `seedOverride` forces
