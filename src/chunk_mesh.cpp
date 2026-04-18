@@ -94,27 +94,20 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                 opaq[oIdx(x, y, z)] = (t != AIR && t != WATER && !hasFlag(t, BF_CROSS)) ? 1 : 0;
             }
 
+    // Borders from neighbor chunks: cross-quad plants shouldn't cast AO
+    // shadows across chunk seams, same rule as the interior fill.
+    auto isAOOccluder = [](block_type t) {
+        return t != AIR && t != WATER && !hasFlag(t, BF_CROSS);
+    };
     for (int y = 0; y < opaqueH; y++)
         for (int z = 0; z < CHUNK_SIZE; z++) {
-            if (nb.xNeg.valid) {
-                block_type t = nb.xNeg.types[z][y];
-                opaq[oIdx(-1, y, z)] = (t != AIR && t != WATER) ? 1 : 0;
-            }
-            if (nb.xPos.valid) {
-                block_type t = nb.xPos.types[z][y];
-                opaq[oIdx(CHUNK_SIZE, y, z)] = (t != AIR && t != WATER) ? 1 : 0;
-            }
+            if (nb.xNeg.valid) opaq[oIdx(-1, y, z)] = isAOOccluder(nb.xNeg.types[z][y]) ? 1 : 0;
+            if (nb.xPos.valid) opaq[oIdx(CHUNK_SIZE, y, z)] = isAOOccluder(nb.xPos.types[z][y]) ? 1 : 0;
         }
     for (int y = 0; y < opaqueH; y++)
         for (int x = 0; x < CHUNK_SIZE; x++) {
-            if (nb.zNeg.valid) {
-                block_type t = nb.zNeg.types[x][y];
-                opaq[oIdx(x, y, -1)] = (t != AIR && t != WATER) ? 1 : 0;
-            }
-            if (nb.zPos.valid) {
-                block_type t = nb.zPos.types[x][y];
-                opaq[oIdx(x, y, CHUNK_SIZE)] = (t != AIR && t != WATER) ? 1 : 0;
-            }
+            if (nb.zNeg.valid) opaq[oIdx(x, y, -1)] = isAOOccluder(nb.zNeg.types[x][y]) ? 1 : 0;
+            if (nb.zPos.valid) opaq[oIdx(x, y, CHUNK_SIZE)] = isAOOccluder(nb.zPos.types[x][y]) ? 1 : 0;
         }
 
     // Missing neighbors treated as solid — suppresses border faces until neighbor loads.
