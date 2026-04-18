@@ -273,7 +273,11 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
         next = GameState::Settings;
     }
 
+#ifndef __EMSCRIPTEN__
+    // Browsers don't let a page programmatically close a tab the user opened,
+    // so Quit is desktop-only — GLFW's close flag drives the native main loop.
     if (drawButton(ui, "Quit Game", btnX, startY + gap * 2, btnW, btnH)) glfwSetWindowShouldClose(window, true);
+#endif
 
     // Splash text — rotated, pulsing, bottom-right corner
     {
