@@ -4,39 +4,42 @@ A Minecraft-like voxel terrain renderer built with C++ and OpenGL 3.3 Core Profi
 
 ## Screenshots
 
+### Latest — v0.7: TNT, plants, biomes
 
+https://github.com/user-attachments/assets/4a94017a-34d2-41fa-8707-44ceb98dd80f
 
-### v0.1
-![Screenshot 1](Minecraft_Screenshot_1.png)
-![Screenshot 2](Minecraft_Screenshot_2.png)
-![Screenshot 6](Minecraft_Screenshot_6.png)
+<details>
+<summary><b>Earlier versions</b></summary>
 
-### v0.2
+#### v0.6 — inventory, save/load
 
-https://github.com/user-attachments/assets/b1350ee2-8fe9-47be-8e3b-8c2acb02ed27
+<img src="Minecraft_Screenshot_5.png" width="600" />
 
-
-### v0.3
-![Screenshot 4](Minecraft_Screenshot_4.png)
-
-
-### v0.4
-
-![v0.4](Minecraft_0.4.png)
-
-
-
-### v0.5
+#### v0.5 — water simulation
 
 https://github.com/user-attachments/assets/c95a33fa-b7e2-41ac-b8ba-79bb7edf997f
 
-### v0.6
+#### v0.4 — day/night cycle
 
-![Screenshot 5](Minecraft_Screenshot_5.png)
+<img src="Minecraft_0.4.png" width="500" />
 
-### v0.7
+#### v0.3 — biomes
 
-https://github.com/user-attachments/assets/4a94017a-34d2-41fa-8707-44ceb98dd80f
+<img src="Minecraft_Screenshot_4.png" width="600" />
+
+#### v0.2 — clouds, sky
+
+[![Watch the demo](docs/v02-thumb.jpg)](https://i.imgur.com/WYfonMc.mp4)
+
+#### v0.1 — basic terrain
+
+<p>
+  <img src="Minecraft_Screenshot_1.png" width="300" />
+  <img src="Minecraft_Screenshot_2.png" width="300" />
+  <img src="Minecraft_Screenshot_6.png" width="300" />
+</p>
+
+</details>
 
 ## Features
 
