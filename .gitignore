@@ -19,6 +19,7 @@ GEMINI.md
 benchmark_results.txt
 benchmark_history/
 profile_results.txt
+profile_*.txt
 terrain_map*.png
 
 # Tool binaries
