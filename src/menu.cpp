@@ -268,7 +268,10 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
 
     if (drawButton(ui, "Singleplayer", btnX, startY, btnW, btnH)) next = GameState::WorldList;
 
-    if (drawButton(ui, "Settings", btnX, startY + gap, btnW, btnH)) {
+    // Multiplayer placeholder — disabled until server/client support ships.
+    drawButton(ui, "Multiplayer (coming soon)", btnX, startY + gap, btnW, btnH, /*enabled=*/false);
+
+    if (drawButton(ui, "Settings", btnX, startY + gap * 2, btnW, btnH)) {
         settingsReturnState = GameState::MainMenu;
         next = GameState::Settings;
     }
@@ -276,7 +279,7 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
 #ifndef __EMSCRIPTEN__
     // Browsers don't let a page programmatically close a tab the user opened,
     // so Quit is desktop-only — GLFW's close flag drives the native main loop.
-    if (drawButton(ui, "Quit Game", btnX, startY + gap * 2, btnW, btnH)) glfwSetWindowShouldClose(window, true);
+    if (drawButton(ui, "Quit Game", btnX, startY + gap * 3, btnW, btnH)) glfwSetWindowShouldClose(window, true);
 #endif
 
     // Splash text — rotated, pulsing, bottom-right corner
