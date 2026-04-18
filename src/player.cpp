@@ -363,17 +363,21 @@ void Player::findGroundAndUpdate(World* world) {
     camera.update(blockCheck, world->chunkManager, waterCheck, flowCheck);
     if (!camera.isWalkMode()) return;
 
-    // Footstep sounds: look up block types at player feet
+    // Footstep sounds: look up block types at player feet. Block coords are
+    // centered on integers (block N spans [N-0.5, N+0.5]), so we add +0.5
+    // before flooring — same convention as camera.cpp's collision checks.
+    // Without this shift, standing on a 1-block-thick surface reads the
+    // block below (e.g. sand on dirt → wrong step sound).
     glm::vec3 pos = camera.getPosition();
-    int bx = (int)std::floor(pos.x);
-    int bz = (int)std::floor(pos.z);
+    int bx = (int)std::floor(pos.x + 0.5f);
+    int bz = (int)std::floor(pos.z + 0.5f);
     int cx = worldToChunk(bx);
     int cz = worldToChunk(bz);
     Chunk* chunk = world->chunkManager->getChunk(cx, cz);
     groundBlockType = AIR;
     feetBlockType = AIR;
     if (chunk) {
-        int feetY = (int)std::floor(pos.y - PLAYER_HEIGHT);
+        int feetY = (int)std::floor(pos.y - PLAYER_HEIGHT + 0.5f);
         Cube* gb = chunk->getBlock(worldToLocal(bx, cx), feetY - 1, worldToLocal(bz, cz));
         if (gb) groundBlockType = gb->getType();
         Cube* fb = chunk->getBlock(worldToLocal(bx, cx), feetY, worldToLocal(bz, cz));

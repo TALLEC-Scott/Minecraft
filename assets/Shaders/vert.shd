@@ -77,10 +77,13 @@ void main() {
 
     vec3 pos = aPos * 0.5; // undo x2 encoding
     Normal = NORMALS[int(aNormalIdx)];
-    // Leaf sway: branchless — isLeaf is 0 or 1
+    // Wind sway: leaves sway every vertex; tall grass sways only its top
+    // verts (v=1 in UV) so the stem stays anchored to the ground.
     float isLeaf = step(9.5, aTexLayer) * step(aTexLayer, 10.5);
-    pos.x += isLeaf * leafSway.x;
-    pos.z += isLeaf * leafSway.y;
+    float isTallGrass = step(23.5, aTexLayer) * step(aTexLayer, 24.5);
+    float swayAmount = isLeaf + isTallGrass * aTexCoord.y;
+    pos.x += swayAmount * leafSway.x;
+    pos.z += swayAmount * leafSway.y;
     vec4 worldPos = model * vec4(pos, 1.0);
     gl_Position = projection * view * worldPos;
     gl_PointSize = 2.0; // for star rendering
