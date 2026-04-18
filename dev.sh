@@ -37,8 +37,9 @@ Web:
   dev-web            build-web + serve in one go
 
 Release:
-  release X.Y.Z           Bump to an explicit version and release
-  bump <major|minor|patch>  Auto-bump from the latest tag and release
+  release X.Y.Z           Release an explicit version
+  release <major|minor|patch>  Auto-bump from the latest tag and release
+  bump <major|minor|patch>     Alias for `release <level>`
 
 Misc:
   clean              Remove build/, build_win/, build_web/
@@ -115,25 +116,27 @@ case "$cmd" in
         ./build_web.sh
         python3 -m http.server -d build_web 8080
         ;;
-    release)
-        [ -z "$1" ] && { echo "Usage: ./dev.sh release X.Y.Z"; exit 1; }
-        bump_version_strings "$1"
-        ./scripts/release.sh "$1"
-        ;;
-    bump)
-        level="${1:-}"
-        case "$level" in
-            major|minor|patch) ;;
-            *) echo "Usage: ./dev.sh bump <major|minor|patch>"; exit 1 ;;
+    release|bump)
+        arg="${1:-}"
+        if [ -z "$arg" ]; then
+            echo "Usage: ./dev.sh $cmd <major|minor|patch|X.Y.Z>"
+            exit 1
+        fi
+        case "$arg" in
+            major|minor|patch)
+                latest=$(git tag --sort=-v:refname | head -1 | sed 's/^v//')
+                IFS='.' read -r maj min pat <<< "$latest"
+                case "$arg" in
+                    major) new="$((maj + 1)).0.0" ;;
+                    minor) new="$maj.$((min + 1)).0" ;;
+                    patch) new="$maj.$min.$((pat + 1))" ;;
+                esac
+                echo "Latest: v$latest -> new: v$new ($arg bump)"
+                ;;
+            *)
+                new="$arg"
+                ;;
         esac
-        latest=$(git tag --sort=-v:refname | head -1 | sed 's/^v//')
-        IFS='.' read -r maj min pat <<< "$latest"
-        case "$level" in
-            major) new="$((maj + 1)).0.0" ;;
-            minor) new="$maj.$((min + 1)).0" ;;
-            patch) new="$maj.$min.$((pat + 1))" ;;
-        esac
-        echo "Latest: v$latest -> new: v$new ($level bump)"
         bump_version_strings "$new"
         ./scripts/release.sh "$new"
         ;;
