@@ -298,6 +298,7 @@ int main(int argc, char* argv[]) {
     bool headlessMode = false;
     bool stressWater = false;
 #endif
+    bool respawnMode = false;
     unsigned int worldSeed = 0;
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -308,12 +309,23 @@ int main(int argc, char* argv[]) {
             headlessMode = true;
         else if (arg == "--stress-water")
             stressWater = true;
+        else if (arg == "--respawn")
+            respawnMode = true;
         else if (arg == "--seed" && i + 1 < argc)
 #else
-        if (arg == "--seed" && i + 1 < argc)
+        if (arg == "--respawn")
+            respawnMode = true;
+        else if (arg == "--seed" && i + 1 < argc)
 #endif
             worldSeed = std::stoul(argv[++i]);
     }
+#ifndef __EMSCRIPTEN__
+    // Benchmark mode always respawns at the default position so runs are
+    // directly comparable across saves - otherwise the camera starts
+    // wherever the player last walked to and each run measures a
+    // different scene.
+    if (benchmarkMode) respawnMode = true;
+#endif
     if (!glfwInit()) {
         std::cout << "Failed to initialize GLFW" << std::endl;
         return -1;
@@ -492,7 +504,7 @@ int main(int argc, char* argv[]) {
             World world(worldSeed);
         std::cout << "World seed: " << worldSeed << std::endl;
         world.chunkManager->setWorldSave(&worldSave);
-        if (hasSave) {
+        if (hasSave && !respawnMode) {
             player.getCamera().setPosition(loadedPlayer.position);
             player.setYawPitch(loadedPlayer.yaw, loadedPlayer.pitch);
             player.getCamera().setWalkMode(loadedPlayer.walkMode);
@@ -500,6 +512,8 @@ int main(int argc, char* argv[]) {
                 player.setHotbarSlot(i, loadedPlayer.hotbar[i]);
             player.setSelectedSlot(loadedPlayer.selectedSlot);
             std::cout << "Loaded world save" << std::endl;
+        } else if (hasSave && respawnMode) {
+            std::cout << "--respawn: keeping world modifications, resetting player position" << std::endl;
         }
         world.waterSimulator->initAudio(menuObj.getAudioEngine());
         world.entityManager->initAudio(menuObj.getAudioEngine());
