@@ -66,6 +66,21 @@ constexpr const char* SETTINGS_PATH = "saves/settings.txt";
 constexpr const char* SETTINGS_PATH = "settings.txt";
 #endif
 
+// Fallback window size used when "Auto" is selected but neither the
+// browser viewport nor the desktop monitor can report a usable size.
+constexpr int FALLBACK_WINDOW_WIDTH = 1280;
+constexpr int FALLBACK_WINDOW_HEIGHT = 720;
+
+// Flush MEMFS → IndexedDB on web so anything we just wrote survives a
+// page reload. No-op on desktop.
+static void syncToPersistentStorage() {
+#ifdef __EMSCRIPTEN__
+    EM_ASM(FS.syncfs(false, function(err) {
+        if (err) console.error('IDBFS sync error:', err);
+    }););
+#endif
+}
+
 Player player;
 World* w = nullptr;
 
@@ -114,37 +129,29 @@ static void applySettings() {
             for (auto& [pos, chunk] : w->chunkManager->chunks) chunk.markDirty();
         }
     }
-    // Resize the window to the selected preset. "Auto" (index 0) uses 80%
-    // of the primary monitor's current video mode on desktop, or the
-    // visible viewport on web. Only applies when not in fullscreen -
-    // fullscreen mode keeps its monitor-native size and the preset takes
-    // effect again when the user toggles back to windowed.
+    // Only apply resolution while windowed - fullscreen keeps its
+    // monitor-native size and the preset takes effect on exit.
     if (g_window && glfwGetWindowMonitor(g_window) == nullptr) {
         const ResolutionPreset& p = RESOLUTION_PRESETS[gameSettings.resolutionIndex];
         int tw = p.width, th = p.height;
-#ifdef __EMSCRIPTEN__
         if (tw == 0 || th == 0) {
-            // "Auto" on web: use the full browser viewport, not the
-            // current canvas size (which would never shrink - and never
-            // grow past whatever the last preset set it to).
+            // "Auto": full browser viewport on web (NOT the current
+            // canvas size, which would never shrink), or 80% of the
+            // primary monitor's video mode on desktop.
+#ifdef __EMSCRIPTEN__
             tw = EM_ASM_INT({ return window.innerWidth; });
             th = EM_ASM_INT({ return window.innerHeight; });
-            if (tw <= 0 || th <= 0) {
-                tw = 1280;
-                th = 720;
-            }
-        }
 #else
-        if (tw == 0 || th == 0) {
             if (const GLFWvidmode* vm = glfwGetVideoMode(glfwGetPrimaryMonitor())) {
                 tw = static_cast<int>(vm->width * 0.8f);
                 th = static_cast<int>(vm->height * 0.8f);
-            } else {
-                tw = 1280;
-                th = 720;
+            }
+#endif
+            if (tw <= 0 || th <= 0) {
+                tw = FALLBACK_WINDOW_WIDTH;
+                th = FALLBACK_WINDOW_HEIGHT;
             }
         }
-#endif
         if (tw != windowWidth || th != windowHeight) glfwSetWindowSize(g_window, tw, th);
     }
 }
@@ -1189,12 +1196,7 @@ int main(int argc, char* argv[]) {
                 GameState next = menu.drawSettings(uiRenderer, windowWidth, windowHeight, window, gameSettings);
                 if (next != GameState::Settings) {
                     gameSettings.save(SETTINGS_PATH);
-#ifdef __EMSCRIPTEN__
-                    // Push to IndexedDB so settings survive a page reload.
-                    EM_ASM(FS.syncfs(false, function(err) {
-                        if (err) console.error('IDBFS settings sync error:', err);
-                    }););
-#endif
+                    syncToPersistentStorage();
                     applySettings();
                     if (next == GameState::Playing) {
                         glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
@@ -1853,12 +1855,7 @@ int main(int argc, char* argv[]) {
                 }
                 if (next == GameState::Settings) {
                     gameSettings.save(SETTINGS_PATH);
-#ifdef __EMSCRIPTEN__
-                    // Push to IndexedDB so settings survive a page reload.
-                    EM_ASM(FS.syncfs(false, function(err) {
-                        if (err) console.error('IDBFS settings sync error:', err);
-                    }););
-#endif
+                    syncToPersistentStorage();
                     applySettings();
                 }
                 if (next == GameState::MainMenu) {
