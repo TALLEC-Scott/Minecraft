@@ -1108,6 +1108,11 @@ int main(int argc, char* argv[]) {
             if (currentState == GameState::MainMenu) {
                 glClearColor(0.2f, 0.15f, 0.1f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                // Pump chunk streaming while the menu is up — workers start
+                // generating spawn-area chunks so they're ready by the time
+                // the player clicks Play (otherwise the world pops in over
+                // the first ~1s of Playing).
+                if (w) w->chunkManager->update(player.getPosition());
                 GameState next = menu.drawMainMenu(uiRenderer, windowWidth, windowHeight, window);
                 if (next == GameState::Playing && currentState != GameState::Playing) {
                     glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
@@ -1125,6 +1130,7 @@ int main(int argc, char* argv[]) {
             if (currentState == GameState::Settings) {
                 glClearColor(0.2f, 0.15f, 0.1f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                if (w) w->chunkManager->update(player.getPosition());
                 GameState next = menu.drawSettings(uiRenderer, windowWidth, windowHeight, window, gameSettings);
                 if (next != GameState::Settings) {
                     gameSettings.save("settings.txt");
