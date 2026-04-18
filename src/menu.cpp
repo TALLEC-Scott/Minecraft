@@ -320,7 +320,6 @@ GameState Menu::drawSettings(UIRenderer& ui, int windowW, int windowH, GLFWwindo
 
     drawSlider(ui, "Music", 3, ctrlX, startY + gap * 6, ctrlW, ctrlH, settings.musicVolume, 0.0f, 1.0f);
 
-#ifndef __EMSCRIPTEN__
     // Resolution cycler: click to advance through RESOLUTION_PRESETS.
     {
         float ry = startY + gap * 7;
@@ -341,9 +340,6 @@ GameState Menu::drawSettings(UIRenderer& ui, int windowW, int windowH, GLFWwindo
         ui.drawTextShadow(label, ctrlX + (ctrlW - tw) / 2.0f, ry + (ctrlH - th) / 2.0f, scale);
     }
     float doneOffset = 8.5f;
-#else
-    float doneOffset = 7.5f;
-#endif
 
     // Done button
     float btnW = 400.0f, btnH = 44.0f;
