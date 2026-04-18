@@ -40,6 +40,7 @@ set(COMMON_SOURCES
     src/player.cpp
     src/game_state.cpp
     src/ui_renderer.cpp
+    src/widgets.cpp
     src/menu.cpp
     src/miniaudio.cpp
     src/WaterSimulator.cpp

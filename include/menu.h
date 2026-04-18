@@ -2,22 +2,12 @@
 
 #include "game_state.h"
 #include "ui_renderer.h"
+#include "widgets.h"
 #include "world_directory.h"
 #include <GLFW/glfw3.h>
 #include <miniaudio.h>
 #include <string>
 #include <vector>
-
-struct TextInput {
-    std::string buffer;
-    std::size_t cursor = 0;
-    std::size_t maxLen = 48;
-    bool active = false;
-    void setText(const std::string& s) {
-        buffer = s.size() > maxLen ? s.substr(0, maxLen) : s;
-        cursor = buffer.size();
-    }
-};
 
 struct CreateWorldResult {
     bool create = false;
@@ -88,33 +78,11 @@ class Menu {
     bool menuMusicPlaying = false;
     void playClick();
 
-    // Mouse state for click detection
-    bool mouseWasPressed = false;
-    bool mouseIsDown = false;
-    bool clickConsumed = false;
-    double mouseX = 0, mouseY = 0;
-
-    // ESC edge detection
-    bool escWasPressed = false;
-
-    // Active slider drag (-1 = none)
-    int activeSlider = -1;
-
-    void updateMouse(GLFWwindow* window);
-    bool mouseClicked() const;
-    bool mouseInRect(float x, float y, float w, float h) const;
+    // All widget drawing / mouse / keyboard routing lives in Widgets. See
+    // include/widgets.h. Menu composes screens by calling widgets.button etc.
+    Widgets widgets;
 
     void drawDirtBackground(UIRenderer& ui, int windowW, int windowH);
-    bool drawButton(UIRenderer& ui, const std::string& label, float x, float y, float w, float h,
-                    bool enabled = true);
-    bool drawSlider(UIRenderer& ui, const std::string& label, int sliderID, float x, float y, float w, float h,
-                    float& value, float minVal, float maxVal, const std::string& suffix = "");
-    bool drawToggle(UIRenderer& ui, const std::string& label, float x, float y, float w, float h, bool& value);
-    bool escPressed(GLFWwindow* window);
-
-    // Draws a text input; click inside activates it. Returns true if Enter was pressed this frame.
-    bool drawTextField(UIRenderer& ui, TextInput& in, float x, float y, float w, float h,
-                       const std::string& placeholder);
 
     // WorldList state
     std::vector<WorldEntry> worlds;
@@ -131,14 +99,4 @@ class Menu {
     TextInput createSeedInput;
     bool createShowAdvanced = false;
     bool createInitialized = false;
-
-    // Pending key events for active text input (populated via onKeyInput).
-    struct PendingKey { int key; };
-    std::vector<PendingKey> pendingKeys;
-    bool enterPressedLatch = false;
-    bool escPressedLatch = false;
-    bool tabPressedLatch = false;
-
-    TextInput* activeInput();
-    void applyPendingKeys(TextInput& in);
 };

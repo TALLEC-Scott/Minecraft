@@ -17,6 +17,13 @@ class UIRenderer {
 
     // Drawing primitives
     void drawRect(float x, float y, float w, float h, glm::vec4 color);
+    // Filled rect with a 1 px black border drawn behind it. Covers the
+    // ubiquitous "background + border" pair used by every widget.
+    void drawBorderedRect(float x, float y, float w, float h, glm::vec4 bg,
+                          glm::vec4 border = glm::vec4(0.0f, 0.0f, 0.0f, 0.9f)) {
+        drawRect(x - 1, y - 1, w + 2, h + 2, border);
+        drawRect(x, y, w, h, bg);
+    }
     void drawTexturedRect(float x, float y, float w, float h, GLuint texture, float u0, float v0, float u1, float v1,
                           glm::vec4 tint = glm::vec4(1.0f));
     void drawText(const std::string& text, float x, float y, float scale, glm::vec4 color = glm::vec4(1.0f));
