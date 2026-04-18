@@ -1,6 +1,7 @@
 #include "world.h"
 #include "entity_manager.h"
 #include "light_data.h"
+#include "light_propagation.h"
 #include "particle_system.h"
 #include "profiler.h"
 #include "tnt_entity.h"
@@ -64,138 +65,6 @@ static void markBorderNeighborsDirty(ChunkManager* cm, int chunkX, int chunkZ, i
     if (onXPos && onZPos) mark(1, 1);
 }
 
-// World-space sky light BFS after block removal — crosses chunk boundaries.
-static void floodSkyLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
-    WorldResolver resolve(cm);
-
-    // Determine initial light from neighbors
-    uint8_t maxLight = 0;
-    for (auto& d : DIRS_6) {
-        auto [nc, ni] = resolve(sx + d[0], sy + d[1], sz + d[2]);
-        if (nc) {
-            nc->ensureSkyLightFlat();
-            uint8_t nl = unpackSky(nc->skyLight.get()[ni]);
-            if (nl > maxLight) maxLight = nl;
-        }
-    }
-    if (sy + 1 >= CHUNK_HEIGHT) maxLight = 15;
-
-    // Sky column rule
-    auto [aboveChunk, aboveIdx] = resolve(sx, sy + 1, sz);
-    if (aboveChunk) aboveChunk->ensureSkyLightFlat();
-    uint8_t newLight =
-        (aboveChunk && unpackSky(aboveChunk->skyLight.get()[aboveIdx]) == 15) ? 15 : (maxLight > 0 ? maxLight - 1 : 0);
-
-    auto [srcChunk, srcIdx] = resolve(sx, sy, sz);
-    if (!srcChunk) return;
-    srcChunk->ensureSkyLightFlat();
-    srcChunk->skyLight.get()[srcIdx] = packLight(newLight, unpackBlock(srcChunk->skyLight.get()[srcIdx]));
-    srcChunk->markSectionDirty(sy / 16);
-
-    struct Node {
-        int x, y, z;
-    };
-    std::vector<Node> queue;
-    queue.reserve(256);
-    queue.push_back({sx, sy, sz});
-
-    size_t head = 0;
-    while (head < queue.size()) {
-        auto [bx, by, bz] = queue[head++];
-        auto [chunk, idx] = resolve(bx, by, bz);
-        if (!chunk) continue;
-        chunk->ensureSkyLightFlat();
-        uint8_t light = unpackSky(chunk->skyLight.get()[idx]);
-        if (light <= 1) continue;
-        for (auto& d : DIRS_6) {
-            int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
-            auto [nc, ni] = resolve(nx, ny, nz);
-            if (!nc) continue;
-            nc->ensureSkyLightFlat();
-            block_type bt =
-                nc->getBlockType(worldToLocal(nx, worldToChunk(nx)), ny, worldToLocal(nz, worldToChunk(nz)));
-            if (hasFlag(bt, BF_OPAQUE)) continue;
-            uint8_t propagated = (light == 15 && d[1] == -1) ? 15 : (light - 1);
-            if (unpackSky(nc->skyLight.get()[ni]) >= propagated) continue;
-            nc->skyLight.get()[ni] = packLight(propagated, unpackBlock(nc->skyLight.get()[ni]));
-            nc->markSectionDirty(ny / 16);
-            queue.push_back({nx, ny, nz});
-        }
-    }
-}
-
-// World-space block light removal BFS — zeroes light from a destroyed emissive block,
-// then re-propagates from any remaining light sources at the boundary.
-static void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
-    WorldResolver resolve(cm);
-
-    // Phase 1: removal BFS — zero out light that was from this source
-    struct Node {
-        int x, y, z;
-        uint8_t oldLight;
-    };
-    std::vector<Node> removeQueue;
-    removeQueue.reserve(4096);
-
-    auto [srcChunk, srcIdx] = resolve(sx, sy, sz);
-    if (!srcChunk) return;
-    srcChunk->ensureSkyLightFlat();
-    uint8_t srcLight = unpackBlock(srcChunk->skyLight.get()[srcIdx]);
-    srcChunk->skyLight.get()[srcIdx] = packLight(unpackSky(srcChunk->skyLight.get()[srcIdx]), 0);
-    srcChunk->markSectionDirty(sy / 16);
-    removeQueue.push_back({sx, sy, sz, srcLight});
-
-    struct LightNode {
-        int x, y, z;
-    };
-    std::vector<LightNode> relightSeeds;
-
-    size_t head = 0;
-    while (head < removeQueue.size()) {
-        auto [bx, by, bz, oldLight] = removeQueue[head++];
-        for (auto& d : DIRS_6) {
-            int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
-            auto [nc, ni] = resolve(nx, ny, nz);
-            if (!nc) continue;
-            nc->ensureSkyLightFlat();
-            uint8_t neighborLight = unpackBlock(nc->skyLight.get()[ni]);
-            if (neighborLight > 0 && neighborLight < oldLight) {
-                nc->skyLight.get()[ni] = packLight(unpackSky(nc->skyLight.get()[ni]), 0);
-                nc->markSectionDirty(ny / 16);
-                removeQueue.push_back({nx, ny, nz, neighborLight});
-            } else if (neighborLight >= oldLight && neighborLight > 0) {
-                relightSeeds.push_back({nx, ny, nz});
-            }
-        }
-    }
-
-    std::vector<LightNode> lightQueue;
-    lightQueue.reserve(relightSeeds.size());
-    for (auto& s : relightSeeds) lightQueue.push_back(s);
-    head = 0;
-    while (head < lightQueue.size()) {
-        auto [bx, by, bz] = lightQueue[head++];
-        auto [chunk, idx] = resolve(bx, by, bz);
-        if (!chunk) continue;
-        chunk->ensureSkyLightFlat();
-        uint8_t light = unpackBlock(chunk->skyLight.get()[idx]);
-        if (light <= 1) continue;
-        for (auto& d : DIRS_6) {
-            int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
-            auto [nc, ni] = resolve(nx, ny, nz);
-            if (!nc) continue;
-            nc->ensureSkyLightFlat();
-            int lx = worldToLocal(nx, worldToChunk(nx)), lz = worldToLocal(nz, worldToChunk(nz));
-            block_type bt = nc->getBlockType(lx, ny, lz);
-            if (hasFlag(bt, BF_OPAQUE) && getBlockLightEmission(bt) == 0) continue;
-            uint8_t propagated = light - 1;
-            if (unpackBlock(nc->skyLight.get()[ni]) >= propagated) continue;
-            nc->skyLight.get()[ni] = packLight(unpackSky(nc->skyLight.get()[ni]), propagated);
-            nc->markSectionDirty(ny / 16);
-            lightQueue.push_back({nx, ny, nz});
-        }
-    }
-}
 
 void World::setBlock(int x, int y, int z, block_type type, uint8_t waterLevel) const {
     if (y < 0 || y >= CHUNK_HEIGHT) return;
@@ -215,6 +84,7 @@ void World::setBlock(int x, int y, int z, block_type type, uint8_t waterLevel) c
     chunk->setWaterLevel(lx, y, lz, waterLevel);
     markBorderNeighborsDirty(chunkManager, cx, cz, lx, y, lz);
 }
+
 
 void World::destroyBlock(glm::vec3 position) const {
     int bx = (int)std::floor(position.x);
@@ -236,56 +106,28 @@ void World::destroyBlock(glm::vec3 position) const {
 
     // World-space light updates — cross chunk boundaries
     floodSkyLightWorld(chunkManager, bx, by, bz);
-    if (getBlockLightEmission(oldType) > 0) removeBlockLightWorld(chunkManager, bx, by, bz);
+    if (getBlockLightEmission(oldType) > 0) {
+        removeBlockLightWorld(chunkManager, bx, by, bz);
+    } else {
+        // Non-emissive block removed: the now-exposed cell may need block
+        // light from an adjacent emitter (e.g. glowstone next door). Seed
+        // a BFS from the max of the 6 neighbor block-light values minus 1.
+        WorldResolver resolve(chunkManager);
+        uint8_t maxNeighbor = 0;
+        for (auto& d : DIRS_6) {
+            auto [nc, ni] = resolve(bx + d[0], by + d[1], bz + d[2]);
+            if (!nc) continue;
+            nc->ensureSkyLightFlat();
+            uint8_t nl = unpackBlock(nc->skyLight.get()[ni]);
+            if (nl > maxNeighbor) maxNeighbor = nl;
+        }
+        if (maxNeighbor > 0) {
+            floodBlockLight(chunkManager, bx, by, bz, maxNeighbor - 1);
+        }
+    }
 
     // Trigger water simulation for neighbors (water may flow into the gap)
     waterSimulator->activateNeighbors(bx, by, bz);
-}
-
-// World-space BFS: flood block light from a source, crossing chunk boundaries.
-// Caches chunk pointer to avoid repeated hash lookups for blocks in the same chunk.
-static void floodBlockLight(ChunkManager* cm, int sx, int sy, int sz, uint8_t emission) {
-    WorldResolver resolve(cm);
-
-    struct Node {
-        int x, y, z;
-    };
-    std::vector<Node> queue;
-    queue.reserve(4096);
-
-    auto [srcChunk, srcIdx] = resolve(sx, sy, sz);
-    if (!srcChunk) return;
-    srcChunk->ensureSkyLightFlat();
-    uint8_t* sl = srcChunk->skyLight.get();
-    sl[srcIdx] = (sl[srcIdx] & 0xF0) | (emission & 0xF);
-    srcChunk->markSectionDirty(sy / 16);
-    queue.push_back({sx, sy, sz});
-
-    size_t head = 0;
-    while (head < queue.size()) {
-        auto [bx, by, bz] = queue[head++];
-        auto [chunk, idx] = resolve(bx, by, bz);
-        if (!chunk) continue;
-        chunk->ensureSkyLightFlat();
-        uint8_t light = unpackBlock(chunk->skyLight.get()[idx]);
-        if (light <= 1) continue;
-        for (auto& d : DIRS_6) {
-            int nx = bx + d[0], ny = by + d[1], nz = bz + d[2];
-            auto [nc, ni] = resolve(nx, ny, nz);
-            if (!nc) continue;
-            nc->ensureSkyLightFlat();
-            int lx = worldToLocal(nx, worldToChunk(nx));
-            int lz = worldToLocal(nz, worldToChunk(nz));
-            block_type bt = nc->getBlockType(lx, ny, lz);
-            if (hasFlag(bt, BF_OPAQUE) && getBlockLightEmission(bt) == 0) continue;
-            uint8_t propagated = light - 1;
-            uint8_t* nlt = nc->skyLight.get();
-            if (unpackBlock(nlt[ni]) >= propagated) continue;
-            nlt[ni] = (nlt[ni] & 0xF0) | (propagated & 0xF);
-            nc->markSectionDirty(ny / 16);
-            queue.push_back({nx, ny, nz});
-        }
-    }
 }
 
 void World::placeBlock(glm::ivec3 position, block_type type) const {

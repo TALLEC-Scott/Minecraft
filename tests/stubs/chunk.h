@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include "cube.h"
 
 class Chunk {
@@ -26,10 +27,15 @@ class Chunk {
     }
     bool isMeshDirty() const { return sectionDirty != 0; }
 
-    // skyLight is unused by the water sim but WorldResolver::operator()
-    // checks it in the real codebase; keep a trivially-valid stub so both
-    // code paths compile.
-    bool skyLight = true;
+    // Packed light array (high nibble = sky, low nibble = block). Mirrors
+    // the real Chunk's shape so light_propagation.cpp can run against the
+    // stub. ensureSkyLightFlat() lazily allocates on first access.
+    std::unique_ptr<uint8_t[]> skyLight;
+    void ensureSkyLightFlat() {
+        if (!skyLight)
+            skyLight =
+                std::unique_ptr<uint8_t[]>(new uint8_t[CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE]());
+    }
 
     Chunk() = default;
     Chunk(int cx, int cz) : chunkX(cx), chunkZ(cz) {}
