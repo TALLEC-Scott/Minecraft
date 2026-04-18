@@ -269,22 +269,9 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
     if (drawButton(ui, "Singleplayer", btnX, startY, btnW, btnH)) next = GameState::WorldList;
 
     // Multiplayer placeholder — disabled until server/client support ships.
-    {
-        float mpY = startY + gap;
-        drawButton(ui, "Multiplayer", btnX, mpY, btnW, btnH, /*enabled=*/false);
-        if (mouseInRect(btnX, mpY, btnW, btnH)) {
-            const std::string tip = "Coming soon";
-            constexpr float tipScale = 1.4f;
-            constexpr float padX = 8.0f, padY = 4.0f;
-            float tipW = ui.textWidth(tip, tipScale) + padX * 2;
-            float tipH = ui.textHeight(tipScale) + padY * 2;
-            float tipX = std::min((float)mouseX + 14.0f, (float)windowW - tipW - 4.0f);
-            float tipY = std::min((float)mouseY + 18.0f, (float)windowH - tipH - 4.0f);
-            ui.drawRect(tipX - 1, tipY - 1, tipW + 2, tipH + 2, glm::vec4(0.0f, 0.0f, 0.0f, 0.95f));
-            ui.drawRect(tipX, tipY, tipW, tipH, glm::vec4(0.15f, 0.15f, 0.18f, 0.95f));
-            ui.drawTextShadow(tip, tipX + padX, tipY + padY, tipScale);
-        }
-    }
+    float mpY = startY + gap;
+    drawButton(ui, "Multiplayer", btnX, mpY, btnW, btnH, /*enabled=*/false);
+    bool mpHovered = mouseInRect(btnX, mpY, btnW, btnH);
 
     if (drawButton(ui, "Settings", btnX, startY + gap * 2, btnW, btnH)) {
         settingsReturnState = GameState::MainMenu;
@@ -309,6 +296,20 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
     // Version text
     float verScale = 1.0f;
     ui.drawTextShadow("v0.7.10", 4.0f, (float)windowH - 12.0f, verScale, glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
+
+    // Tooltips last so they layer over the buttons they're hovering near.
+    if (mpHovered) {
+        const std::string tip = "Coming soon";
+        constexpr float tipScale = 1.4f;
+        constexpr float padX = 8.0f, padY = 4.0f;
+        float tipW = ui.textWidth(tip, tipScale) + padX * 2;
+        float tipH = ui.textHeight(tipScale) + padY * 2;
+        float tipX = std::min((float)mouseX + 14.0f, (float)windowW - tipW - 4.0f);
+        float tipY = std::min((float)mouseY + 18.0f, (float)windowH - tipH - 4.0f);
+        ui.drawRect(tipX - 1, tipY - 1, tipW + 2, tipH + 2, glm::vec4(0.0f, 0.0f, 0.0f, 0.95f));
+        ui.drawRect(tipX, tipY, tipW, tipH, glm::vec4(0.15f, 0.15f, 0.18f, 0.95f));
+        ui.drawTextShadow(tip, tipX + padX, tipY + padY, tipScale);
+    }
 
     ui.end();
     return next;
