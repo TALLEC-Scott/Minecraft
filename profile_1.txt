@@ -1,0 +1,38 @@
+
+=== Profile: worldlist-committed-1 ===
+NVIDIA GeForce RTX 2080 Ti/PCIe/SSE2 (NVIDIA Corporation)
+3.3.0 NVIDIA 591.86
+600 measured frames
+
+Frame Time Breakdown (avg):
+  total:     1.37 ms  (731 fps)
+  update:    0.63 ms  [46.40%]
+  render:    0.13 ms  [9.79%]  <- includes mesh builds
+  swap:      0.59 ms  [43.53%]
+
+Render Breakdown (avg):
+  mesh builds:  0.00 ms  [0.00% of render]  (0.00 builds/frame)
+  draw calls:   0.13 ms  [100.00% of render]  (419.85 calls/frame)
+
+GPU Time:
+  avg:  0.17 ms  <- GPU-bound
+  p99:  0.50 ms
+
+Geometry (avg per frame):
+  chunks:    252 rendered / 1072 loaded
+  triangles: 405358 opaque + 0 water = 405358 total
+  vertices:  810716
+
+Memory:
+  chunks (CPU): 12 MB
+    sections:    5 MB
+    skyLight:    5 MB
+    waterLevels: 0 MB
+    meshCache:   0 MB
+    pendingMesh: 1 MB
+  process RSS:  976 MB
+
+Percentiles (ms):
+  total:  avg=1.37  p50=0.91  p95=3.32  p99=3.88  max=4.12
+  render: avg=0.13  p50=0.10  p95=0.37  p99=0.59  max=1.14
+  gpu:    avg=0.17  p50=0.14  p95=0.27  p99=0.50  max=1.39

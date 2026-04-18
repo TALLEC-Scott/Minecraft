@@ -594,11 +594,12 @@ int main(int argc, char* argv[]) {
             return pd;
         };
 
-        auto saveCurrentWorld = [&]() {
-            if (!world || !worldSave) return;
+        auto saveCurrentWorld = [&]() -> bool {
+            if (!world || !worldSave) return false;
             world->chunkManager->saveAllModifiedChunks();
             worldSave->saveLevelData(world->getSeed(), captureCurrentPlayer());
             WorldSave::syncToDisk();
+            return true;
         };
 
         // Load (or create) the world at saves/<folder>. `seedOverride` forces
@@ -2079,8 +2080,7 @@ int main(int argc, char* argv[]) {
                     applySettings();
                 }
                 if (next == GameState::MainMenu) {
-                    saveCurrentWorld();
-                    std::cout << "World saved" << std::endl;
+                    if (saveCurrentWorld()) std::cout << "World saved" << std::endl;
 
                     glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
                     menu.stopMusic();
@@ -2113,8 +2113,7 @@ int main(int argc, char* argv[]) {
         }
 
         // Save world on exit
-        saveCurrentWorld();
-        std::cout << "World saved" << std::endl;
+        if (saveCurrentWorld()) std::cout << "World saved" << std::endl;
 
         shaderProgram.destroy();
     }                      // world and shaderProgram destroyed here, while GL context is still valid
