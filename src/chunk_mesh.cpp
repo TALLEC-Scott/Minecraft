@@ -7,6 +7,7 @@
 #include "block_layers.h"
 #include "cube.h"
 #include "light_data.h"
+#include "light_sampler.h"
 #include "mesh_types.h"
 #include "tracy_shim.h"
 
@@ -135,15 +136,11 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
     waterIdx.reserve(static_cast<size_t>(CHUNK_SIZE) * CHUNK_SIZE * 6);
     unsigned int opaqueBase = 0, waterBase = 0;
 
-    auto slDirect = [light](int x, int y, int z) -> int {
-        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 15;
-        return unpackSky(
-            light[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+    auto slDirect = [light, &nb](int x, int y, int z) -> int {
+        return unpackSky(sampleLightBorder(light, nb, x, y, z));
     };
-    auto blDirect = [light](int x, int y, int z) -> int {
-        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 0;
-        return unpackBlock(
-            light[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+    auto blDirect = [light, &nb](int x, int y, int z) -> int {
+        return unpackBlock(sampleLightBorder(light, nb, x, y, z));
     };
 
     int mask[MAX_DIM][MAX_DIM];

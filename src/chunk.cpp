@@ -545,6 +545,10 @@ void computeSkyLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY) {
     }
 }
 
+// computeBlockLightData definition moved to src/light_propagation.cpp so the
+// unit-test target (which can't link this GL-aware translation unit) can call
+// it via the test-linked light_propagation.cpp.
+
 void Chunk::computeSkyLight() {
     auto flat = decompressBlocks();
     ensureSkyLightFlat();
@@ -796,17 +800,17 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
     static constexpr int DIM[3] = {CHUNK_SIZE, CHUNK_HEIGHT, CHUNK_SIZE};
     static constexpr int MAX_DIM = CHUNK_HEIGHT > CHUNK_SIZE ? CHUNK_HEIGHT : CHUNK_SIZE;
 
-    // Pre-cache packed light for fast per-vertex access (high nibble = sky, low nibble = block)
+    // Pre-cache packed light for fast per-vertex access. sampleLightNeighbors
+    // handles OOB reads by routing to the live neighbor chunks — without
+    // this, faces on chunk edges render dark (block-light=0) even when the
+    // adjacent neighbor cell is lit (see include/light_sampler.h for
+    // background on the recurring-bug class this unified helper closes).
     uint8_t* lightPtr = skyLight.get();
-    auto slDirect = [lightPtr](int x, int y, int z) -> int {
-        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 15;
-        return unpackSky(
-            lightPtr[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+    auto slDirect = [lightPtr, nx_neg, nx_pos, nz_neg, nz_pos](int x, int y, int z) -> int {
+        return unpackSky(sampleLightNeighbors(lightPtr, nx_neg, nx_pos, nz_neg, nz_pos, x, y, z));
     };
-    auto blDirect = [lightPtr](int x, int y, int z) -> int {
-        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) return 0;
-        return unpackBlock(
-            lightPtr[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]);
+    auto blDirect = [lightPtr, nx_neg, nx_pos, nz_neg, nz_pos](int x, int y, int z) -> int {
+        return unpackBlock(sampleLightNeighbors(lightPtr, nx_neg, nx_pos, nz_neg, nz_pos, x, y, z));
     };
 
     int mask[MAX_DIM][MAX_DIM];

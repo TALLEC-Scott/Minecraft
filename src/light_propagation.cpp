@@ -10,6 +10,56 @@
 
 using WorldResolver = WorldResolverT<ChunkManager, Chunk>;
 
+void computeBlockLightData(Cube* blocks, uint8_t* skyLight, int maxSolidY) {
+    auto idx = [](int x, int y, int z) -> size_t {
+        return static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z;
+    };
+
+    // Clear the block-light nibble (low 4 bits) everywhere; preserve sky.
+    const size_t total = static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE;
+    for (size_t i = 0; i < total; i++) skyLight[i] &= 0xF0;
+
+    std::vector<int32_t> queue;
+    queue.reserve(64);
+    auto packCoord = [](int x, int y, int z) -> int32_t { return (x << 20) | (y << 8) | z; };
+
+    // Seed from emissive blocks.
+    int scanH = std::min(maxSolidY + 16, CHUNK_HEIGHT);
+    for (int x = 0; x < CHUNK_SIZE; x++)
+        for (int y = 0; y < scanH; y++)
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                block_type bt = blocks[idx(x, y, z)].getType();
+                uint8_t emit = getBlockLightEmission(bt);
+                if (emit == 0) continue;
+                skyLight[idx(x, y, z)] = (skyLight[idx(x, y, z)] & 0xF0) | (emit & 0xF);
+                queue.push_back(packCoord(x, y, z));
+            }
+
+    // BFS. Opaque non-emissive blocks halt the flood; translucent/non-solid
+    // cells attenuate by 1 per step.
+    size_t head = 0;
+    static constexpr int DIRS[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    while (head < queue.size()) {
+        int32_t packed = queue[head++];
+        int x = (packed >> 20) & 0xFFF;
+        int y = (packed >> 8) & 0xFFF;
+        int z = packed & 0xFF;
+        uint8_t light = skyLight[idx(x, y, z)] & 0xF;
+        if (light <= 1) continue;
+        uint8_t propagated = light - 1;
+        for (auto& d : DIRS) {
+            int nx = x + d[0], ny = y + d[1], nz = z + d[2];
+            if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= CHUNK_HEIGHT || nz < 0 || nz >= CHUNK_SIZE) continue;
+            size_t ni = idx(nx, ny, nz);
+            block_type bt = blocks[ni].getType();
+            if (hasFlag(bt, BF_OPAQUE) && getBlockLightEmission(bt) == 0) continue;
+            if ((skyLight[ni] & 0xF) >= propagated) continue;
+            skyLight[ni] = (skyLight[ni] & 0xF0) | (propagated & 0xF);
+            queue.push_back(packCoord(nx, ny, nz));
+        }
+    }
+}
+
 void floodSkyLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
     WorldResolver resolve(cm);
 

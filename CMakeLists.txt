@@ -211,6 +211,7 @@ else()
         tests/test_tnt.cpp
         tests/test_block_light.cpp
         tests/test_world_directory.cpp
+        tests/test_lighting_boundary.cpp
         src/TerrainGenerator.cpp
         src/perlin_noise.cpp
         src/game_state.cpp

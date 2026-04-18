@@ -1,6 +1,7 @@
 #include "world_save.h"
 #include "chunk.h"
 #include "chunk_section.h"
+#include "light_propagation.h"
 #include "TerrainGenerator.h"
 
 #include <filesystem>
@@ -266,6 +267,9 @@ bool WorldSave::loadChunkData(int chunkX, int chunkZ, ChunkData& out, TerrainGen
 
     out.skyLight = std::shared_ptr<uint8_t[]>(new uint8_t[FLAT_SIZE]());
     computeSkyLightData(flatBlocks.get(), out.skyLight.get(), out.maxSolidY);
+    // Restore block-light (glowstone, etc.) — the sky-light pass only wrote
+    // the high nibble, so without this emissive blocks load as dark.
+    computeBlockLightData(flatBlocks.get(), out.skyLight.get(), out.maxSolidY);
 
     return f.good();
 }

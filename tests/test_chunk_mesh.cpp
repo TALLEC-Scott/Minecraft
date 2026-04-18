@@ -309,3 +309,110 @@ TEST(ChunkMesh, EachOpaqueFaceHas4Vertsand6Indices) {
     // Indices must all reference existing vertices.
     for (unsigned idx : m.opaqueIdx) EXPECT_LT(idx, verts);
 }
+
+// A glowstone on the +X edge (x=15) is bordered by the neighbor chunk's
+// AIR cell at the equivalent edge. When the flood-block-light BFS writes
+// block-light=14 into that neighbor cell, its packed light is captured in
+// NeighborBorders.xPos.lightBorder. The glowstone's +X face should then be
+// rendered with that border light; otherwise the face goes out as dark
+// (block-light=0) even though the neighbor cell is visibly lit.
+TEST(ChunkMesh, GlowstoneOnPosXEdgeFaceUsesNeighborBorderLight) {
+    MeshInputs in;
+    constexpr int EDGE_X = CHUNK_SIZE - 1;
+    constexpr int Y = 8;
+    constexpr int Z = 8;
+    in.setBlock(EDGE_X, Y, Z, GLOWSTONE);
+    // Glowstone itself emits 15; the cell inside the glowstone block is set
+    // by the caller of buildMeshFromData. Here we only populate the +X face
+    // sampling inputs.
+    in.light[lightIdx(EDGE_X, Y, Z)] = packLight(15, 15);
+
+    // +X neighbor (chunk B): AIR cell, receiving block-light 14 from the
+    // glowstone via floodBlockLight (one step away → 15-1=14).
+    in.borders.xPos.valid = true;
+    in.borders.xPos.types[Z][Y] = AIR;                    // types[z][y]
+    in.borders.xPos.lightBorder[Z][Y] = packLight(15, 14); // lightBorder[z][y]
+
+    MeshData m = in.build();
+
+    // Find the +X face (normalIdx == 3) of the glowstone. It should exist
+    // (AIR neighbor → emitted), and all four vertices should have non-zero
+    // block-light because the sampler must read from nb.xPos.lightBorder.
+    size_t verts = m.verts.size() / sizeof(PackedVertex);
+    int foundFaces = 0;
+    int zeroBlockLightVerts = 0;
+    for (size_t i = 0; i < verts; i += 4) {
+        if (opaqueVert(m, i).normalIdx != 3) continue;  // +X face
+        foundFaces++;
+        for (int k = 0; k < 4; k++) {
+            uint8_t blk = unpackBlock(opaqueVert(m, i + k).packedLight);
+            if (blk == 0) zeroBlockLightVerts++;
+        }
+    }
+    EXPECT_EQ(foundFaces, 1) << "glowstone +X face at chunk edge not emitted";
+    EXPECT_EQ(zeroBlockLightVerts, 0)
+        << "glowstone +X face vertices fell back to block-light=0 instead of "
+           "reading nb.xPos.lightBorder — outward face renders dark";
+}
+
+// Symmetric coverage for the other three chunk-edge directions. Keeps
+// future regressions (e.g., flipping a condition) from masking only one axis.
+TEST(ChunkMesh, GlowstoneOnNegXEdgeFaceUsesNeighborBorderLight) {
+    MeshInputs in;
+    in.setBlock(0, 8, 8, GLOWSTONE);
+    in.light[lightIdx(0, 8, 8)] = packLight(15, 15);
+    in.borders.xNeg.valid = true;
+    in.borders.xNeg.types[8][8] = AIR;
+    in.borders.xNeg.lightBorder[8][8] = packLight(15, 14);
+    MeshData m = in.build();
+    size_t verts = m.verts.size() / sizeof(PackedVertex);
+    int zeroBlockLightVerts = 0, foundFaces = 0;
+    for (size_t i = 0; i < verts; i += 4) {
+        if (opaqueVert(m, i).normalIdx != 2) continue;
+        foundFaces++;
+        for (int k = 0; k < 4; k++)
+            if (unpackBlock(opaqueVert(m, i + k).packedLight) == 0) zeroBlockLightVerts++;
+    }
+    EXPECT_EQ(foundFaces, 1);
+    EXPECT_EQ(zeroBlockLightVerts, 0);
+}
+
+TEST(ChunkMesh, GlowstoneOnPosZEdgeFaceUsesNeighborBorderLight) {
+    MeshInputs in;
+    in.setBlock(8, 8, CHUNK_SIZE - 1, GLOWSTONE);
+    in.light[lightIdx(8, 8, CHUNK_SIZE - 1)] = packLight(15, 15);
+    in.borders.zPos.valid = true;
+    in.borders.zPos.types[8][8] = AIR;         // types[x][y]
+    in.borders.zPos.lightBorder[8][8] = packLight(15, 14);
+    MeshData m = in.build();
+    size_t verts = m.verts.size() / sizeof(PackedVertex);
+    int zeroBlockLightVerts = 0, foundFaces = 0;
+    for (size_t i = 0; i < verts; i += 4) {
+        if (opaqueVert(m, i).normalIdx != 0) continue;  // +Z face
+        foundFaces++;
+        for (int k = 0; k < 4; k++)
+            if (unpackBlock(opaqueVert(m, i + k).packedLight) == 0) zeroBlockLightVerts++;
+    }
+    EXPECT_EQ(foundFaces, 1);
+    EXPECT_EQ(zeroBlockLightVerts, 0);
+}
+
+TEST(ChunkMesh, GlowstoneOnNegZEdgeFaceUsesNeighborBorderLight) {
+    MeshInputs in;
+    in.setBlock(8, 8, 0, GLOWSTONE);
+    in.light[lightIdx(8, 8, 0)] = packLight(15, 15);
+    in.borders.zNeg.valid = true;
+    in.borders.zNeg.types[8][8] = AIR;
+    in.borders.zNeg.lightBorder[8][8] = packLight(15, 14);
+    MeshData m = in.build();
+    size_t verts = m.verts.size() / sizeof(PackedVertex);
+    int zeroBlockLightVerts = 0, foundFaces = 0;
+    for (size_t i = 0; i < verts; i += 4) {
+        if (opaqueVert(m, i).normalIdx != 1) continue;  // -Z face
+        foundFaces++;
+        for (int k = 0; k < 4; k++)
+            if (unpackBlock(opaqueVert(m, i + k).packedLight) == 0) zeroBlockLightVerts++;
+    }
+    EXPECT_EQ(foundFaces, 1);
+    EXPECT_EQ(zeroBlockLightVerts, 0);
+}
