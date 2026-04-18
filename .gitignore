@@ -13,6 +13,7 @@ CLAUDE.md
 AGENT.md
 QWEN.md
 GEMINI.md
+.claude/
 
 # Generated
 benchmark_results.txt
