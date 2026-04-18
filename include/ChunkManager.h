@@ -67,6 +67,15 @@ class ChunkManager {
     std::mutex resultMutex;
 
     std::unordered_set<glm::ivec2, Vec2Hash> pendingChunks;
+#endif
+
+    // Chunks with a pending (built but not yet uploaded) mesh. Populated
+    // when drainResults (native) or the sync build path (web) marks a
+    // chunk's mesh ready; consumed by the stale-mesh flush pass in
+    // update(). Having an explicit set avoids walking all loaded chunks
+    // every frame (previously the #1 CPU bottleneck — ~1 ms at RD 16).
+    std::unordered_set<glm::ivec2, Vec2Hash> chunksWithPendingMesh;
+#ifndef __EMSCRIPTEN__
 
     // Mesh build requests (dispatched to workers with snapshotted data)
     struct MeshRequest {

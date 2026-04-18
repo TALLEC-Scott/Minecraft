@@ -2089,8 +2089,14 @@ int main(int argc, char* argv[]) {
                 currentState = next;
             }
 
-            glfwSwapBuffers(window);
-            glfwPollEvents();
+            {
+                ZoneScopedN("glfwSwapBuffers");
+                glfwSwapBuffers(window);
+            }
+            {
+                ZoneScopedN("glfwPollEvents");
+                glfwPollEvents();
+            }
             FrameMark;
         }; // end mainLoopBody lambda
 
