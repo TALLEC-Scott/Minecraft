@@ -269,7 +269,22 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
     if (drawButton(ui, "Singleplayer", btnX, startY, btnW, btnH)) next = GameState::WorldList;
 
     // Multiplayer placeholder — disabled until server/client support ships.
-    drawButton(ui, "Multiplayer", btnX, startY + gap, btnW, btnH, /*enabled=*/false);
+    {
+        float mpY = startY + gap;
+        drawButton(ui, "Multiplayer", btnX, mpY, btnW, btnH, /*enabled=*/false);
+        if (mouseInRect(btnX, mpY, btnW, btnH)) {
+            const std::string tip = "Coming soon";
+            constexpr float tipScale = 1.4f;
+            constexpr float padX = 8.0f, padY = 4.0f;
+            float tipW = ui.textWidth(tip, tipScale) + padX * 2;
+            float tipH = ui.textHeight(tipScale) + padY * 2;
+            float tipX = std::min((float)mouseX + 14.0f, (float)windowW - tipW - 4.0f);
+            float tipY = std::min((float)mouseY + 18.0f, (float)windowH - tipH - 4.0f);
+            ui.drawRect(tipX - 1, tipY - 1, tipW + 2, tipH + 2, glm::vec4(0.0f, 0.0f, 0.0f, 0.95f));
+            ui.drawRect(tipX, tipY, tipW, tipH, glm::vec4(0.15f, 0.15f, 0.18f, 0.95f));
+            ui.drawTextShadow(tip, tipX + padX, tipY + padY, tipScale);
+        }
+    }
 
     if (drawButton(ui, "Settings", btnX, startY + gap * 2, btnW, btnH)) {
         settingsReturnState = GameState::MainMenu;
