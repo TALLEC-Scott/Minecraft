@@ -37,6 +37,7 @@ https://github.com/user-attachments/assets/c95a33fa-b7e2-41ac-b8ba-79bb7edf997f
   <img src="Minecraft_Screenshot_1.png" width="300" />
   <img src="Minecraft_Screenshot_2.png" width="300" />
   <img src="Minecraft_Screenshot_6.png" width="300" />
+  <img src="Minecraft_0.1.png" width="300" />
 </p>
 
 </details>
