@@ -1683,10 +1683,18 @@ int main(int argc, char* argv[]) {
                 billboardShader.setMat4("view", glm::mat4(1.0f));
                 billboardShader.setVec3("tintColor", armTint);
 
+                // With perspective projection, the arm's screen-X slides
+                // toward the center as the window gets wider (aspect
+                // divides the X NDC). Scale the X translation by aspect so
+                // the arm stays anchored to the bottom-right corner in
+                // fullscreen widescreen.
+                float aspect = (float)windowWidth / (float)windowHeight;
+
                 block_type heldType = player.getSelectedBlockType();
                 glDisable(GL_CULL_FACE);
                 if (heldType == AIR) {
                     // Empty hand: show arm
+                    armModel[3][0] *= aspect;
                     billboardShader.setMat4("model", armModel);
                     glBindVertexArray(armVAO);
                     glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
@@ -1694,7 +1702,7 @@ int main(int argc, char* argv[]) {
                     // Held block: smaller cube, tilted, in hand position
                     if (heldType != lastHeldBlock) buildHeldBlockMesh(heldType);
                     glm::mat4 blockModel = glm::mat4(1.0f);
-                    blockModel = glm::translate(blockModel, glm::vec3(0.4f, -0.35f, -0.5f));
+                    blockModel = glm::translate(blockModel, glm::vec3(0.4f * aspect, -0.35f, -0.5f));
                     blockModel = glm::rotate(blockModel, glm::radians(player.getPunchSwingAngle()), glm::vec3(1, 0, 0));
                     blockModel = glm::rotate(blockModel, glm::radians(25.0f), glm::vec3(0, 1, 0));
                     blockModel = glm::rotate(blockModel, glm::radians(10.0f), glm::vec3(1, 0, 0));
