@@ -317,26 +317,30 @@ GameState Menu::drawWorldList(UIRenderer& ui, int windowW, int windowH, GLFWwind
 
     bool hasSel = selectedWorld >= 0 && selectedWorld < (int)worlds.size();
 
-    if (!blockInteraction && widgets.button(ui, "Play Selected", listX, footerY, halfW, btnH, hasSel)) {
+    // Footer buttons skip click/hover handling while an overlay is open so
+    // the underlying Play/Cancel/etc. can't fire through the dialog.
+    auto footerBtn = [&](const char* label, float x, float y, float w, float h, bool enabled = true) {
+        return !blockInteraction && widgets.button(ui, label, x, y, w, h, enabled);
+    };
+    float footerY2 = footerY + btnH + btnGap;
+    if (footerBtn("Play Selected", listX, footerY, halfW, btnH, hasSel)) {
         out.action = WorldListResult::PlaySelected;
         out.folder = worlds[selectedWorld].folder;
         next = GameState::Playing;
     }
-    if (!blockInteraction && widgets.button(ui, "Create New World", listX + halfW + btnGap, footerY, halfW, btnH)) {
+    if (footerBtn("Create New World", listX + halfW + btnGap, footerY, halfW, btnH)) {
         out.action = WorldListResult::CreateRequested;
         next = GameState::CreateWorld;
     }
-    float footerY2 = footerY + btnH + btnGap;
-    if (!blockInteraction && widgets.button(ui, "Rename", listX, footerY2, thirdW, btnH, hasSel)) {
+    if (footerBtn("Rename", listX, footerY2, thirdW, btnH, hasSel)) {
         overlay = OverlayRename;
         renameInput.active = true;
         renameInput.setText(worlds[selectedWorld].name);
     }
-    if (!blockInteraction &&
-        widgets.button(ui, "Delete", listX + thirdW + btnGap, footerY2, thirdW, btnH, hasSel)) {
+    if (footerBtn("Delete", listX + thirdW + btnGap, footerY2, thirdW, btnH, hasSel)) {
         overlay = OverlayConfirmDelete;
     }
-    if (!blockInteraction && widgets.button(ui, "Cancel", listX + 2 * (thirdW + btnGap), footerY2, thirdW, btnH)) {
+    if (footerBtn("Cancel", listX + 2 * (thirdW + btnGap), footerY2, thirdW, btnH)) {
         out.action = WorldListResult::BackToTitle;
         next = GameState::MainMenu;
     }
