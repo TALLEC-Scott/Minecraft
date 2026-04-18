@@ -765,28 +765,17 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                 // Cross-quad plants don't occlude — treat as air for AO.
                 opaq[oIdx(x, y, z)] = (t != AIR && t != WATER && !hasFlag(t, BF_CROSS)) ? 1 : 0;
             }
-    // Fill borders from neighbors
+    // Fill borders from neighbors. Cross plants don't cast AO across seams.
+    auto isAOOccluder = [](block_type t) { return t != AIR && t != WATER && !hasFlag(t, BF_CROSS); };
     for (int y = 0; y < opaqueH; y++)
         for (int z = 0; z < CHUNK_SIZE; z++) {
-            if (nx_neg) {
-                block_type t = nx_neg->getBlock(CHUNK_SIZE - 1, y, z)->getType();
-                opaq[oIdx(-1, y, z)] = (t != AIR && t != WATER) ? 1 : 0;
-            }
-            if (nx_pos) {
-                block_type t = nx_pos->getBlock(0, y, z)->getType();
-                opaq[oIdx(CHUNK_SIZE, y, z)] = (t != AIR && t != WATER) ? 1 : 0;
-            }
+            if (nx_neg) opaq[oIdx(-1, y, z)] = isAOOccluder(nx_neg->getBlock(CHUNK_SIZE - 1, y, z)->getType()) ? 1 : 0;
+            if (nx_pos) opaq[oIdx(CHUNK_SIZE, y, z)] = isAOOccluder(nx_pos->getBlock(0, y, z)->getType()) ? 1 : 0;
         }
     for (int y = 0; y < opaqueH; y++)
         for (int x = 0; x < CHUNK_SIZE; x++) {
-            if (nz_neg) {
-                block_type t = nz_neg->getBlock(x, y, CHUNK_SIZE - 1)->getType();
-                opaq[oIdx(x, y, -1)] = (t != AIR && t != WATER) ? 1 : 0;
-            }
-            if (nz_pos) {
-                block_type t = nz_pos->getBlock(x, y, 0)->getType();
-                opaq[oIdx(x, y, CHUNK_SIZE)] = (t != AIR && t != WATER) ? 1 : 0;
-            }
+            if (nz_neg) opaq[oIdx(x, y, -1)] = isAOOccluder(nz_neg->getBlock(x, y, CHUNK_SIZE - 1)->getType()) ? 1 : 0;
+            if (nz_pos) opaq[oIdx(x, y, CHUNK_SIZE)] = isAOOccluder(nz_pos->getBlock(x, y, 0)->getType()) ? 1 : 0;
         }
 
     // Greedy meshing: merge coplanar same-type adjacent faces into larger quads.
