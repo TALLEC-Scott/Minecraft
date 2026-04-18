@@ -730,7 +730,10 @@ int main(int argc, char* argv[]) {
             // Generate cloud pattern texture from noise. Uses its own
             // TerrainGenerator (seed 0) so cloud shapes don't depend on
             // which world is loaded — they look identical across worlds.
-            TerrainGenerator cloudNoise(0, 1.0f, 0, 10);
+            // scale=0.1 matches what World's generator uses; with scale=1.0
+            // Perlin noise evaluated at integer lattice points is identically
+            // 0, and the >= 0.65 threshold never fires → blank sky.
+            TerrainGenerator cloudNoise(0, 0.1f, 0, 10);
             std::vector<uint8_t> pixels(CLOUD_GRID * CLOUD_GRID * 4);
             for (int gx = 0; gx < CLOUD_GRID; gx++) {
                 for (int gz = 0; gz < CLOUD_GRID; gz++) {
