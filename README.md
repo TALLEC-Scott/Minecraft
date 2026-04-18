@@ -4,34 +4,34 @@ A Minecraft-like voxel terrain renderer built with C++ and OpenGL 3.3 Core Profi
 
 ## Screenshots
 
-### Latest — v0.7: TNT, plants, biomes
+### v0.7
 
 https://github.com/user-attachments/assets/4a94017a-34d2-41fa-8707-44ceb98dd80f
 
 <details>
 <summary><b>Earlier versions</b></summary>
 
-#### v0.6 — inventory, save/load
+#### v0.6
 
 <img src="Minecraft_Screenshot_5.png" width="600" />
 
-#### v0.5 — water simulation
+#### v0.5
 
 https://github.com/user-attachments/assets/c95a33fa-b7e2-41ac-b8ba-79bb7edf997f
 
-#### v0.4 — day/night cycle
+#### v0.4
 
 <img src="Minecraft_0.4.png" width="500" />
 
-#### v0.3 — biomes
+#### v0.3
 
 <img src="Minecraft_Screenshot_4.png" width="600" />
 
-#### v0.2 — clouds, sky
+#### v0.2
 
 [![Watch the demo](docs/v02-thumb.jpg)](https://i.imgur.com/WYfonMc.mp4)
 
-#### v0.1 — basic terrain
+#### v0.1
 
 <p>
   <img src="Minecraft_Screenshot_1.png" width="300" />
