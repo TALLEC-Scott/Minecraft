@@ -16,6 +16,10 @@ A Minecraft-like voxel terrain renderer built with C++ and OpenGL 3.3 Core Profi
 ### v0.3
 ![Screenshot 4](Minecraft_Screenshot_4.png)
 
+### v0.6
+
+https://github.com/user-attachments/assets/c95a33fa-b7e2-41ac-b8ba-79bb7edf997f
+
 ### v0.7
 
 https://github.com/user-attachments/assets/4a94017a-34d2-41fa-8707-44ceb98dd80f
