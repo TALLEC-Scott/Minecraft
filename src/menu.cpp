@@ -269,7 +269,7 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
     if (drawButton(ui, "Singleplayer", btnX, startY, btnW, btnH)) next = GameState::WorldList;
 
     // Multiplayer placeholder — disabled until server/client support ships.
-    drawButton(ui, "Multiplayer (coming soon)", btnX, startY + gap, btnW, btnH, /*enabled=*/false);
+    drawButton(ui, "Multiplayer", btnX, startY + gap, btnW, btnH, /*enabled=*/false);
 
     if (drawButton(ui, "Settings", btnX, startY + gap * 2, btnW, btnH)) {
         settingsReturnState = GameState::MainMenu;
