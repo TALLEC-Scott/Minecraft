@@ -276,7 +276,7 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
 
     // Version text
     float verScale = 1.0f;
-    ui.drawTextShadow("v0.7.7", 4.0f, (float)windowH - 12.0f, verScale, glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
+    ui.drawTextShadow("v0.7.8", 4.0f, (float)windowH - 12.0f, verScale, glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
 
     ui.end();
     return next;
@@ -320,10 +320,35 @@ GameState Menu::drawSettings(UIRenderer& ui, int windowW, int windowH, GLFWwindo
 
     drawSlider(ui, "Music", 3, ctrlX, startY + gap * 6, ctrlW, ctrlH, settings.musicVolume, 0.0f, 1.0f);
 
+#ifndef __EMSCRIPTEN__
+    // Resolution cycler: click to advance through RESOLUTION_PRESETS.
+    {
+        float ry = startY + gap * 7;
+        bool hovered = mouseInRect(ctrlX, ry, ctrlW, ctrlH);
+        bool clicked = hovered && mouseClicked();
+        if (clicked) {
+            settings.resolutionIndex = (settings.resolutionIndex + 1) % NUM_RESOLUTION_PRESETS;
+            playClick();
+        }
+        glm::vec4 bg(0.2f, 0.2f, 0.2f, 0.85f);
+        if (hovered) bg += glm::vec4(0.1f, 0.1f, 0.1f, 0.0f);
+        ui.drawRect(ctrlX - 1, ry - 1, ctrlW + 2, ctrlH + 2, glm::vec4(0.0f, 0.0f, 0.0f, 0.9f));
+        ui.drawRect(ctrlX, ry, ctrlW, ctrlH, bg);
+        float scale = 2.0f;
+        std::string label = std::string("Resolution: ") + RESOLUTION_PRESETS[settings.resolutionIndex].label;
+        float tw = ui.textWidth(label, scale);
+        float th = ui.textHeight(scale);
+        ui.drawTextShadow(label, ctrlX + (ctrlW - tw) / 2.0f, ry + (ctrlH - th) / 2.0f, scale);
+    }
+    float doneOffset = 8.5f;
+#else
+    float doneOffset = 7.5f;
+#endif
+
     // Done button
     float btnW = 400.0f, btnH = 44.0f;
     float btnX = cx - btnW / 2.0f;
-    if (drawButton(ui, "Done", btnX, startY + gap * 7.5f, btnW, btnH)) next = settingsReturnState;
+    if (drawButton(ui, "Done", btnX, startY + gap * doneOffset, btnW, btnH)) next = settingsReturnState;
 
     if (escPressed(window)) next = settingsReturnState;
 
