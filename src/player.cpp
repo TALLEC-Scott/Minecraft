@@ -114,12 +114,24 @@ void Player::playBreakSound(block_type brokenBlock) {
 
 void Player::handleInput(GLFWwindow* window, World* world) {
     // Movement
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camera.forward();
+    bool wDown = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
+    if (wDown) camera.forward();
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camera.back();
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camera.left();
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camera.right();
 
-    // Space: double-tap toggles walk/fly, single = jump or fly up
+    // Double-tap W → latch sprint until the player releases forward.
+    if (wDown && !wWasPressed) {
+        double now = glfwGetTime();
+        if (now - lastWTap < DOUBLE_TAP_TIME) sprintLatched = true;
+        lastWTap = now;
+    }
+    if (!wDown) sprintLatched = false;
+    wWasPressed = wDown;
+
+    // Space: double-tap toggles walk/fly. Holding space keeps jumping on
+    // land (camera.jump() gates on onGround, so it only fires when grounded)
+    // and keeps pushing up in fly / water.
     {
         bool spaceDown = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
         if (spaceDown && !spaceWasPressed) {
@@ -129,15 +141,13 @@ void Player::handleInput(GLFWwindow* window, World* world) {
                 lastSpaceTap = 0;
             } else {
                 lastSpaceTap = now;
-                if (camera.isWalkMode())
-                    camera.jump();
-                else
-                    camera.up();
             }
-        } else if (spaceDown && !camera.isWalkMode()) {
-            camera.up();
-        } else if (spaceDown && camera.isInWater()) {
-            camera.jump(); // continuous upward push when holding space in water
+        }
+        if (spaceDown) {
+            if (camera.isWalkMode())
+                camera.jump();  // onGround-gated, so auto-repeats on landing
+            else
+                camera.up();
         }
         spaceWasPressed = spaceDown;
     }
@@ -147,8 +157,8 @@ void Player::handleInput(GLFWwindow* window, World* world) {
         (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS))
         camera.down();
 
-    // Sprint — Shift in walk mode, R always
-    bool sprint = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
+    // Sprint — Shift in walk mode, R always, or double-tap W latch.
+    bool sprint = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS || sprintLatched;
     if (camera.isWalkMode()) sprint = sprint || glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
     if (sprint)
         camera.speedUp();

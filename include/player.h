@@ -105,6 +105,12 @@ class Player {
     double lastSpaceTap = 0.0;
     static constexpr double DOUBLE_TAP_TIME = 0.3;
 
+    // Double-tap W to sprint. Sprint stays active while W is held and
+    // releases the moment the player lets go of forward.
+    bool wWasPressed = false;
+    double lastWTap = 0.0;
+    bool sprintLatched = false;
+
     // Mouse look state
     float yaw = -90.0f;
     float pitch = 0.0f;
