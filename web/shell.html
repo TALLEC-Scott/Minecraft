@@ -155,11 +155,11 @@
                     var pct = (parseFloat(m[1]) / parseFloat(m[2])) * 100;
                     fill.style.width = pct.toFixed(1) + '%';
                     statusEl.textContent = 'Loading game... ' + Math.floor(pct) + '%';
-                    // 5 full rotations across 0-100% so the cube spins
-                    // visibly faster than a naive 1:1 progress mapping.
+                    // 3 full rotations across 0-100% — a nice visible spin
+                    // without feeling frantic.
                     if (cube) {
                         cube.style.animation = 'none'; // disable the idle fallback once we have real progress
-                        cube.style.transform = 'rotateX(-25deg) rotateY(' + (pct * 18) + 'deg)';
+                        cube.style.transform = 'rotateX(-25deg) rotateY(' + (pct * 10.8) + 'deg)';
                     }
                 } else {
                     statusEl.textContent = text;
