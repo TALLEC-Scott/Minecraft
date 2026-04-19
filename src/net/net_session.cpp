@@ -205,6 +205,61 @@ EM_JS(int, netjs_inbox_pop, (void* ptr, int cap), {
 // clang-format on
 #endif // __EMSCRIPTEN__
 
+namespace {
+
+// Shortest-angle lerp. Yaw wraps at 360° so a naive a+(b-a)*t would
+// spin the long way around when the peer crosses the seam.
+float lerpAngleDeg(float a, float b, float t) {
+    float d = std::fmod(b - a, 360.0f);
+    if (d > 180.0f) d -= 360.0f;
+    if (d < -180.0f) d += 360.0f;
+    return a + d * t;
+}
+
+} // namespace
+
+void RemotePlayer::pushSample(glm::vec3 pos, float yaw, float pitch, double now) {
+    // Shift curr → prev. On the very first sample we have no history;
+    // seed prev to the same values so the first interpolated frame is
+    // the newcomer's exact pose rather than the zero origin.
+    if (currTime == 0.0) {
+        prevPos = pos;
+        prevYaw = yaw;
+        prevPitch = pitch;
+        prevTime = now;
+    } else {
+        prevPos = currPos;
+        prevYaw = currYaw;
+        prevPitch = currPitch;
+        prevTime = currTime;
+    }
+    currPos = pos;
+    currYaw = yaw;
+    currPitch = pitch;
+    currTime = now;
+    lastSeen = now;
+}
+
+RemotePlayer::Pose RemotePlayer::sample(double renderTime) const {
+    Pose p;
+    if (currTime <= prevTime) {
+        // Only one distinct sample so far — return it as-is.
+        p.pos = currPos;
+        p.yaw = currYaw;
+        p.pitch = currPitch;
+        return p;
+    }
+    double span = currTime - prevTime;
+    double t = (renderTime - prevTime) / span;
+    if (t < 0.0) t = 0.0;
+    if (t > 1.0) t = 1.0; // clamp; no extrapolation past curr
+    float tf = static_cast<float>(t);
+    p.pos = glm::mix(prevPos, currPos, tf);
+    p.yaw = lerpAngleDeg(prevYaw, currYaw, tf);
+    p.pitch = lerpAngleDeg(prevPitch, currPitch, tf);
+    return p;
+}
+
 NetSession::NetSession() {
 #ifdef __EMSCRIPTEN__
     netjs_init_globals();
@@ -321,7 +376,10 @@ RemotePlayer& NetSession::upsertRemote(uint32_t peerId, double now) {
             return r;
         }
     }
-    remotes_.push_back(RemotePlayer{peerId, glm::vec3(0.0f), 0.0f, 0.0f, now});
+    RemotePlayer r;
+    r.peerId = peerId;
+    r.lastSeen = now;
+    remotes_.push_back(r);
     return remotes_.back();
 }
 
@@ -357,9 +415,7 @@ void NetSession::handleMessage(const uint8_t* data, std::size_t len, double now)
         netp::PlayerStateMsg m;
         if (!netp::decodePlayerState(data, len, m)) return;
         RemotePlayer& r = upsertRemote(m.peerId, now);
-        r.pos = m.pos;
-        r.yaw = m.yaw;
-        r.pitch = m.pitch;
+        r.pushSample(m.pos, m.yaw, m.pitch, now);
         break;
     }
     case netp::Op::PlaceIntent: {
