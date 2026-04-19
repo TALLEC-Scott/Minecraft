@@ -1,0 +1,12 @@
+{
+  "name": "minecraft-signaling",
+  "version": "1.0.0",
+  "description": "WebSocket signaling relay for WebRTC multiplayer",
+  "main": "signaling.js",
+  "scripts": {
+    "start": "node signaling.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}

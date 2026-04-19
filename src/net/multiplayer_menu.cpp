@@ -16,6 +16,39 @@ void setLarge(TextInput& in) {
     in.maxLen = SDP_MAX_LEN;
 }
 
+// Pick the signaling-server URL. On web the server lives at the same
+// origin under /signal; browsers served over HTTPS need wss:// to avoid
+// mixed-content blocking. Localhost dev tests use ws://.
+#ifdef __EMSCRIPTEN__
+EM_JS(const char*, sig_server_url, (), {
+    // Prod (HTTPS): nginx proxies wss://host/signal to the node process.
+    // Dev (plain HTTP, typically python3 -m http.server): connect straight
+    // to the signaling process on :7863 so no reverse proxy is needed.
+    var url;
+    if (location.protocol === "https:") {
+        url = "wss://" + location.hostname + "/signal";
+    } else {
+        url = "ws://" + location.hostname + ":7863";
+    }
+    var bytes = lengthBytesUTF8(url) + 1;
+    var ptr = _malloc(bytes);
+    stringToUTF8(url, ptr, bytes);
+    return ptr;
+});
+#endif
+
+std::string signalingServerUrl() {
+#ifdef __EMSCRIPTEN__
+    const char* p = sig_server_url();
+    if (!p) return "";
+    std::string out(p);
+    std::free((void*)p);
+    return out;
+#else
+    return "";
+#endif
+}
+
 // Copy a string into the browser clipboard (web only). Relies on the
 // async Clipboard API, which needs a secure context — the site serves
 // over HTTPS so this is always available. No-op on desktop.
@@ -246,10 +279,32 @@ GameState drawMultiplayerMenu(UIRenderer& ui, int windowW, int windowH, GLFWwind
     float btnW = 220.0f, btnH = 44.0f;
 
     if (state.panel == MpPanel::Choose) {
+        // Quick (room-code) flow — preferred for most users.
+        std::string quickHeader = "Quick connect (room code):";
+        ui.drawText(quickHeader, cx - ui.textWidth(quickHeader, 1.4f) / 2.0f, panelTopY, 1.4f,
+                    glm::vec4(0.85f, 0.9f, 1.0f, 1.0f));
         float gap = 40.0f;
         float row1X = cx - btnW - gap / 2.0f;
         float row2X = cx + gap / 2.0f;
-        if (widgets.button(ui, "Host a game", row1X, panelTopY + 40.0f, btnW, btnH)) {
+        if (widgets.button(ui, "Create room", row1X, panelTopY + 26.0f, btnW, btnH)) {
+            state.panel = MpPanel::QuickHost;
+            net.startHostSignaling(signalingServerUrl());
+            state.sessionStarted = true;
+            state.connectingOut = true;
+        }
+        if (widgets.button(ui, "Join room", row2X, panelTopY + 26.0f, btnW, btnH)) {
+            state.panel = MpPanel::QuickJoin;
+            state.codeInput.setText("");
+            state.codeInput.active = true;
+            state.sessionStarted = false;
+        }
+
+        // Manual (copy-paste SDP) fallback.
+        float manualY = panelTopY + 120.0f;
+        std::string manualHeader = "Manual signaling (advanced):";
+        ui.drawText(manualHeader, cx - ui.textWidth(manualHeader, 1.3f) / 2.0f, manualY, 1.3f,
+                    glm::vec4(0.75f, 0.75f, 0.75f, 1.0f));
+        if (widgets.button(ui, "Host (manual SDP)", row1X, manualY + 24.0f, btnW, btnH)) {
             state.panel = MpPanel::Host;
             std::string sdp = net.createOffer();
             state.offerInput.buffer = sdp;
@@ -257,27 +312,95 @@ GameState drawMultiplayerMenu(UIRenderer& ui, int windowW, int windowH, GLFWwind
             state.awaitingLocalSdp = sdp.empty();
             state.sessionStarted = true;
         }
-        if (widgets.button(ui, "Join a game", row2X, panelTopY + 40.0f, btnW, btnH)) {
+        if (widgets.button(ui, "Join (manual SDP)", row2X, manualY + 24.0f, btnW, btnH)) {
             state.panel = MpPanel::Join;
             state.sessionStarted = false;
         }
-        std::string hint = "Host generates an SDP offer; share it with your peer. Peer pastes it on the Join side and "
-                           "returns an answer SDP. Host pastes the answer and clicks Connect.";
+
+        std::string hint = "Quick connect uses a tiny signaling relay to swap connection info. "
+                           "Manual SDP is useful when the relay is down — host generates an offer, "
+                           "peer pastes it and returns an answer, host pastes that back.";
         float s = 1.2f;
-        // Cap the wrap width so the hint never runs past the viewport edge
-        // on narrower windows (the old drawText call ignored newlines and
-        // spilled off-screen).
         float hintWidth = std::min(static_cast<float>(windowW) - 40.0f, 640.0f);
-        drawWrappedText(ui, hint, cx - hintWidth / 2.0f, panelTopY + 130.0f, hintWidth, s,
-                        glm::vec4(0.75f, 0.75f, 0.75f, 1.0f));
+        drawWrappedText(ui, hint, cx - hintWidth / 2.0f, manualY + 90.0f, hintWidth, s,
+                        glm::vec4(0.7f, 0.7f, 0.7f, 1.0f));
 
         float backX = cx - btnW / 2.0f;
-        if (widgets.button(ui, "Back", backX, cy * 0.85f, btnW, btnH)) {
+        if (widgets.button(ui, "Back", backX, cy * 0.88f, btnW, btnH)) {
             next = GameState::MainMenu;
             state = MpMenuState{};
         }
         if (widgets.escPressed(window)) {
             next = GameState::MainMenu;
+            state = MpMenuState{};
+        }
+    } else if (state.panel == MpPanel::QuickHost) {
+        float y = panelTopY;
+        std::string title2 = "Quick connect — Host";
+        ui.drawTextShadow(title2, cx - ui.textWidth(title2, 1.8f) / 2.0f, y, 1.8f);
+        y += 50.0f;
+        std::string code = net.signalingCode();
+        if (code.empty()) {
+            std::string wait = "Contacting signaling server...";
+            ui.drawText(wait, cx - ui.textWidth(wait, 1.4f) / 2.0f, y, 1.4f,
+                        glm::vec4(0.7f, 0.7f, 0.7f, 1.0f));
+        } else {
+            std::string label = "Share this code with your peer:";
+            ui.drawText(label, cx - ui.textWidth(label, 1.3f) / 2.0f, y, 1.3f,
+                        glm::vec4(0.85f, 0.85f, 0.85f, 1.0f));
+            ui.drawTextShadow(code, cx - ui.textWidth(code, 4.0f) / 2.0f, y + 30.0f, 4.0f,
+                              glm::vec4(1.0f, 1.0f, 0.5f, 1.0f));
+            if (widgets.button(ui, "Copy code", cx - btnW / 2.0f, y + 100.0f, btnW, 36.0f)) {
+                copyToClipboard(code);
+            }
+        }
+        std::string status = net.signalingStatus();
+        if (!status.empty()) {
+            ui.drawText("Status: " + status, cx - ui.textWidth("Status: " + status, 1.3f) / 2.0f,
+                        y + 160.0f, 1.3f, glm::vec4(0.75f, 0.9f, 0.75f, 1.0f));
+        }
+        if (widgets.button(ui, "Back", cx - btnW / 2.0f, cy * 0.85f, btnW, btnH)) {
+            net.disconnect();
+            state = MpMenuState{};
+        }
+        if (widgets.escPressed(window)) {
+            net.disconnect();
+            state = MpMenuState{};
+        }
+    } else if (state.panel == MpPanel::QuickJoin) {
+        float y = panelTopY;
+        std::string title2 = "Quick connect — Join";
+        ui.drawTextShadow(title2, cx - ui.textWidth(title2, 1.8f) / 2.0f, y, 1.8f);
+        y += 50.0f;
+        ui.drawText("Enter room code:", cx - 220.0f, y, 1.4f);
+        widgets.textField(ui, state.codeInput, cx - 220.0f, y + 22.0f, 440.0f, 44.0f, "e.g. ABC234");
+        if (widgets.button(ui, "Connect", cx - btnW / 2.0f, y + 90.0f, btnW, btnH)) {
+            if (!state.codeInput.buffer.empty()) {
+                // Normalize to uppercase so users who type lowercase still match.
+                std::string code = state.codeInput.buffer;
+                for (auto& c : code) c = (c >= 'a' && c <= 'z') ? static_cast<char>(c - 32) : c;
+                net.startJoinSignaling(signalingServerUrl(), code);
+                state.sessionStarted = true;
+                state.connectingOut = true;
+            } else {
+                state.lastError = "Enter a room code.";
+            }
+        }
+        std::string status = net.signalingStatus();
+        if (!status.empty()) {
+            ui.drawText("Status: " + status, cx - ui.textWidth("Status: " + status, 1.3f) / 2.0f,
+                        y + 150.0f, 1.3f, glm::vec4(0.75f, 0.9f, 0.75f, 1.0f));
+        }
+        if (!state.lastError.empty()) {
+            ui.drawText(state.lastError, cx - ui.textWidth(state.lastError, 1.3f) / 2.0f, y + 175.0f,
+                        1.3f, glm::vec4(1.0f, 0.5f, 0.4f, 1.0f));
+        }
+        if (widgets.button(ui, "Back", cx - btnW / 2.0f, cy * 0.85f, btnW, btnH)) {
+            net.disconnect();
+            state = MpMenuState{};
+        }
+        if (widgets.escPressed(window)) {
+            net.disconnect();
             state = MpMenuState{};
         }
     } else if (state.panel == MpPanel::Host) {
