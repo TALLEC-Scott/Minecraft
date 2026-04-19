@@ -4,9 +4,14 @@
 #include "ui_renderer.h"
 #include "widgets.h"
 #include <GLFW/glfw3.h>
+#include <functional>
 #include <string>
 
 class NetSession;
+
+// Background drawer supplied by the caller — usually Menu::drawDirtBackground.
+// Using a callable keeps drawMultiplayerMenu free of a Menu dependency.
+using BackgroundDrawer = std::function<void(UIRenderer&, int, int)>;
 
 // Panel state for the multiplayer menu. The menu is a standalone module
 // rather than extra methods on Menu because it's experimental and self
@@ -35,4 +40,4 @@ struct MpMenuState {
 // GameState::Multiplayer while the user is inside the menu, MainMenu on
 // back/cancel, or Playing once the channel is connected.
 GameState drawMultiplayerMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window, Widgets& widgets,
-                              MpMenuState& state, NetSession& net);
+                              MpMenuState& state, NetSession& net, const BackgroundDrawer& drawBg);

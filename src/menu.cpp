@@ -208,7 +208,8 @@ GameState Menu::drawSettings(UIRenderer& ui, int windowW, int windowH, GLFWwindo
 }
 
 GameState Menu::drawMultiplayer(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window, NetSession& net) {
-    return drawMultiplayerMenu(ui, windowW, windowH, window, widgets, mpState, net);
+    auto bg = [this](UIRenderer& r, int w, int h) { drawDirtBackground(r, w, h); };
+    return drawMultiplayerMenu(ui, windowW, windowH, window, widgets, mpState, net, bg);
 }
 
 GameState Menu::drawPauseMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window) {
