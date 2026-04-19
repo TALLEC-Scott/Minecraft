@@ -202,6 +202,136 @@ EM_JS(int, netjs_inbox_pop, (void* ptr, int cap), {
     Module._netInbox.shift();
     return msg.length;
 });
+
+// Signaling-server orchestration. Opens a WebSocket, pairs with a peer by
+// room code, and drives the SDP exchange automatically so the user doesn't
+// have to copy-paste anything. Produces a handle into the existing peer
+// array, so netjs_is_ready / netjs_send / netjs_inbox_pop keep working
+// unchanged once the data channel is up.
+EM_JS(int, netjs_signaling_host, (const char* urlPtr), {
+    var url = UTF8ToString(urlPtr);
+    if (!Module._netState) Module._netState = {peers : [], nextId : 0};
+    var s = Module._netState;
+    var id = s.nextId++;
+    var pc = new RTCPeerConnection({iceServers : [ {urls : "stun:stun.l.google.com:19302"} ]});
+    var ch = pc.createDataChannel("game", {ordered : true});
+    ch.binaryType = "arraybuffer";
+    var rec = {pc : pc, ch : ch, role : "host", offerSdp : "", answerSdp : "", ready : false,
+               sigCode : "", sigStatus : "connecting"};
+    ch.onopen = function() { rec.ready = true; rec.sigStatus = "connected"; };
+    ch.onclose = function() { rec.ready = false; };
+    ch.onmessage = function(ev) {
+        if (!Module._netInbox) Module._netInbox = [];
+        var data = ev.data;
+        if (data instanceof ArrayBuffer) Module._netInbox.push(new Uint8Array(data));
+        else if (ArrayBuffer.isView(data)) Module._netInbox.push(new Uint8Array(data.buffer.slice(0)));
+    };
+    var ws = new WebSocket(url);
+    rec.ws = ws;
+    ws.onopen = function() {
+        rec.sigStatus = "requesting room";
+        ws.send(JSON.stringify({type : "host"}));
+    };
+    ws.onerror = function() { rec.sigStatus = "signaling error"; };
+    ws.onclose = function() {
+        // Only surface this as an error if the data channel never opened —
+        // otherwise it's the normal teardown after pairing succeeded.
+        if (!rec.ready && rec.sigStatus !== "connected") rec.sigStatus = "signaling closed";
+    };
+    ws.onmessage = function(ev) {
+        var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+        if (msg.type === "code") {
+            rec.sigCode = msg.code;
+            rec.sigStatus = "waiting for peer (code " + msg.code + ")";
+        } else if (msg.type === "peer-joined") {
+            rec.sigStatus = "negotiating";
+            pc.createOffer().then(function(offer) { return pc.setLocalDescription(offer); });
+        } else if (msg.type === "answer") {
+            try { pc.setRemoteDescription(msg.sdp); } catch (e) { console.warn("setRemote", e); }
+        } else if (msg.type === "error") {
+            rec.sigStatus = "error: " + (msg.error || "unknown");
+        }
+    };
+    pc.onicegatheringstatechange = function() {
+        if (pc.iceGatheringState === "complete" && pc.localDescription && ws.readyState === 1) {
+            ws.send(JSON.stringify({type : "offer", sdp : pc.localDescription}));
+        }
+    };
+    s.peers[id] = rec;
+    return id;
+});
+
+EM_JS(int, netjs_signaling_join, (const char* urlPtr, const char* codePtr), {
+    var url = UTF8ToString(urlPtr);
+    var code = UTF8ToString(codePtr);
+    if (!Module._netState) Module._netState = {peers : [], nextId : 0};
+    var s = Module._netState;
+    var id = s.nextId++;
+    var pc = new RTCPeerConnection({iceServers : [ {urls : "stun:stun.l.google.com:19302"} ]});
+    var rec = {pc : pc, ch : null, role : "client", offerSdp : "", answerSdp : "", ready : false,
+               sigCode : code, sigStatus : "connecting"};
+    pc.ondatachannel = function(ev) {
+        var ch = ev.channel;
+        ch.binaryType = "arraybuffer";
+        rec.ch = ch;
+        ch.onopen = function() { rec.ready = true; rec.sigStatus = "connected"; };
+        ch.onclose = function() { rec.ready = false; };
+        ch.onmessage = function(mev) {
+            if (!Module._netInbox) Module._netInbox = [];
+            var data = mev.data;
+            if (data instanceof ArrayBuffer) Module._netInbox.push(new Uint8Array(data));
+            else if (ArrayBuffer.isView(data)) Module._netInbox.push(new Uint8Array(data.buffer.slice(0)));
+        };
+    };
+    var ws = new WebSocket(url);
+    rec.ws = ws;
+    ws.onopen = function() {
+        rec.sigStatus = "joining room " + code;
+        ws.send(JSON.stringify({type : "join", code : code}));
+    };
+    ws.onerror = function() { rec.sigStatus = "signaling error"; };
+    ws.onclose = function() {
+        if (!rec.ready && rec.sigStatus !== "connected") rec.sigStatus = "signaling closed";
+    };
+    ws.onmessage = function(ev) {
+        var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+        if (msg.type === "joined") {
+            rec.sigStatus = "waiting for host offer";
+        } else if (msg.type === "offer") {
+            rec.sigStatus = "negotiating";
+            pc.setRemoteDescription(msg.sdp)
+              .then(function() { return pc.createAnswer(); })
+              .then(function(answer) { return pc.setLocalDescription(answer); });
+        } else if (msg.type === "error") {
+            rec.sigStatus = "error: " + (msg.error || "unknown");
+        }
+    };
+    pc.onicegatheringstatechange = function() {
+        if (pc.iceGatheringState === "complete" && pc.localDescription && ws.readyState === 1) {
+            ws.send(JSON.stringify({type : "answer", sdp : pc.localDescription}));
+        }
+    };
+    s.peers[id] = rec;
+    return id;
+});
+
+EM_JS(const char*, netjs_signaling_code, (int handle), {
+    var s = Module._netState; if (!s) return 0;
+    var rec = s.peers[handle]; if (!rec || !rec.sigCode) return 0;
+    var bytes = lengthBytesUTF8(rec.sigCode) + 1;
+    var ptr = _malloc(bytes);
+    stringToUTF8(rec.sigCode, ptr, bytes);
+    return ptr;
+});
+
+EM_JS(const char*, netjs_signaling_status, (int handle), {
+    var s = Module._netState; if (!s) return 0;
+    var rec = s.peers[handle]; if (!rec || !rec.sigStatus) return 0;
+    var bytes = lengthBytesUTF8(rec.sigStatus) + 1;
+    var ptr = _malloc(bytes);
+    stringToUTF8(rec.sigStatus, ptr, bytes);
+    return ptr;
+});
 // clang-format on
 #endif // __EMSCRIPTEN__
 
@@ -340,6 +470,57 @@ void NetSession::acceptAnswer(const std::string& answer) {
     netjs_accept_answer(jsHandle_, answer.c_str());
 #else
     (void)answer;
+#endif
+}
+
+void NetSession::startHostSignaling(const std::string& signalingUrl) {
+#ifdef __EMSCRIPTEN__
+    if (role_ == NetRole::Host && jsHandle_ >= 0) return; // idempotent
+    disconnect();
+    role_ = NetRole::Host;
+    selfPeerId_ = genPeerId();
+    jsHandle_ = netjs_signaling_host(signalingUrl.c_str());
+#else
+    (void)signalingUrl;
+#endif
+}
+
+void NetSession::startJoinSignaling(const std::string& signalingUrl, const std::string& code) {
+#ifdef __EMSCRIPTEN__
+    if (role_ == NetRole::Client && jsHandle_ >= 0) return;
+    disconnect();
+    role_ = NetRole::Client;
+    selfPeerId_ = genPeerId();
+    jsHandle_ = netjs_signaling_join(signalingUrl.c_str(), code.c_str());
+#else
+    (void)signalingUrl;
+    (void)code;
+#endif
+}
+
+std::string NetSession::signalingCode() const {
+#ifdef __EMSCRIPTEN__
+    if (jsHandle_ < 0) return "";
+    const char* p = netjs_signaling_code(jsHandle_);
+    if (!p) return "";
+    std::string out(p);
+    std::free((void*)p);
+    return out;
+#else
+    return "";
+#endif
+}
+
+std::string NetSession::signalingStatus() const {
+#ifdef __EMSCRIPTEN__
+    if (jsHandle_ < 0) return "";
+    const char* p = netjs_signaling_status(jsHandle_);
+    if (!p) return "";
+    std::string out(p);
+    std::free((void*)p);
+    return out;
+#else
+    return "";
 #endif
 }
 

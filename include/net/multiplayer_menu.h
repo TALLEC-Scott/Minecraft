@@ -11,12 +11,13 @@ class NetSession;
 // Panel state for the multiplayer menu. The menu is a standalone module
 // rather than extra methods on Menu because it's experimental and self
 // contained — the rest of Menu shouldn't have to know about it.
-enum class MpPanel { Choose, Host, Join };
+enum class MpPanel { Choose, Host, Join, QuickHost, QuickJoin };
 
 struct MpMenuState {
     MpPanel panel = MpPanel::Choose;
     TextInput offerInput;  // host reads, client writes
     TextInput answerInput; // host writes, client reads
+    TextInput codeInput;   // room code for Quick Join
     std::string lastError;
     bool sessionStarted = false;
     // On web, SDP gathering is async. We poll the session for the local

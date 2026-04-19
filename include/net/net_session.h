@@ -85,6 +85,17 @@ class NetSession {
     void acceptAnswer(const std::string& answer);
     void disconnect();
 
+    // One-click signaling-server flow — the client opens a WebSocket to
+    // `signalingUrl`, the server pairs two peers by room code, and SDPs
+    // are swapped automatically. `startHostSignaling` produces a code
+    // (read via `signalingCode`), `startJoinSignaling` consumes one.
+    // Both return immediately; the UI polls `signalingStatus()` until
+    // `connected()` flips true.
+    void startHostSignaling(const std::string& signalingUrl);
+    void startJoinSignaling(const std::string& signalingUrl, const std::string& code);
+    std::string signalingCode() const;
+    std::string signalingStatus() const;
+
     // Runtime pump. `poll()` drains incoming messages and applies them to
     // the bound world / remote-player list. `tickBroadcast()` emits a
     // PlayerState packet at ~10 Hz.
