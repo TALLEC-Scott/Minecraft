@@ -1,4 +1,5 @@
 #include "player.h"
+#include "particle_system.h"
 #include "world.h"
 #include "ChunkManager.h"
 #include <cmath>
@@ -298,6 +299,13 @@ void Player::update(World* world) {
                 ma_sound_seek_to_pcm_frame(&bubbleSounds[idx], 0);
                 ma_sound_start(&bubbleSounds[idx]);
             }
+        }
+        // Splash bubbles only when first entering water — not a continuous
+        // stream. Underwater motes are handled in the main render loop so
+        // they benefit from camera front direction.
+        if (inWater && !wasSubmerged && world && world->particles) {
+            glm::vec3 chest = camera.getPosition() - glm::vec3(0.0f, PLAYER_HEIGHT * 0.5f, 0.0f);
+            world->particles->spawnBubbles(chest, 18);
         }
         wasSubmerged = inWater;
         wasEyesUnder = eyesUnder;
