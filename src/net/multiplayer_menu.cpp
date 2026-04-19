@@ -16,20 +16,14 @@ void setLarge(TextInput& in) {
     in.maxLen = SDP_MAX_LEN;
 }
 
-// Copy a string into the browser clipboard (web only). On secure contexts
-// we use the async Clipboard API; otherwise (plain HTTP, where that API
-// is absent) we fall back to a native prompt() dialog pre-filled with the
-// text so the user can select + Ctrl+C manually. No-op on desktop.
+// Copy a string into the browser clipboard (web only). No-op on desktop.
 void copyToClipboard(const std::string& s) {
 #ifdef __EMSCRIPTEN__
     // clang-format off
     EM_ASM({
         var text = UTF8ToString($0);
-        function manualCopy() { window.prompt("Copy the SDP (Ctrl+C, then Enter):", text); }
-        if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
-            navigator.clipboard.writeText(text).catch(manualCopy);
-        } else {
-            manualCopy();
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).catch(function(e) { console.warn("clipboard", e); });
         }
     }, s.c_str());
     // clang-format on
@@ -45,21 +39,13 @@ void copyToClipboard(const std::string& s) {
 #ifdef __EMSCRIPTEN__
 // clang-format off
 EM_JS(void, mpmenu_request_clipboard, (int slot), {
-    function save(text) {
-        if (text == null || text === "") return;
-        if (!Module._mpClipboard) Module._mpClipboard = {};
-        Module._mpClipboard[slot] = text;
-    }
-    // Secure context: async Clipboard API (no dialog). Otherwise (plain
-    // HTTP, where readText is undefined) fall back to prompt() so the
-    // user can paste into a native dialog with Ctrl+V.
-    if (navigator.clipboard && navigator.clipboard.readText && window.isSecureContext) {
-        navigator.clipboard.readText()
-            .then(save)
-            .catch(function() { save(window.prompt("Paste the SDP here (Ctrl+V, Enter):", "")); });
-    } else {
-        save(window.prompt("Paste the SDP here (Ctrl+V, Enter):", ""));
-    }
+    if (!navigator.clipboard || !navigator.clipboard.readText) return;
+    navigator.clipboard.readText()
+        .then(function(text) {
+            if (!Module._mpClipboard) Module._mpClipboard = {};
+            Module._mpClipboard[slot] = text;
+        })
+        .catch(function(e) { console.warn("clipboard read", e); });
 });
 EM_JS(const char*, mpmenu_take_clipboard, (int slot), {
     if (!Module._mpClipboard || !Module._mpClipboard[slot]) return 0;

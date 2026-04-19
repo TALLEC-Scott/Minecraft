@@ -1892,9 +1892,6 @@ int main(int argc, char* argv[]) {
             shaderProgram.use();
             shaderProgram.setFloat("entityTint", 1.0f);
             shaderProgram.setVec3("entityColor", glm::vec3(1.0f));
-            // Chunks use the baked per-vertex packedLight; negative sentinels
-            // tell the vertex shader to fall back to that attribute.
-            shaderProgram.setVec2("entityLight", glm::vec2(-1.0f, -1.0f));
             TextureArray::bind();
             chunksRendered = w->render(shaderProgram, viewProjection, player.getPosition());
 
@@ -1902,9 +1899,6 @@ int main(int argc, char* argv[]) {
             // correctly sort against the terrain. Chunk shader is already
             // bound with all its uniforms set.
             if (w->entityManager) {
-                // TNT mesh bakes packedLight=240; keep entityLight off so
-                // the vertex shader uses the baked attribute.
-                shaderProgram.setVec2("entityLight", glm::vec2(-1.0f, -1.0f));
                 w->entityManager->render(shaderProgram, viewProjection, entityCubes, glfwGetTime());
                 // Reset model matrix since entity draws mutated it.
                 shaderProgram.setMat4("model", glm::mat4(1.0f));
@@ -1915,41 +1909,19 @@ int main(int argc, char* argv[]) {
             // humanoid built from 6 cube parts, tinted via entityColor.
             // Pose is interpolated between the last two received samples
             // so motion is smooth at the frame rate, not the 10 Hz wire rate.
-            // Per-peer lighting is sampled from the world at the peer's torso
-            // position and pushed through the entityLight uniform so remote
-            // Steves darken in caves, brighten near glowstone, and fade with
-            // night the same way the local player's surroundings do.
             if (currentState == GameState::Playing && netSession.connected()) {
                 double renderNow = glfwGetTime();
                 double renderTime = renderNow - RENDER_DELAY;
                 for (const auto& r : netSession.remotes()) {
                     RemotePlayer::Pose pose = r.sample(renderTime);
+                    // The wire carries the peer's eye/camera position; Steve's
+                    // feet are PLAYER_HEIGHT below that.
                     glm::vec3 feetPos = pose.pos - glm::vec3(0.0f, PLAYER_HEIGHT, 0.0f);
-
-                    // Sample at torso height so a player standing half-in
-                    // shadow picks up the brighter cell above the floor.
-                    glm::vec3 samplePos = feetPos + glm::vec3(0.0f, 1.1f, 0.0f);
-                    int bx = (int)std::floor(samplePos.x + 0.5f);
-                    int by = (int)std::floor(samplePos.y + 0.5f);
-                    int bz = (int)std::floor(samplePos.z + 0.5f);
-                    uint8_t sky = 15, block = 0;
-                    if (by >= 0 && by < CHUNK_HEIGHT) {
-                        int cx = worldToChunk(bx), cz = worldToChunk(bz);
-                        Chunk* chunk = w->chunkManager->getChunk(cx, cz);
-                        if (chunk) {
-                            int lx = worldToLocal(bx, cx), lz = worldToLocal(bz, cz);
-                            sky = chunk->getSkyLight(lx, by, lz);
-                            block = chunk->getBlockLight(lx, by, lz);
-                        }
-                    }
-                    shaderProgram.setVec2("entityLight",
-                                          glm::vec2(static_cast<float>(sky), static_cast<float>(block)));
                     playerRenderer.draw(shaderProgram, feetPos, pose.yaw, pose.pitch);
                 }
                 shaderProgram.setMat4("model", glm::mat4(1.0f));
                 shaderProgram.setFloat("entityTint", 1.0f);
                 shaderProgram.setVec3("entityColor", glm::vec3(1.0f));
-                shaderProgram.setVec2("entityLight", glm::vec2(-1.0f, -1.0f));
             }
 
             // Clouds: texture-based infinite tiling with 3D volume

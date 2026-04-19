@@ -40,48 +40,13 @@ EM_JS(void, netjs_init_globals, (), {
     if (Module._netState) return;
     Module._netState = {peers : [], nextId : 0};
     Module._netInbox = [];
-    // Multiple STUN servers for reachability + a free public TURN relay
-    // so connections still work through symmetric NATs / restrictive
-    // firewalls that reject peer-reflexive candidates. Open Relay Project
-    // credentials are published openly by the operator.
-    Module._iceServers = [
-        {urls: "stun:stun.l.google.com:19302"},
-        {urls: "stun:stun1.l.google.com:19302"},
-        {urls: "stun:stun.cloudflare.com:3478"},
-        {urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
-         username: "openrelayproject", credential: "openrelayproject"},
-    ];
-});
-
-// Attach logging + failure handling to an RTCPeerConnection so we can
-// observe ICE progress from the devtools console and surface transient
-// failures instead of hanging silently.
-EM_JS(void, netjs_wire_diagnostics, (int handle), {
-    var s = Module._netState; if (!s) return;
-    var rec = s.peers[handle]; if (!rec) return;
-    var pc = rec.pc;
-    pc.oniceconnectionstatechange = function() {
-        console.log("[net] iceConnectionState:", pc.iceConnectionState);
-        // Trigger an ICE restart if the browser reports "failed"; saves a
-        // full teardown on transient network blips.
-        if (pc.iceConnectionState === "failed" && pc.restartIce) pc.restartIce();
-    };
-    pc.onconnectionstatechange = function() {
-        console.log("[net] connectionState:", pc.connectionState);
-    };
-    pc.onicecandidateerror = function(e) {
-        console.warn("[net] ICE candidate error", e.errorCode, e.errorText, e.url);
-    };
-    pc.onicecandidate = function(e) {
-        if (e.candidate) console.log("[net] cand:", e.candidate.candidate);
-    };
 });
 
 EM_JS(int, netjs_create_host, (), {
     if (!Module._netState) Module._netState = {peers : [], nextId : 0};
     var s = Module._netState;
     var id = s.nextId++;
-    var pc = new RTCPeerConnection({iceServers : Module._iceServers || [ {urls : "stun:stun.l.google.com:19302"} ]});
+    var pc = new RTCPeerConnection({iceServers : [ {urls : "stun:stun.l.google.com:19302"} ]});
     var ch = pc.createDataChannel("game", {ordered : true});
     var rec = {pc : pc, ch : ch, role : "host", offerSdp : "", answerSdp : "", ready : false};
     ch.binaryType = "arraybuffer";
@@ -114,7 +79,7 @@ EM_JS(int, netjs_create_client, (const char* offerJson), {
     if (!Module._netState) Module._netState = {peers : [], nextId : 0};
     var s = Module._netState;
     var id = s.nextId++;
-    var pc = new RTCPeerConnection({iceServers : Module._iceServers || [ {urls : "stun:stun.l.google.com:19302"} ]});
+    var pc = new RTCPeerConnection({iceServers : [ {urls : "stun:stun.l.google.com:19302"} ]});
     var rec = {pc : pc, ch : null, role : "client", offerSdp : "", answerSdp : "", ready : false};
     pc.ondatachannel = function(ev) {
         var ch = ev.channel;
@@ -332,7 +297,6 @@ std::string NetSession::createOffer() {
         role_ = NetRole::Host;
         selfPeerId_ = genPeerId();
         jsHandle_ = netjs_create_host();
-        netjs_wire_diagnostics(jsHandle_);
     }
     return readLocalSdp();
 #else
@@ -349,7 +313,6 @@ std::string NetSession::acceptOffer(const std::string& offer) {
         role_ = NetRole::Client;
         selfPeerId_ = genPeerId();
         jsHandle_ = netjs_create_client(offer.c_str());
-        netjs_wire_diagnostics(jsHandle_);
     }
     return readLocalSdp();
 #else
