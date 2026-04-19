@@ -63,11 +63,13 @@ static void writePNG(const char* filename, const unsigned char* pixels, int w, i
 int main(int argc, char* argv[]) {
     int mapSize = 512;
     const char* output = "terrain_map.png";
+    unsigned int seed = 0;
     if (argc > 1) mapSize = atoi(argv[1]);
     if (argc > 2) output = argv[2];
+    if (argc > 3) seed = (unsigned int)strtoul(argv[3], nullptr, 10);
 
-    // Same parameters as World::World()
-    TerrainGenerator terrain(0, 0.1, 0, CHUNK_HEIGHT);
+    printf("Seed: %u\n", seed);
+    TerrainGenerator terrain(seed, 0.1, 0, CHUNK_HEIGHT);
     int waterLevel = CHUNK_HEIGHT / 2;
 
     std::vector<unsigned char> pixels(mapSize * mapSize * 3);

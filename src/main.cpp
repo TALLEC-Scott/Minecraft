@@ -747,7 +747,31 @@ int main(int argc, char* argv[]) {
                 for (int i = 0; i < Player::HOTBAR_SIZE; i++) player.setHotbarSlot(i, loaded.hotbar[i]);
                 player.setSelectedSlot(loaded.selectedSlot);
             } else {
-                player.getCamera().setPosition(glm::vec3(15, 90, 15));
+                // Deterministic per-seed spawn offset. Kept within ±1024 blocks
+                // so the initial render-distance box fully covers the spawn
+                // area — any farther and the loading screen times out before
+                // enough chunks are generated, which leaves the player staring
+                // at a small island of loaded chunks surrounded by void.
+                std::uint32_t h = seed * 2654435761u;
+                int baseX = static_cast<int>(h & 0x7FF) - 1024;           // [-1024, 1023]
+                int baseZ = static_cast<int>((h >> 11) & 0x7FF) - 1024;
+                int spawnX = baseX, spawnZ = baseZ;
+                int spawnH = world->terrainGenerator->getHeight(baseX, baseZ);
+                // If the base point is under water, nudge outward on a
+                // pseudo-random spiral until we find dry land.
+                for (int r = 1; r <= 12 && spawnH <= CHUNK_HEIGHT / 2; ++r) {
+                    double ang = static_cast<double>((h >> (r & 7)) & 0xFFFF) * (6.2831853 / 65536.0);
+                    int tryX = baseX + static_cast<int>(std::cos(ang) * r * 24.0);
+                    int tryZ = baseZ + static_cast<int>(std::sin(ang) * r * 24.0);
+                    int tryH = world->terrainGenerator->getHeight(tryX, tryZ);
+                    if (tryH > spawnH) {
+                        spawnX = tryX;
+                        spawnZ = tryZ;
+                        spawnH = tryH;
+                    }
+                }
+                float spawnY = static_cast<float>(std::max(spawnH + 2, CHUNK_HEIGHT / 2 + 2));
+                player.getCamera().setPosition(glm::vec3(spawnX + 0.5f, spawnY, spawnZ + 0.5f));
                 player.setYawPitch(-90.0f, 0.0f);
                 player.getCamera().setWalkMode(false);
             }
