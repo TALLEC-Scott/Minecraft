@@ -284,7 +284,7 @@ GameState drawMultiplayerMenu(UIRenderer& ui, int windowW, int windowH, GLFWwind
         // Quick (room-code) flow — preferred for most users.
         std::string quickHeader = "Quick connect (room code):";
         ui.drawText(quickHeader, cx - ui.textWidth(quickHeader, 1.4f) / 2.0f, panelTopY, 1.4f,
-                    glm::vec4(0.85f, 0.9f, 1.0f, 1.0f));
+                    glm::vec4(0.85f, 0.85f, 0.85f, 1.0f));
         float gap = 40.0f;
         float row1X = cx - btnW - gap / 2.0f;
         float row2X = cx + gap / 2.0f;
@@ -304,8 +304,8 @@ GameState drawMultiplayerMenu(UIRenderer& ui, int windowW, int windowH, GLFWwind
         // Manual (copy-paste SDP) fallback.
         float manualY = panelTopY + 120.0f;
         std::string manualHeader = "Manual signaling (advanced):";
-        ui.drawText(manualHeader, cx - ui.textWidth(manualHeader, 1.3f) / 2.0f, manualY, 1.3f,
-                    glm::vec4(0.75f, 0.75f, 0.75f, 1.0f));
+        ui.drawText(manualHeader, cx - ui.textWidth(manualHeader, 1.4f) / 2.0f, manualY, 1.4f,
+                    glm::vec4(0.85f, 0.85f, 0.85f, 1.0f));
         if (widgets.button(ui, "Host", row1X, manualY + 24.0f, btnW, btnH)) {
             state.panel = MpPanel::Host;
             std::string sdp = net.createOffer();
