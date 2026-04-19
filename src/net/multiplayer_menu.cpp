@@ -21,12 +21,14 @@ void setLarge(TextInput& in) {
 // mixed-content blocking. Localhost dev tests use ws://.
 #ifdef __EMSCRIPTEN__
 EM_JS(const char*, sig_server_url, (), {
-    // Prod (HTTPS): nginx proxies wss://host/signal to the node process.
-    // Dev (plain HTTP, typically python3 -m http.server): connect straight
-    // to the signaling process on :7863 so no reverse proxy is needed.
+    // Prod (HTTPS): Caddy/nginx proxies wss://host[:port]/signal to the
+    // node process. Use location.host (includes the port) so a non-default
+    // HTTPS port like :7862 routes correctly. Dev (plain HTTP, typically
+    // python3 -m http.server): connect straight to the signaling process
+    // on :7863 — no reverse proxy needed.
     var url;
     if (location.protocol === "https:") {
-        url = "wss://" + location.hostname + "/signal";
+        url = "wss://" + location.host + "/signal";
     } else {
         url = "ws://" + location.hostname + ":7863";
     }
