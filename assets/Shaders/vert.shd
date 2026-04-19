@@ -25,6 +25,10 @@ uniform float fogStart;
 uniform float fogEnd;
 uniform float time;
 uniform vec2 leafSway; // pre-computed (sin, cos) on CPU
+// Entity lighting override: (sky, block) in [0,15], or any component < 0
+// to fall back to the vertex attribute. Chunks set this to (-1,-1);
+// the player renderer sets it per-peer to the sampled world light.
+uniform vec2 entityLight;
 
 // Normal lookup table — matches face order in chunk.cpp FACE_NORMALS
 const vec3 NORMALS[6] = vec3[6](
@@ -72,6 +76,12 @@ void main() {
     // Unpack: aPackedLight = sky*16 + block (0-255 range, raw nibbles)
     float skyRaw = floor(aPackedLight / 16.0);
     float blkRaw = aPackedLight - skyRaw * 16.0;
+    if (entityLight.x >= 0.0) {
+        // Per-entity override lets remote-player rendering use live world
+        // light at the peer's position rather than the baked vertex value.
+        skyRaw = entityLight.x;
+        blkRaw = entityLight.y;
+    }
     skyLight = 0.15 + 0.85 * (skyRaw / 15.0);
     blockLight = blkRaw / 15.0;
 
