@@ -28,11 +28,21 @@ const BiomeParams TerrainGenerator::BIOME_TABLE[BIOME_COUNT] = {
 };
 
 namespace {
-constexpr double CLIMATE_FREQ_CONT = 0.004;
-constexpr double CLIMATE_FREQ_EROSION = 0.006;
-constexpr double CLIMATE_FREQ_WEIRD = 0.012;
-constexpr double CLIMATE_FREQ_TEMP = 0.009;
-constexpr double CLIMATE_FREQ_HUMID = 0.011;
+// Per-climate noise tuning. Numbers came from the tools/noise-tuner/ JS
+// playground — tweak there (http://localhost:8082) and paste values back
+// here once the biome map looks right.
+struct ClimateNoiseCfg {
+    double freq;
+    int octaves;
+    double persist;
+    double lac;
+    double gain;
+};
+constexpr ClimateNoiseCfg CFG_CONT{0.0025, 6, 0.5,  2.1, 4.4};
+constexpr ClimateNoiseCfg CFG_EROSION{0.0115, 4, 0.4,  2.0, 1.3};
+constexpr ClimateNoiseCfg CFG_WEIRD{0.009,  3, 0.5,  2.0, 1.5};
+constexpr ClimateNoiseCfg CFG_TEMP{0.008,  1, 0.3,  1.8, 1.5};
+constexpr ClimateNoiseCfg CFG_HUMID{0.006,  2, 0.15, 3.1, 1.7};
 constexpr double DENSITY_FREQ_XZ = 0.02;
 constexpr double DENSITY_FREQ_Y = 0.03;
 constexpr double CAVE_FREQ = 0.04;
@@ -107,34 +117,26 @@ Climate TerrainGenerator::sampleClimate(int x, int z) {
     double nx = x * scale;
     double nz = z * scale;
     Climate c;
-    // Fractal sums are tight bell curves (stddev ≈ 0.15 at 5 octaves). Gains
-    // stretch the distribution so biome thresholds at ±0.5 actually fire; a
-    // gain of ~3.5 on cont spreads values across the full [-1, 1] range with
-    // healthy saturation at the tails (= consistent mountain plateaus and
-    // deep ocean basins, rather than everything sitting near 0).
     auto stretch = [](double v, double gain) { return std::clamp(v * gain, -1.0, 1.0); };
-
-    c.continentalness = stretch(
-        octaveNoiseFrom(noiseCont, nx * CLIMATE_FREQ_CONT, nz * CLIMATE_FREQ_CONT, 5, 0.5, 2.0), 3.5);
-    c.erosion = stretch(
-        octaveNoiseFrom(noiseErosion, nx * CLIMATE_FREQ_EROSION, nz * CLIMATE_FREQ_EROSION, 4, 0.5, 2.0), 3.0);
-    c.weirdness = stretch(
-        octaveNoiseFrom(noiseWeird, nx * CLIMATE_FREQ_WEIRD, nz * CLIMATE_FREQ_WEIRD, 4, 0.5, 2.0), 2.5);
-    c.temperature = stretch(
-        octaveNoiseFrom(noiseTemp, nx * CLIMATE_FREQ_TEMP, nz * CLIMATE_FREQ_TEMP, 4, 0.5, 2.0), 2.5);
-    c.humidity = stretch(
-        octaveNoiseFrom(noiseHumid, nx * CLIMATE_FREQ_HUMID, nz * CLIMATE_FREQ_HUMID, 4, 0.5, 2.0), 2.5);
+    auto sample = [&](PerlinNoise& n, const ClimateNoiseCfg& cfg) {
+        return stretch(octaveNoiseFrom(n, nx * cfg.freq, nz * cfg.freq, cfg.octaves, cfg.persist, cfg.lac), cfg.gain);
+    };
+    c.continentalness = sample(noiseCont, CFG_CONT);
+    c.erosion         = sample(noiseErosion, CFG_EROSION);
+    c.weirdness       = sample(noiseWeird, CFG_WEIRD);
+    c.temperature     = sample(noiseTemp, CFG_TEMP);
+    c.humidity        = sample(noiseHumid, CFG_HUMID);
     c.pv = 1.0 - std::abs(3.0 * std::abs(c.weirdness) - 2.0);
     return c;
 }
 
 double TerrainGenerator::getTemperature(int x, int y) {
     // Legacy API — normalised to [0, 1] for old callers.
-    return (noiseTemp.noise(x * scale * CLIMATE_FREQ_TEMP, y * scale * CLIMATE_FREQ_TEMP) + 1.0) * 0.5;
+    return (noiseTemp.noise(x * scale * CFG_TEMP.freq, y * scale * CFG_TEMP.freq) + 1.0) * 0.5;
 }
 
 double TerrainGenerator::getMoisture(int x, int y) {
-    return (noiseHumid.noise(x * scale * CLIMATE_FREQ_HUMID, y * scale * CLIMATE_FREQ_HUMID) + 1.0) * 0.5;
+    return (noiseHumid.noise(x * scale * CFG_HUMID.freq, y * scale * CFG_HUMID.freq) + 1.0) * 0.5;
 }
 
 // --- Splines ------------------------------------------------------------
@@ -185,21 +187,35 @@ double TerrainGenerator::splineBaseHeight(const Climate& c) {
     // PV (peaks-and-valleys) reshape: adds ±12 blocks of ridge above
     // coastline, sharpening the difference between valley floors and
     // jagged peaks.
-    // PV: sharpens peaks vs valleys on land. Skip over ocean so the floor
-    // stays smooth.
-    if (cont > -0.11) base += c.pv * 12.0;
-
-    // Jagged ridges on high-cont + low-erosion terrain. The ridged noise
-    // 1-|n| produces sharp crests where Perlin noise crosses zero — this is
-    // what turns smooth mountain domes into saw-toothed ranges.
-    if (cont > 0.30 && c.erosion < 0.0) {
-        double ridgeStrength = std::min(1.0, (cont - 0.30) / 0.20) * (-c.erosion);
-        // Ridge in local (x,z). Uses weirdness noise since it already has
-        // peak-oriented characteristics; no extra PerlinNoise instance needed.
-        // Note: c.pv already encodes a 1-based ridge of weirdness so this
-        // adds a finer-scale ridge on top.
-        double rx = c.weirdness * ridgeStrength * 8.0;
-        base += std::abs(rx);  // pushes up only — never dips valleys on peaks
+    // PV → height via Minecraft's banded mapping (Valleys / Low / Mid / High
+    // / Peaks). Each band shifts the base by a fixed amount so terrain has
+    // discrete "terraces" of elevation rather than one continuous ramp.
+    //   Valleys (-1.0 .. -0.85)  → dig down ~-18
+    //   Low     (-0.85 .. -0.2)  → -8
+    //   Mid     (-0.2  ..  0.2)  →  0
+    //   High    ( 0.2  ..  0.7)  → +10
+    //   Peaks   ( 0.7  ..  1.0)  → +20
+    // Linear interpolation inside each band keeps the transitions continuous.
+    if (cont > -0.11) {
+        double pv = c.pv;
+        double pvShift;
+        if (pv < -0.85) {
+            double t = (pv + 1.0) / 0.15;  // -1..-0.85 → 0..1
+            pvShift = -20.0 + t * 2.0;      // -20..-18
+        } else if (pv < -0.2) {
+            double t = (pv + 0.85) / 0.65;
+            pvShift = -18.0 + t * 10.0;    // -18..-8
+        } else if (pv < 0.2) {
+            double t = (pv + 0.2) / 0.4;
+            pvShift = -8.0 + t * 8.0;      // -8..0
+        } else if (pv < 0.7) {
+            double t = (pv - 0.2) / 0.5;
+            pvShift = t * 10.0;             // 0..10
+        } else {
+            double t = (pv - 0.7) / 0.3;
+            pvShift = 10.0 + t * 10.0;     // 10..20
+        }
+        base += pvShift;
     }
 
     return std::clamp(base, 1.0, static_cast<double>(maxHeight - 1));
