@@ -440,11 +440,11 @@ GLuint UIRenderer::loadTexture(const char* path, bool repeat) {
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-    // Tiled/scrolling textures (menu dirt background) need LINEAR on both
-    // min+mag so sub-pixel motion looks smooth instead of snapping at 64px
-    // boundaries. Non-repeating UI textures stay NEAREST to keep sharp edges.
+    // Crisp pixel art everywhere: NEAREST mag + NEAREST min on repeating
+    // textures. (Callers that scroll a tiled texture should advance by ~1
+    // texel per frame so motion looks smooth without needing bilinear.)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, repeat ? GL_LINEAR : GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, repeat ? GL_LINEAR : GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     if (repeat) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);

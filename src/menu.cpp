@@ -101,7 +101,10 @@ void Menu::drawDirtBackground(UIRenderer& ui, int windowW, int windowH) {
     constexpr float TILE_SIZE = 64.0f;
     float tilesX = (float)windowW / TILE_SIZE;
     float tilesY = (float)windowH / TILE_SIZE;
-    float scroll = (float)glfwGetTime() * 0.15f;
+    // Scroll ~1 texel per frame at 60 FPS. With TILE_SIZE=64 this is one
+    // tile per second — in UV units, 1.0. Nearest-neighbour sampling then
+    // advances in exact 1-pixel steps: crisp pixels, smooth motion.
+    float scroll = (float)glfwGetTime() * 1.0f;
     ui.drawTexturedRect(0, 0, (float)windowW, (float)windowH, dirtTexture, scroll, scroll, tilesX + scroll,
                         tilesY + scroll, glm::vec4(0.4f, 0.4f, 0.4f, 1.0f));
 }
