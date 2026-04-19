@@ -56,6 +56,11 @@ void main() {
 
     vec4 texColor = texture(ourTexture, vec3(uv, texLayer));
 
+    // Cool-blue hue shift for snow (layer 13) so packed snow doesn't read
+    // as pure neutral white.
+    bool isSnow = (texLayer > 12.5 && texLayer < 13.5);
+    if (isSnow) texColor.rgb *= vec3(0.93, 0.97, 1.06);
+
     // Leaf cutout (only branch that truly needs discard)
     bool isLeaves = (texLayer > 9.5 && texLayer < 10.5);
     if (isLeaves && texColor.a < 0.5) {
@@ -90,11 +95,16 @@ void main() {
     // Water effects (branchless multiply — no-op when isWater=0)
     litColor *= mix(vec3(1.0), vec3(0.6, 0.8, 1.0), isWater);
 
-    // Water specular (only computed when materialType=1, cheap when isWater=0)
+    // Specular — water and snow. Water uses a tight Phong lobe; snow uses
+    // a wider, dimmer lobe so sunlight glints off the top faces without
+    // looking like wet plastic.
     vec3 viewDir = normalize(cameraPos - FragPos);
     vec3 reflectDir = reflect(-sunDir, norm);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
-    litColor += lightColor * spec * 0.5 * sunUp * isWater * step(0.5, norm.y);
+    float facingUp = step(0.5, norm.y);
+    float waterSpec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
+    float snowSpec = pow(max(dot(viewDir, reflectDir), 0.0), 24.0);
+    litColor += lightColor * waterSpec * 0.5 * sunUp * isWater * facingUp;
+    litColor += lightColor * snowSpec * 0.08 * sunUp * float(isSnow) * facingUp;
 
     // Entity flash (primed TNT): brighten toward white as fuse runs out.
     // Chunks pass entityTint=1.0 so this is a no-op for the world mesh.
