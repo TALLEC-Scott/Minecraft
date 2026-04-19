@@ -336,6 +336,7 @@ GameState Menu::drawWorldList(UIRenderer& ui, int windowW, int windowH, GLFWwind
         overlay = OverlayRename;
         renameInput.active = true;
         renameInput.setText(worlds[selectedWorld].name);
+        widgets.setFocus(&renameInput);
     }
     if (footerBtn("Delete", listX + thirdW + btnGap, footerY2, thirdW, btnH, hasSel)) {
         overlay = OverlayConfirmDelete;
@@ -364,12 +365,14 @@ GameState Menu::drawWorldList(UIRenderer& ui, int windowW, int windowH, GLFWwind
             overlay = OverlayNone;
             renameInput.active = false;
             renameInput.buffer.clear();
+            widgets.setFocus(nullptr);
         } else if ((confirmClick || submitted) && hasSel) {
             out.action = WorldListResult::RenameConfirmed;
             out.renameOld = worlds[selectedWorld].folder;
             out.renameNew = renameInput.buffer;
             overlay = OverlayNone;
             renameInput.active = false;
+            widgets.setFocus(nullptr);
         }
     } else if (overlay == OverlayConfirmDelete) {
         ui.drawRect(0, 0, (float)windowW, (float)windowH, glm::vec4(0, 0, 0, 0.65f));
@@ -413,6 +416,7 @@ GameState Menu::drawCreateWorld(UIRenderer& ui, int windowW, int windowH, GLFWwi
         createShowAdvanced = false;
         createInitialized = true;
         widgets.clearInputLatches();
+        widgets.setFocus(&createNameInput);
     }
 
     ui.begin(windowW, windowH);
@@ -456,10 +460,12 @@ GameState Menu::drawCreateWorld(UIRenderer& ui, int windowW, int windowH, GLFWwi
             createNameInput.active = false;
             createSeedInput.active = true;
             createSeedInput.cursor = createSeedInput.buffer.size();
+            widgets.setFocus(&createSeedInput);
         } else {
             createSeedInput.active = false;
             createNameInput.active = true;
             createNameInput.cursor = createNameInput.buffer.size();
+            widgets.setFocus(&createNameInput);
         }
     }
 
@@ -467,6 +473,7 @@ GameState Menu::drawCreateWorld(UIRenderer& ui, int windowW, int windowH, GLFWwi
         createInitialized = false;
         createNameInput.active = false;
         createSeedInput.active = false;
+        widgets.setFocus(nullptr);
         next = GameState::WorldList;
     } else if (createClick || nameEnter || seedEnter) {
         out.create = true;
@@ -475,6 +482,7 @@ GameState Menu::drawCreateWorld(UIRenderer& ui, int windowW, int windowH, GLFWwi
         createInitialized = false;
         createNameInput.active = false;
         createSeedInput.active = false;
+        widgets.setFocus(nullptr);
         next = GameState::Playing;
     }
 

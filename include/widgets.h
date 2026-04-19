@@ -81,6 +81,9 @@ class Widgets {
     // State-entry hook: drop any latches/pending keys that may have accumulated
     // in non-text states so we don't fire stale Enter/Esc on the first frame.
     void clearInputLatches();
+    // Explicit focus set — used by screens that activate a field without a
+    // click (initial focus, Tab cycling). Pass nullptr to clear.
+    void setFocus(TextInput* in) { focusedInput = in; }
 
     // One-shot latches (consumed by caller each frame).
     bool enterPressedLatch = false;
@@ -100,6 +103,11 @@ class Widgets {
     std::vector<int> pendingKeys;
     std::vector<unsigned int> pendingChars;
     std::vector<std::string> pendingTooltips;
+
+    // Click-tracked focus for textField. Writing to any input field clicks
+    // its address in here so other textField calls can recognise that they
+    // just lost focus and deactivate themselves before consuming input.
+    TextInput* focusedInput = nullptr;
 
     std::function<void()> clickSound;
 

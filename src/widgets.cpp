@@ -153,11 +153,16 @@ bool Widgets::textField(UIRenderer& ui, TextInput& in, float x, float y, float w
                         const std::string& placeholder) {
     bool hovered = hoveredRect(x, y, w, h);
     if (hovered && clicked()) {
+        if (focusedInput && focusedInput != &in) focusedInput->active = false;
+        focusedInput = &in;
         in.active = true;
         in.cursor = in.buffer.size();
         if (clickSound) clickSound();
         clickConsumed = true;
     }
+
+    // Another field got focus this frame — let go of input.
+    if (focusedInput && focusedInput != &in) in.active = false;
 
     if (in.active) {
         applyPendingKeys(in);
