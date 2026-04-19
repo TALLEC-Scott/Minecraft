@@ -35,12 +35,7 @@
             width: 96px; height: 96px;
             position: relative;
             transform-style: preserve-3d;
-            /* Rotation driven from JS in setStatus() so the spin speed
-               tracks download progress. Fallback animation kicks in until
-               the first progress update arrives. */
             transform: rotateX(-25deg) rotateY(0deg);
-            animation: tumble 3.2s linear infinite;
-            transition: transform 0.15s linear;
         }
         #cube > div {
             position: absolute;
@@ -57,10 +52,6 @@
         .face-back   { transform: rotateY(180deg) translateZ(48px); }
         .face-left   { transform: rotateY(-90deg) translateZ(48px); }
         .face-right  { transform: rotateY( 90deg) translateZ(48px); }
-        @keyframes tumble {
-            from { transform: rotateX(-25deg) rotateY(0deg); }
-            to   { transform: rotateX(-25deg) rotateY(360deg); }
-        }
         #progressWrap {
             width: 320px;
             height: 16px;
@@ -145,7 +136,6 @@
             setStatus: function(text) {
                 var statusEl = document.getElementById('statusText');
                 var fill = document.getElementById('progressFill');
-                var cube = document.getElementById('cube');
                 if (!text) {
                     statusEl.textContent = 'Loading game...';
                     return;
@@ -155,12 +145,8 @@
                     var pct = (parseFloat(m[1]) / parseFloat(m[2])) * 100;
                     fill.style.width = pct.toFixed(1) + '%';
                     statusEl.textContent = 'Loading game... ' + Math.floor(pct) + '%';
-                    // 3 full rotations across 0-100% — a nice visible spin
-                    // without feeling frantic.
-                    if (cube) {
-                        cube.style.animation = 'none'; // disable the idle fallback once we have real progress
-                        cube.style.transform = 'rotateX(-25deg) rotateY(' + (pct * 10.8) + 'deg)';
-                    }
+                    // Cube progress stored for the RAF loop; see below.
+                    window.__loadingProgress = pct;
                 } else {
                     statusEl.textContent = text;
                 }
@@ -177,6 +163,29 @@
             print: function(text) { console.log(text); },
             printErr: function(text) { console.warn(text); }
         };
+    </script>
+    <script>
+        // Cube spin loop: base ~90 deg/sec, accelerates up to ~450 deg/sec at 100% progress
+        // so the faster the download, the faster the cube visibly spins.
+        (function() {
+            var angle = 0;
+            var last = performance.now();
+            window.__loadingProgress = 0;
+            function frame(now) {
+                var dt = (now - last) / 1000;
+                last = now;
+                var pct = window.__loadingProgress || 0;
+                var degPerSec = 90 + (pct / 100) * 360;
+                angle = (angle + degPerSec * dt) % 360;
+                var cube = document.getElementById('cube');
+                if (cube) cube.style.transform = 'rotateX(-25deg) rotateY(' + angle.toFixed(2) + 'deg)';
+                if (document.getElementById('cubeScene') &&
+                    document.getElementById('cubeScene').style.display !== 'none') {
+                    requestAnimationFrame(frame);
+                }
+            }
+            requestAnimationFrame(frame);
+        })();
     </script>
     {{{ SCRIPT }}}
 </body>
