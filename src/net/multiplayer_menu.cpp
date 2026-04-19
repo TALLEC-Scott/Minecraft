@@ -34,12 +34,12 @@ void copyToClipboard(const std::string& s) {
 #endif
 }
 
-// Fetch current clipboard text — the textField widget can't accept paste
-// characters >0x7E, and some users' SDP base64 includes newlines, so we
-// offer a "Paste from clipboard" button that writes into the input buffer
-// directly.
+// Read the browser clipboard directly on explicit button click. This path
+// triggers Firefox's one-time permission prompt (small "Paste" button near
+// the URL bar); once granted, subsequent clicks work without prompting.
+// Ctrl+V is handled separately in the widget layer via a document paste
+// listener, which doesn't require this permission.
 #ifdef __EMSCRIPTEN__
-// clang-format off
 EM_JS(void, mpmenu_request_clipboard, (int slot), {
     if (!navigator.clipboard || !navigator.clipboard.readText) return;
     navigator.clipboard.readText()
@@ -59,14 +59,11 @@ EM_JS(const char*, mpmenu_take_clipboard, (int slot), {
     stringToUTF8(text, ptr, bytes);
     return ptr;
 });
-// clang-format on
 #endif
 
-void requestClipboardInto(TextInput& in, int slot) {
+void pasteInto(TextInput& in, int slot) {
 #ifdef __EMSCRIPTEN__
     mpmenu_request_clipboard(slot);
-    // The async read will complete within a frame or two; pollClipboard()
-    // (below) picks it up from the next drawMultiplayerMenu call.
     (void)in;
 #else
     (void)in;
@@ -78,10 +75,19 @@ void pollClipboard(TextInput& in, int slot) {
 #ifdef __EMSCRIPTEN__
     const char* p = mpmenu_take_clipboard(slot);
     if (!p) return;
-    std::string text(p);
+    std::string raw(p);
     std::free((void*)p);
-    if (text.size() > in.maxLen) text.resize(in.maxLen);
-    in.buffer = text;
+    // Drop control chars (newlines, tabs) that OS-level clipboards sometimes
+    // insert between JSON lines — the bitmap font renders them as gap-sized
+    // blank glyphs, which looks like extra spaces in the pasted SDP.
+    std::string cleaned;
+    cleaned.reserve(raw.size());
+    for (char c : raw) {
+        unsigned char u = static_cast<unsigned char>(c);
+        if (u >= 0x20 && u < 0x7F) cleaned += c;
+    }
+    if (cleaned.size() > in.maxLen) cleaned.resize(in.maxLen);
+    in.buffer = cleaned;
     in.cursor = in.buffer.size();
 #else
     (void)in;
@@ -206,8 +212,8 @@ GameState drawMultiplayerMenu(UIRenderer& ui, int windowW, int windowH, GLFWwind
         return next;
     }
 
-    // Poll clipboard requests: if a previous frame asked for the clipboard,
-    // the async browser read may have completed now.
+    // Drain any clipboard reads triggered by the Paste button — the async
+    // browser read usually resolves within a frame of clicking it.
     pollClipboard(state.offerInput, 0);
     pollClipboard(state.answerInput, 1);
 
@@ -292,10 +298,10 @@ GameState drawMultiplayerMenu(UIRenderer& ui, int windowW, int windowH, GLFWwind
         }
 
         float ansY = row1Y + 50.0f;
-        ui.drawText("Paste peer's answer below:", cx - 330.0f, ansY, 1.4f);
-        widgets.textField(ui, state.answerInput, cx - 330.0f, ansY + 22.0f, 500.0f, 36.0f, "paste answer JSON");
+        ui.drawText("Paste peer's answer below (Ctrl+V recommended):", cx - 330.0f, ansY, 1.4f);
+        widgets.textField(ui, state.answerInput, cx - 330.0f, ansY + 22.0f, 500.0f, 36.0f, "Ctrl+V to paste answer JSON");
         if (widgets.button(ui, "Paste", cx + 180.0f, ansY + 22.0f, 150.0f, 36.0f)) {
-            requestClipboardInto(state.answerInput, 1);
+            pasteInto(state.answerInput, 1);
         }
 
         float footerY = ansY + 80.0f;
@@ -324,10 +330,10 @@ GameState drawMultiplayerMenu(UIRenderer& ui, int windowW, int windowH, GLFWwind
         }
     } else { // Join
         float labelY = panelTopY;
-        ui.drawText("Paste host's offer SDP:", cx - 330.0f, labelY, 1.4f);
-        widgets.textField(ui, state.offerInput, cx - 330.0f, labelY + 22.0f, 500.0f, 36.0f, "paste offer JSON");
+        ui.drawText("Paste host's offer SDP (Ctrl+V recommended):", cx - 330.0f, labelY, 1.4f);
+        widgets.textField(ui, state.offerInput, cx - 330.0f, labelY + 22.0f, 500.0f, 36.0f, "Ctrl+V to paste offer JSON");
         if (widgets.button(ui, "Paste", cx + 180.0f, labelY + 22.0f, 150.0f, 36.0f)) {
-            requestClipboardInto(state.offerInput, 0);
+            pasteInto(state.offerInput, 0);
         }
 
         float genY = labelY + 80.0f;
