@@ -1,4 +1,8 @@
 #include "menu.h"
+
+#include "net/multiplayer_menu.h"
+#include "net/net_session.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -125,8 +129,10 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
     float gap = 56.0f;
 
     if (widgets.button(ui, "Singleplayer", btnX, startY, btnW, btnH)) next = GameState::WorldList;
-    widgets.button(ui, "Multiplayer", btnX, startY + gap, btnW, btnH,
-                   {/*enabled=*/false, /*tooltip=*/"Coming soon"});
+    if (widgets.button(ui, "Multiplayer", btnX, startY + gap, btnW, btnH,
+                       WidgetOpts{/*enabled=*/true, /*tooltip=*/"Experimental P2P via WebRTC"})) {
+        next = GameState::Multiplayer;
+    }
     if (widgets.button(ui, "Settings", btnX, startY + gap * 2, btnW, btnH)) {
         settingsReturnState = GameState::MainMenu;
         next = GameState::Settings;
@@ -146,7 +152,7 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
         float py = (float)windowH - 80.0f;
         ui.drawTextRotated("By Sc077y", px, py, pulse, -25.0f, glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
     }
-    ui.drawTextShadow("v0.7.11", 4.0f, (float)windowH - 12.0f, 1.0f, glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
+    ui.drawTextShadow("v0.7.12", 4.0f, (float)windowH - 12.0f, 1.0f, glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
 
     widgets.endFrame(ui);
     ui.end();
@@ -197,6 +203,10 @@ GameState Menu::drawSettings(UIRenderer& ui, int windowW, int windowH, GLFWwindo
     widgets.endFrame(ui);
     ui.end();
     return next;
+}
+
+GameState Menu::drawMultiplayer(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window, NetSession& net) {
+    return drawMultiplayerMenu(ui, windowW, windowH, window, widgets, mpState, net);
 }
 
 GameState Menu::drawPauseMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window) {

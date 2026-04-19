@@ -52,6 +52,10 @@ set(COMMON_SOURCES
     src/entity_manager.cpp
     src/entity_cube_renderer.cpp
     src/particle_system.cpp
+    src/player_renderer.cpp
+    src/net/net_protocol.cpp
+    src/net/net_session.cpp
+    src/net/multiplayer_menu.cpp
 )
 
 if(EMSCRIPTEN)
@@ -213,6 +217,7 @@ else()
         tests/test_block_light.cpp
         tests/test_world_directory.cpp
         tests/test_lighting_boundary.cpp
+        tests/test_net_protocol.cpp
         src/TerrainGenerator.cpp
         src/perlin_noise.cpp
         src/game_state.cpp
@@ -222,6 +227,7 @@ else()
         src/tnt_entity.cpp
         src/light_propagation.cpp
         src/world_directory.cpp
+        src/net/net_protocol.cpp
     )
     # tests/stubs is searched before include/ so the water-sim tests can
     # compile src/WaterSimulator.cpp against minimal stubs of chunk.h /

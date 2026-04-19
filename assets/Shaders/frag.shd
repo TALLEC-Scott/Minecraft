@@ -21,6 +21,7 @@ uniform vec3 cameraPos;
 uniform int materialType; // 0 = solid, 1 = water
 uniform int fancyLeaves;
 uniform float entityTint; // 1.0 for chunks; >1.0 flashes primed-TNT entities
+uniform vec3 entityColor; // (1,1,1) for chunks; tints remote-player body parts
 
 void main() {
     float isWater = float(materialType);
@@ -55,6 +56,7 @@ void main() {
     }
 
     vec4 texColor = texture(ourTexture, vec3(uv, texLayer));
+    texColor.rgb *= entityColor;
 
     // Cool-blue hue shift for snow (layer 13) so packed snow doesn't read
     // as pure neutral white.

@@ -1,0 +1,114 @@
+#pragma once
+
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <vector>
+
+#include <glm/glm.hpp>
+
+#include "cube.h"
+
+class Player;
+class World;
+
+enum class NetRole { Off, Host, Client };
+
+struct RemotePlayer {
+    uint32_t peerId = 0;
+    glm::vec3 pos{0.0f};
+    float yaw = 0.0f;
+    float pitch = 0.0f;
+    double lastSeen = 0.0;
+};
+
+// MVP WebRTC session. Web builds (Emscripten) wire this up to a real
+// RTCPeerConnection + DataChannel; desktop builds compile a stub whose
+// connected() stays false and whose send paths are no-ops. Signaling is
+// manual: the host generates an SDP offer (copy-paste), the client pastes
+// it back and returns an answer, and the host pastes that answer in.
+class NetSession {
+  public:
+    NetSession();
+    ~NetSession();
+
+    // Accessors.
+    NetRole role() const { return role_; }
+    bool connected() const;
+    bool available() const; // true only on web builds
+    uint32_t selfPeerId() const { return selfPeerId_; }
+
+    // Signaling. Called from the Multiplayer menu; stubs return a static
+    // error string on desktop so the user sees "unavailable".
+    // `createOffer()` transitions role to Host. Idempotent — calling it
+    // again with a session already live just re-reads the current local
+    // SDP (which may still be empty while ICE gathers).
+    std::string createOffer();
+    // `acceptOffer` transitions role to Client and returns the answer SDP
+    // to copy back to the host. Idempotent — calling again with the same
+    // pasted offer re-reads the current local SDP.
+    std::string acceptOffer(const std::string& offer);
+    // Read the current local SDP (offer for host, answer for client). May
+    // be empty until ICE gathering completes. Non-destructive.
+    std::string readLocalSdp() const;
+    // Called by the host once the peer's answer SDP is pasted.
+    void acceptAnswer(const std::string& answer);
+    void disconnect();
+
+    // Runtime pump. `poll()` drains incoming messages and applies them to
+    // the bound world / remote-player list. `tickBroadcast()` emits a
+    // PlayerState packet at ~10 Hz.
+    void poll(double now);
+    void tickBroadcast(const Player& p, double now);
+
+    // Called by Player when the local user initiates a block edit. The
+    // session decides what goes on the wire based on role:
+    //  - Host:   sends PLACE_APPLY / DESTROY_APPLY (authoritative echo).
+    //  - Client: sends PLACE_INTENT / DESTROY_INTENT (asks host to apply).
+    //  - Off:    no-op.
+    void notifyLocalPlace(glm::ivec3 pos, uint8_t blockType);
+    void notifyLocalDestroy(glm::ivec3 pos);
+
+    // Gating query used by Player::handleInput: true means "don't apply
+    // this block edit locally, wait for the host's echo". Always false
+    // for host or offline play.
+    bool shouldSuppressLocalWrite() const { return role_ == NetRole::Client && connected(); }
+
+    // Shared game clock. On the host this is just glfwGetTime(); on a
+    // connected client it's glfwGetTime() plus the offset learned from
+    // the host's most-recent TimeSync. Everything that should run in
+    // lockstep across peers (sun position, etc.) should read this rather
+    // than calling glfwGetTime() directly.
+    double syncedTime(double localNow) const {
+        return (role_ == NetRole::Client) ? localNow + timeOffset_ : localNow;
+    }
+
+    // Bind the world so incoming APPLY packets can reach it.
+    void bindWorld(World* w) { world_ = w; }
+
+    const std::vector<RemotePlayer>& remotes() const { return remotes_; }
+
+  private:
+    NetRole role_ = NetRole::Off;
+    uint32_t selfPeerId_ = 0;
+    double lastBroadcast_ = 0.0;
+    double lastTimeSync_ = 0.0;
+    // offset = host's syncedTime - our local glfwGetTime(); zero until the
+    // first TimeSync arrives.
+    double timeOffset_ = 0.0;
+    std::vector<RemotePlayer> remotes_;
+    World* world_ = nullptr;
+
+    // Web-only: handle into the JS side's RTCPeerConnection registry.
+    // Unused on desktop builds (kept to keep the struct layout identical
+    // across platforms so tests that never touch the session still link).
+    int jsHandle_ = -1;
+
+    // Dispatch for a decoded inbound message.
+    void handleMessage(const uint8_t* data, std::size_t len, double now);
+    // Actually push bytes out to the peer.
+    void sendRaw(const std::vector<uint8_t>& buf);
+
+    // Touch/insert the remote-player record for `peerId`.
+    RemotePlayer& upsertRemote(uint32_t peerId, double now);
+};
