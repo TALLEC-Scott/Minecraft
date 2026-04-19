@@ -77,7 +77,7 @@ class Widgets {
 
     // --- Text-input key / char routing (from GLFW callbacks) ---
     void onCharInput(unsigned int codepoint);
-    void onKeyInput(int key, int action);
+    void onKeyInput(GLFWwindow* window, int key, int action, int mods);
     // State-entry hook: drop any latches/pending keys that may have accumulated
     // in non-text states so we don't fire stale Enter/Esc on the first frame.
     void clearInputLatches();

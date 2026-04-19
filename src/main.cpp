@@ -220,9 +220,9 @@ void charCallback(GLFWwindow* /*window*/, unsigned int codepoint) {
     if (g_menu) g_menu->onCharInput(codepoint);
 }
 
-void keyCallback(GLFWwindow* /*window*/, int key, int /*scancode*/, int action, int /*mods*/) {
+void keyCallback(GLFWwindow* window, int key, int /*scancode*/, int action, int mods) {
     // Forward to menu for active text inputs — menu gates by whether an input is active.
-    if (g_menu) g_menu->onKeyInput(key, action);
+    if (g_menu) g_menu->onKeyInput(window, key, action, mods);
 }
 
 glm::vec3 getSkyColor(float angle) {
