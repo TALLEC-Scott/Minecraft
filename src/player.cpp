@@ -1,4 +1,5 @@
 #include "player.h"
+#include "net/net_session.h"
 #include "particle_system.h"
 #include "world.h"
 #include "ChunkManager.h"
@@ -180,7 +181,9 @@ void Player::handleInput(GLFWwindow* window, World* world) {
         if (hasHighlight) {
             Cube* block = world->getBlock(targeted.x, targeted.y, targeted.z);
             if (block) playBreakSound(block->getType());
-            world->destroyBlock(glm::vec3(targeted));
+            bool suppressLocal = netSession && netSession->shouldSuppressLocalWrite();
+            if (netSession) netSession->notifyLocalDestroy(targeted);
+            if (!suppressLocal) world->destroyBlock(glm::vec3(targeted));
         }
     }
     leftClickHeld = leftDown;
@@ -204,7 +207,10 @@ void Player::handleInput(GLFWwindow* window, World* world) {
                             (placementPos.y == pyHead || placementPos.y == pyFeet));
             if (!blocked) {
                 playBreakSound(hotbar[selectedSlot]);
-                world->placeBlock(placementPos, hotbar[selectedSlot]);
+                bool suppressLocal = netSession && netSession->shouldSuppressLocalWrite();
+                if (netSession)
+                    netSession->notifyLocalPlace(placementPos, static_cast<uint8_t>(hotbar[selectedSlot]));
+                if (!suppressLocal) world->placeBlock(placementPos, hotbar[selectedSlot]);
                 // Arm swing (same feedback as left-click) + outline pop at placement pos
                 isPunching = true;
                 punchStartTime = glfwGetTime();

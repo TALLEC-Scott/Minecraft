@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game_state.h"
+#include "net/multiplayer_menu.h"
 #include "ui_renderer.h"
 #include "widgets.h"
 #include "world_directory.h"
@@ -8,6 +9,8 @@
 #include <miniaudio.h>
 #include <string>
 #include <vector>
+
+class NetSession;
 
 struct CreateWorldResult {
     bool create = false;
@@ -32,6 +35,9 @@ class Menu {
     GameState drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window);
     GameState drawSettings(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window, GameSettings& settings);
     GameState drawPauseMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window);
+
+    // Multiplayer panel — delegates to drawMultiplayerMenu() with our widget state.
+    GameState drawMultiplayer(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window, NetSession& net);
 
     // World picker. Refreshes the cached world list on state entry; fills `out`
     // with the action taken (play / create / delete / rename / back).
@@ -102,4 +108,7 @@ class Menu {
     TextInput createSeedInput;
     bool createShowAdvanced = false;
     bool createInitialized = false;
+
+    // Multiplayer panel state — SDP buffers, active panel (choose/host/join).
+    MpMenuState mpState;
 };

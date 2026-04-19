@@ -9,6 +9,8 @@
 #include <vector>
 #include <string>
 
+class NetSession;
+
 class World;
 class ChunkManager;
 
@@ -57,6 +59,12 @@ class Player {
     glm::ivec3 getLastPlacedPos() const { return lastPlacedPos; }
 
     Camera& getCamera() { return camera; }
+
+    // Multiplayer glue. When `net` is non-null, handleInput sends
+    // intents through the session and skips the local world write iff
+    // the session is currently suppressing (i.e. the client). Host and
+    // offline play keep applying edits locally.
+    void setNetSession(NetSession* net) { netSession = net; }
 
     void resetMouseState() { firstMouse = true; }
     void consumeMouseButtons() {
@@ -145,4 +153,6 @@ class Player {
     bool wasSubmerged = false;
     bool wasEyesUnder = false;
     double lastBubbleTime = 0.0;
+
+    NetSession* netSession = nullptr;
 };

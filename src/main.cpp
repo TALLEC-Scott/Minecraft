@@ -54,6 +54,9 @@
 #include "entity_cube_renderer.h"
 #include "entity_manager.h"
 #include "particle_system.h"
+#include "player_renderer.h"
+#include "net/net_session.h"
+#include "net/multiplayer_menu.h"
 
 #define CURSOR_MODE GLFW_CURSOR
 
@@ -774,7 +777,14 @@ int main(int argc, char* argv[]) {
 #endif
 
         EntityCubeRenderer entityCubes;
+        PlayerRenderer playerRenderer;
         // GL state for entityCubes + particles is created lazily on first render.
+
+#ifdef __EMSCRIPTEN__
+        static
+#endif
+            NetSession netSession;
+        player.setNetSession(&netSession);
 
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
@@ -1503,6 +1513,28 @@ int main(int argc, char* argv[]) {
                 return;
             }
 
+            if (currentState == GameState::Multiplayer) {
+                glClearColor(0.2f, 0.15f, 0.1f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                netSession.poll(glfwGetTime());
+                GameState next = menu.drawMultiplayer(uiRenderer, windowWidth, windowHeight, window, netSession);
+                if (next == GameState::Playing) {
+                    // Both peers play in a shared-seed "multiplayer" world.
+                    // MVP shortcut: chunks are generated locally on each side
+                    // from the same seed, not synced over the data channel.
+                    if (!w) switchToWorld("multiplayer", std::optional<unsigned int>(1234567u), "Multiplayer");
+                    if (w) netSession.bindWorld(w);
+                    glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
+                    player.resetMouseState();
+                    player.consumeMouseButtons();
+                    menu.startMusic();
+                }
+                currentState = next;
+                glfwSwapBuffers(window);
+                poll();
+                return;
+            }
+
             if (currentState == GameState::Settings) {
                 glClearColor(0.2f, 0.15f, 0.1f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1527,7 +1559,10 @@ int main(int argc, char* argv[]) {
             float speed = 0.025;
             float timeValue = 0.0f;
             if (doDaylightCycle) {
-                timeValue = glfwGetTime() * speed;
+                // syncedTime() == glfwGetTime() when offline or hosting;
+                // when a client is connected, it returns the host's clock
+                // so the day/night cycle matches across peers.
+                timeValue = (float)(netSession.syncedTime(glfwGetTime()) * speed);
             }
             float radius = 1000.0f;
 
@@ -1645,6 +1680,9 @@ int main(int argc, char* argv[]) {
             TextureArray::bind();
             if (currentState == GameState::Playing) {
                 w->update(player.getPosition(), dt, glfwGetTime());
+                double netNow = glfwGetTime();
+                netSession.poll(netNow);
+                netSession.tickBroadcast(player, netNow);
             }
             player.getCamera().setShake(w ? w->cameraShake : 0.0f, glfwGetTime());
             glm::mat4 viewProjection = projection * player.getViewMatrix();
@@ -1853,6 +1891,7 @@ int main(int argc, char* argv[]) {
             // Restore world shader after billboards
             shaderProgram.use();
             shaderProgram.setFloat("entityTint", 1.0f);
+            shaderProgram.setVec3("entityColor", glm::vec3(1.0f));
             TextureArray::bind();
             chunksRendered = w->render(shaderProgram, viewProjection, player.getPosition());
 
@@ -1864,6 +1903,20 @@ int main(int argc, char* argv[]) {
                 // Reset model matrix since entity draws mutated it.
                 shaderProgram.setMat4("model", glm::mat4(1.0f));
                 shaderProgram.setFloat("entityTint", 1.0f);
+            }
+
+            // Remote players (multiplayer MVP) — rendered as a Steve-shaped
+            // humanoid built from 6 cube parts, tinted via entityColor.
+            if (currentState == GameState::Playing && netSession.connected()) {
+                for (const auto& r : netSession.remotes()) {
+                    // The wire carries the peer's eye/camera position; Steve's
+                    // feet are PLAYER_HEIGHT below that.
+                    glm::vec3 feetPos = r.pos - glm::vec3(0.0f, PLAYER_HEIGHT, 0.0f);
+                    playerRenderer.draw(shaderProgram, feetPos, r.yaw, r.pitch);
+                }
+                shaderProgram.setMat4("model", glm::mat4(1.0f));
+                shaderProgram.setFloat("entityTint", 1.0f);
+                shaderProgram.setVec3("entityColor", glm::vec3(1.0f));
             }
 
             // Clouds: texture-based infinite tiling with 3D volume
