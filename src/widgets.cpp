@@ -198,11 +198,23 @@ void Widgets::onCharInput(unsigned int codepoint) {
     pendingChars.push_back(codepoint);
 }
 
-void Widgets::onKeyInput(int key, int action) {
+void Widgets::onKeyInput(GLFWwindow* window, int key, int action, int mods) {
     if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
     if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) enterPressedLatch = true;
     else if (key == GLFW_KEY_ESCAPE) escPressedLatch = true;
     else if (key == GLFW_KEY_TAB) tabPressedLatch = true;
+    else if (key == GLFW_KEY_V && (mods & GLFW_MOD_CONTROL)) {
+        // Ctrl+V → feed clipboard chars into the active textField this frame.
+        // glfwGetClipboardString bridges both desktop (native) and web
+        // (Emscripten GLFW wraps the async Clipboard API) with a single call.
+        const char* cb = glfwGetClipboardString(window);
+        if (cb) {
+            for (const char* p = cb; *p; ++p) {
+                unsigned char c = static_cast<unsigned char>(*p);
+                if (c >= 0x20 && c < 0x7F) pendingChars.push_back(c);
+            }
+        }
+    }
     else pendingKeys.push_back(key);
 }
 

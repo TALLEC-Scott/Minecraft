@@ -54,7 +54,7 @@ class Menu {
     // Text-input callbacks (routed from main.cpp's char/key callbacks).
     // Only apply to whichever input is currently active.
     void onCharInput(unsigned int codepoint);
-    void onKeyInput(int key, int action);
+    void onKeyInput(GLFWwindow* window, int key, int action, int mods);
     // Called from main on the Playing→Paused transition so the pause menu's
     // ESC edge detector knows the key is already held.
     void notifyEscHeldForPause() { widgets.markEscHeld(); }

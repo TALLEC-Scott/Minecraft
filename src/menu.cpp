@@ -89,7 +89,9 @@ void Menu::playClick() {
 }
 
 void Menu::onCharInput(unsigned int codepoint) { widgets.onCharInput(codepoint); }
-void Menu::onKeyInput(int key, int action) { widgets.onKeyInput(key, action); }
+void Menu::onKeyInput(GLFWwindow* window, int key, int action, int mods) {
+    widgets.onKeyInput(window, key, action, mods);
+}
 
 void Menu::drawDirtBackground(UIRenderer& ui, int windowW, int windowH) {
     if (!dirtTexture) {
