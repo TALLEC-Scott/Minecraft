@@ -181,9 +181,11 @@ void Player::handleInput(GLFWwindow* window, World* world) {
         if (hasHighlight) {
             Cube* block = world->getBlock(targeted.x, targeted.y, targeted.z);
             if (block) playBreakSound(block->getType());
-            bool suppressLocal = netSession && netSession->shouldSuppressLocalWrite();
+            // Optimistic local apply — the host's DestroyApply echo will
+            // re-run setBlock with the same AIR result (idempotent), so
+            // prediction is "free" until we add host-side rejects.
             if (netSession) netSession->notifyLocalDestroy(targeted);
-            if (!suppressLocal) world->destroyBlock(glm::vec3(targeted));
+            world->destroyBlock(glm::vec3(targeted));
         }
     }
     leftClickHeld = leftDown;
@@ -207,10 +209,13 @@ void Player::handleInput(GLFWwindow* window, World* world) {
                             (placementPos.y == pyHead || placementPos.y == pyFeet));
             if (!blocked) {
                 playBreakSound(hotbar[selectedSlot]);
-                bool suppressLocal = netSession && netSession->shouldSuppressLocalWrite();
+                // Client-side prediction: apply locally, then send the
+                // intent. The host's PlaceApply echo will idempotently
+                // re-apply the same blockType, so the prediction is
+                // transparent on the happy path.
                 if (netSession)
                     netSession->notifyLocalPlace(placementPos, static_cast<uint8_t>(hotbar[selectedSlot]));
-                if (!suppressLocal) world->placeBlock(placementPos, hotbar[selectedSlot]);
+                world->placeBlock(placementPos, hotbar[selectedSlot]);
                 // Arm swing (same feedback as left-click) + outline pop at placement pos
                 isPunching = true;
                 punchStartTime = glfwGetTime();

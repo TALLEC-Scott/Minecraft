@@ -86,6 +86,48 @@ void pollClipboard(TextInput& in, int slot) {
 #endif
 }
 
+// Word-wrap `text` to fit `maxWidth` pixels at the given scale. Breaks on
+// spaces; if a single word is wider than `maxWidth` it gets its own line
+// (character-level breaking would look worse for sentence copy). Returns
+// the rendered height so callers can reserve vertical space.
+float drawWrappedText(UIRenderer& ui, const std::string& text, float x, float y, float maxWidth, float scale,
+                      glm::vec4 color) {
+    float glyphW = UIRenderer::GLYPH_W * scale;
+    int maxChars = (glyphW > 0.0f) ? static_cast<int>(maxWidth / glyphW) : 1;
+    if (maxChars < 1) maxChars = 1;
+    float rowH = ui.textHeight(scale) + 4.0f;
+
+    // Split on spaces, then greedily pack words into lines.
+    std::string line;
+    float curY = y;
+    auto flush = [&]() {
+        if (!line.empty()) {
+            ui.drawText(line, x, curY, scale, color);
+            curY += rowH;
+            line.clear();
+        }
+    };
+    std::size_t i = 0;
+    while (i < text.size()) {
+        std::size_t end = text.find(' ', i);
+        if (end == std::string::npos) end = text.size();
+        std::string word = text.substr(i, end - i);
+        i = (end < text.size()) ? end + 1 : end;
+        if (word.empty()) continue;
+        if (line.empty()) {
+            line = word;
+        } else if (line.size() + 1 + word.size() <= static_cast<std::size_t>(maxChars)) {
+            line += ' ';
+            line += word;
+        } else {
+            flush();
+            line = word;
+        }
+    }
+    flush();
+    return curY - y;
+}
+
 // Render a scrollable read-only "text area" showing the given string. We
 // don't have a true multi-line widget in widgets.cpp, so we clip a
 // bordered box and draw up to `lines` wrapped rows.
@@ -210,11 +252,15 @@ GameState drawMultiplayerMenu(UIRenderer& ui, int windowW, int windowH, GLFWwind
             state.panel = MpPanel::Join;
             state.sessionStarted = false;
         }
-        std::string hint = "Host generates an SDP offer; share it with your peer. Peer pastes it on the Join side and\n"
+        std::string hint = "Host generates an SDP offer; share it with your peer. Peer pastes it on the Join side and "
                            "returns an answer SDP. Host pastes the answer and clicks Connect.";
         float s = 1.2f;
-        ui.drawText(hint, cx - ui.textWidth(hint, s) / 2.0f, panelTopY + 130.0f, s,
-                    glm::vec4(0.75f, 0.75f, 0.75f, 1.0f));
+        // Cap the wrap width so the hint never runs past the viewport edge
+        // on narrower windows (the old drawText call ignored newlines and
+        // spilled off-screen).
+        float hintWidth = std::min(static_cast<float>(windowW) - 40.0f, 640.0f);
+        drawWrappedText(ui, hint, cx - hintWidth / 2.0f, panelTopY + 130.0f, hintWidth, s,
+                        glm::vec4(0.75f, 0.75f, 0.75f, 1.0f));
 
         float backX = cx - btnW / 2.0f;
         if (widgets.button(ui, "Back", backX, cy * 0.85f, btnW, btnH)) {

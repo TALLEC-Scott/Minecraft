@@ -16,11 +16,41 @@ enum class NetRole { Off, Host, Client };
 
 struct RemotePlayer {
     uint32_t peerId = 0;
-    glm::vec3 pos{0.0f};
-    float yaw = 0.0f;
-    float pitch = 0.0f;
+    // Double-buffered snapshots. `curr` is the most recent sample
+    // received, `prev` is the one before it. Render-time queries lerp
+    // between the two so remotes glide at the frame rate rather than
+    // snapping at the network rate (10 Hz).
+    glm::vec3 prevPos{0.0f};
+    glm::vec3 currPos{0.0f};
+    float prevYaw = 0.0f, currYaw = 0.0f;
+    float prevPitch = 0.0f, currPitch = 0.0f;
+    // Local clock times (glfwGetTime()) at which each snapshot was
+    // received. lastSeen mirrors currTime but is kept separately so peer
+    // timeout logic is unaffected if we ever change the render delay.
+    double prevTime = 0.0;
+    double currTime = 0.0;
     double lastSeen = 0.0;
+
+    struct Pose {
+        glm::vec3 pos{0.0f};
+        float yaw = 0.0f;
+        float pitch = 0.0f;
+    };
+
+    // Ingest a freshly decoded PlayerState. Shifts curr → prev and
+    // records the new sample at `now`.
+    void pushSample(glm::vec3 pos, float yaw, float pitch, double now);
+    // Interpolated pose at `renderTime` — which should be slightly in
+    // the past (see RENDER_DELAY) so we always have a `curr` ahead of
+    // it. Falls back to the latest sample if only one is available or
+    // `renderTime` exceeds it.
+    Pose sample(double renderTime) const;
 };
+
+// Render one network interval behind the latest sample so lerp always
+// has a valid pair. 10 Hz updates → 100 ms; a bit of slack swallows
+// network jitter without turning into perceptible lag.
+inline constexpr double RENDER_DELAY = 0.12;
 
 // MVP WebRTC session. Web builds (Emscripten) wire this up to a real
 // RTCPeerConnection + DataChannel; desktop builds compile a stub whose
@@ -68,11 +98,6 @@ class NetSession {
     //  - Off:    no-op.
     void notifyLocalPlace(glm::ivec3 pos, uint8_t blockType);
     void notifyLocalDestroy(glm::ivec3 pos);
-
-    // Gating query used by Player::handleInput: true means "don't apply
-    // this block edit locally, wait for the host's echo". Always false
-    // for host or offline play.
-    bool shouldSuppressLocalWrite() const { return role_ == NetRole::Client && connected(); }
 
     // Shared game clock. On the host this is just glfwGetTime(); on a
     // connected client it's glfwGetTime() plus the offset learned from

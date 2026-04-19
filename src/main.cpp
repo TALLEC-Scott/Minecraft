@@ -1907,12 +1907,17 @@ int main(int argc, char* argv[]) {
 
             // Remote players (multiplayer MVP) — rendered as a Steve-shaped
             // humanoid built from 6 cube parts, tinted via entityColor.
+            // Pose is interpolated between the last two received samples
+            // so motion is smooth at the frame rate, not the 10 Hz wire rate.
             if (currentState == GameState::Playing && netSession.connected()) {
+                double renderNow = glfwGetTime();
+                double renderTime = renderNow - RENDER_DELAY;
                 for (const auto& r : netSession.remotes()) {
+                    RemotePlayer::Pose pose = r.sample(renderTime);
                     // The wire carries the peer's eye/camera position; Steve's
                     // feet are PLAYER_HEIGHT below that.
-                    glm::vec3 feetPos = r.pos - glm::vec3(0.0f, PLAYER_HEIGHT, 0.0f);
-                    playerRenderer.draw(shaderProgram, feetPos, r.yaw, r.pitch);
+                    glm::vec3 feetPos = pose.pos - glm::vec3(0.0f, PLAYER_HEIGHT, 0.0f);
+                    playerRenderer.draw(shaderProgram, feetPos, pose.yaw, pose.pitch);
                 }
                 shaderProgram.setMat4("model", glm::mat4(1.0f));
                 shaderProgram.setFloat("entityTint", 1.0f);
