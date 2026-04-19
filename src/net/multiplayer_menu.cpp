@@ -306,7 +306,7 @@ GameState drawMultiplayerMenu(UIRenderer& ui, int windowW, int windowH, GLFWwind
         std::string manualHeader = "Manual signaling (advanced):";
         ui.drawText(manualHeader, cx - ui.textWidth(manualHeader, 1.3f) / 2.0f, manualY, 1.3f,
                     glm::vec4(0.75f, 0.75f, 0.75f, 1.0f));
-        if (widgets.button(ui, "Host (manual SDP)", row1X, manualY + 24.0f, btnW, btnH)) {
+        if (widgets.button(ui, "Host", row1X, manualY + 24.0f, btnW, btnH)) {
             state.panel = MpPanel::Host;
             std::string sdp = net.createOffer();
             state.offerInput.buffer = sdp;
@@ -314,7 +314,7 @@ GameState drawMultiplayerMenu(UIRenderer& ui, int windowW, int windowH, GLFWwind
             state.awaitingLocalSdp = sdp.empty();
             state.sessionStarted = true;
         }
-        if (widgets.button(ui, "Join (manual SDP)", row2X, manualY + 24.0f, btnW, btnH)) {
+        if (widgets.button(ui, "Join", row2X, manualY + 24.0f, btnW, btnH)) {
             state.panel = MpPanel::Join;
             state.sessionStarted = false;
         }

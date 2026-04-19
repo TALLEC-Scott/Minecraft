@@ -160,9 +160,11 @@ void PlayerRenderer::draw(const Shader& shader, glm::vec3 feetPos, float yaw, fl
 
     // The session's yaw comes straight from Player::getYaw(), which uses the
     // same convention as the camera (OpenGL standard: yaw measured from +X
-    // toward +Z, so yaw=0 looks along +X). Our cube's front face is +Z, so
-    // rotate by (yaw + 90°) around Y to align.
-    float bodyYawRad = glm::radians(-yaw - 90.0f);
+    // toward +Z, so yaw=0 looks along +X). Our cube's front face is +Z —
+    // rotate by (yaw − 90°) around Y so local +Z lands in the look
+    // direction at every yaw (not just 0°, which was accidentally right
+    // under the old -yaw-90 formula while every other yaw mirrored).
+    float bodyYawRad = glm::radians(yaw - 90.0f);
     glm::mat4 base = glm::translate(glm::mat4(1.0f), feetPos) *
                      glm::rotate(glm::mat4(1.0f), bodyYawRad, glm::vec3(0, 1, 0));
 
