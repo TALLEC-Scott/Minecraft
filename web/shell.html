@@ -32,10 +32,15 @@
             justify-content: center;
         }
         #cube {
-            width: 100%; height: 100%;
+            width: 96px; height: 96px;
             position: relative;
             transform-style: preserve-3d;
+            /* Rotation driven from JS in setStatus() so the spin speed
+               tracks download progress. Fallback animation kicks in until
+               the first progress update arrives. */
+            transform: rotateX(-25deg) rotateY(0deg);
             animation: tumble 3.2s linear infinite;
+            transition: transform 0.15s linear;
         }
         #cube > div {
             position: absolute;
@@ -140,6 +145,7 @@
             setStatus: function(text) {
                 var statusEl = document.getElementById('statusText');
                 var fill = document.getElementById('progressFill');
+                var cube = document.getElementById('cube');
                 if (!text) {
                     statusEl.textContent = 'Loading game...';
                     return;
@@ -149,6 +155,12 @@
                     var pct = (parseFloat(m[1]) / parseFloat(m[2])) * 100;
                     fill.style.width = pct.toFixed(1) + '%';
                     statusEl.textContent = 'Loading game... ' + Math.floor(pct) + '%';
+                    // 5 full rotations across 0-100% so the cube spins
+                    // visibly faster than a naive 1:1 progress mapping.
+                    if (cube) {
+                        cube.style.animation = 'none'; // disable the idle fallback once we have real progress
+                        cube.style.transform = 'rotateX(-25deg) rotateY(' + (pct * 18) + 'deg)';
+                    }
                 } else {
                     statusEl.textContent = text;
                 }
