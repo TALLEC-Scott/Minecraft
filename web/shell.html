@@ -23,10 +23,13 @@
         }
         /* Rotating grass-block cube — pure CSS 3D, no assets required. */
         #cubeScene {
-            width: 96px;
-            height: 96px;
+            width: 140px;
+            height: 140px;
             perspective: 400px;
-            margin: 20px auto 0;
+            margin: 20px auto 32px;  /* extra bottom clearance so the tilted cube doesn't overlap the text */
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         #cube {
             width: 100%; height: 100%;
