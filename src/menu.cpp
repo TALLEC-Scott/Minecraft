@@ -506,7 +506,7 @@ void Menu::drawLoadingScreen(UIRenderer& ui, int windowW, int windowH, float pro
     float cx = (float)windowW / 2.0f;
     float cy = (float)windowH / 2.0f;
 
-    std::string title = "Loading world";
+    std::string title = "Loading game";
     float titleScale = 3.0f;
     ui.drawTextShadow(title, cx - ui.textWidth(title, titleScale) / 2.0f, cy - 80.0f, titleScale);
 

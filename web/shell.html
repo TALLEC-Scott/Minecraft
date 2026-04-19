@@ -18,7 +18,7 @@
             overflow: hidden;
         }
         #status {
-            padding: 20px;
+            padding: 20px 20px 8px;
             font-size: 18px;
         }
         .spinner {
@@ -33,6 +33,21 @@
             vertical-align: middle;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        #progressWrap {
+            width: 320px;
+            height: 14px;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        #progressFill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #4a8, #6cb);
+            transition: width 0.15s ease-out;
+        }
         canvas {
             display: block;
             cursor: pointer;
@@ -50,7 +65,8 @@
     </style>
 </head>
 <body>
-    <div id="status"><span class="spinner"></span>Loading world...</div>
+    <div id="status"><span class="spinner"></span><span id="statusText">Loading game...</span></div>
+    <div id="progressWrap"><div id="progressFill"></div></div>
     <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
     <div id="info">Click to capture mouse — M pause — R sprint — Double-Space toggle fly — Shift descend</div>
     <script>
@@ -77,6 +93,36 @@
             })(),
             onRuntimeInitialized: function() {
                 document.getElementById('status').style.display = 'none';
+                document.getElementById('progressWrap').style.display = 'none';
+            },
+            // Emscripten calls setStatus() with strings like
+            // "Downloading data... (1234567/9876543)". Parse the bytes to
+            // drive the progress bar; fall back to the status text when the
+            // message doesn't carry a fraction.
+            setStatus: function(text) {
+                var statusEl = document.getElementById('statusText');
+                var fill = document.getElementById('progressFill');
+                if (!text) {
+                    statusEl.textContent = 'Loading game...';
+                    return;
+                }
+                var m = text.match(/\((\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)\)/);
+                if (m) {
+                    var pct = (parseFloat(m[1]) / parseFloat(m[2])) * 100;
+                    fill.style.width = pct.toFixed(1) + '%';
+                    statusEl.textContent = 'Loading game... ' + Math.floor(pct) + '%';
+                } else {
+                    statusEl.textContent = text;
+                }
+            },
+            totalDependencies: 0,
+            monitorRunDependencies: function(left) {
+                // Once network downloads are done, show an indeterminate
+                // "preparing" state for any remaining preRun work (IDBFS).
+                if (left === 0) {
+                    document.getElementById('statusText').textContent = 'Starting...';
+                    document.getElementById('progressFill').style.width = '100%';
+                }
             },
             print: function(text) { console.log(text); },
             printErr: function(text) { console.warn(text); }
