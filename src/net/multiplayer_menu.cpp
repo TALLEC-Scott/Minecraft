@@ -16,7 +16,9 @@ void setLarge(TextInput& in) {
     in.maxLen = SDP_MAX_LEN;
 }
 
-// Copy a string into the browser clipboard (web only). No-op on desktop.
+// Copy a string into the browser clipboard (web only). Relies on the
+// async Clipboard API, which needs a secure context — the site serves
+// over HTTPS so this is always available. No-op on desktop.
 void copyToClipboard(const std::string& s) {
 #ifdef __EMSCRIPTEN__
     // clang-format off
@@ -42,6 +44,7 @@ EM_JS(void, mpmenu_request_clipboard, (int slot), {
     if (!navigator.clipboard || !navigator.clipboard.readText) return;
     navigator.clipboard.readText()
         .then(function(text) {
+            if (!text) return;
             if (!Module._mpClipboard) Module._mpClipboard = {};
             Module._mpClipboard[slot] = text;
         })
