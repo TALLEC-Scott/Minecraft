@@ -216,12 +216,13 @@ MpMenuState::MpMenuState() {
 }
 
 GameState drawMultiplayerMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window, Widgets& widgets,
-                              MpMenuState& state, NetSession& net) {
+                              MpMenuState& state, NetSession& net, const BackgroundDrawer& drawBg) {
     widgets.beginFrame(window);
     GameState next = GameState::Multiplayer;
 
     ui.begin(windowW, windowH);
-    ui.drawRect(0, 0, (float)windowW, (float)windowH, glm::vec4(0.15f, 0.12f, 0.09f, 1.0f));
+    if (drawBg) drawBg(ui, windowW, windowH);
+    else ui.drawRect(0, 0, (float)windowW, (float)windowH, glm::vec4(0.15f, 0.12f, 0.09f, 1.0f));
 
     float cx = (float)windowW / 2.0f;
     float cy = (float)windowH;

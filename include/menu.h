@@ -51,6 +51,10 @@ class Menu {
     void drawLoadingScreen(UIRenderer& ui, int windowW, int windowH, float progress,
                            const std::string& worldName);
 
+    // Scrolling-dirt background — used by every menu state so the look is
+    // consistent. Public so drawMultiplayerMenu (a free function) can reuse it.
+    void drawDirtBackground(UIRenderer& ui, int windowW, int windowH);
+
     // Text-input callbacks (routed from main.cpp's char/key callbacks).
     // Only apply to whichever input is currently active.
     void onCharInput(unsigned int codepoint);
@@ -90,8 +94,6 @@ class Menu {
     // All widget drawing / mouse / keyboard routing lives in Widgets. See
     // include/widgets.h. Menu composes screens by calling widgets.button etc.
     Widgets widgets;
-
-    void drawDirtBackground(UIRenderer& ui, int windowW, int windowH);
 
     // WorldList state
     std::vector<WorldEntry> worlds;
