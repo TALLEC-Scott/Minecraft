@@ -320,7 +320,7 @@ GameState drawMultiplayerMenu(UIRenderer& ui, int windowW, int windowH, GLFWwind
         }
 
         std::string hint = "Quick connect uses a tiny signaling relay to swap connection info. "
-                           "Manual SDP is useful when the relay is down — host generates an offer, "
+                           "Manual SDP is useful when the relay is down - host generates an offer, "
                            "peer pastes it and returns an answer, host pastes that back.";
         float s = 1.2f;
         float hintWidth = std::min(static_cast<float>(windowW) - 40.0f, 640.0f);
@@ -338,7 +338,7 @@ GameState drawMultiplayerMenu(UIRenderer& ui, int windowW, int windowH, GLFWwind
         }
     } else if (state.panel == MpPanel::QuickHost) {
         float y = panelTopY;
-        std::string title2 = "Quick connect — Host";
+        std::string title2 = "Quick connect - Host";
         ui.drawTextShadow(title2, cx - ui.textWidth(title2, 1.8f) / 2.0f, y, 1.8f);
         y += 50.0f;
         std::string code = net.signalingCode();
@@ -371,7 +371,7 @@ GameState drawMultiplayerMenu(UIRenderer& ui, int windowW, int windowH, GLFWwind
         }
     } else if (state.panel == MpPanel::QuickJoin) {
         float y = panelTopY;
-        std::string title2 = "Quick connect — Join";
+        std::string title2 = "Quick connect - Join";
         ui.drawTextShadow(title2, cx - ui.textWidth(title2, 1.8f) / 2.0f, y, 1.8f);
         y += 50.0f;
         ui.drawText("Enter room code:", cx - 220.0f, y, 1.4f);
