@@ -5,6 +5,7 @@
 #include <random>
 #include <vector>
 
+#include <glm/gtc/epsilon.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "block_layers.h"
@@ -98,9 +99,10 @@ void ParticleSystem::update(float dt) {
         }
         // Cartoonish buoyancy: a mild upward lift plus heavy drag so puffs
         // float rather than fly. Minecraft smoke reads as slow drifting
-        // clumps, not fast streamers.
-        p.velocity.y += 0.25f * dt;
-        float drag = std::exp(-2.5f * dt);
+        // clumps, not fast streamers. Inert motes skip buoyancy so they
+        // hang in the water column.
+        if (p.buoyant) p.velocity.y += 0.25f * dt;
+        float drag = std::exp(p.buoyant ? -2.5f * dt : -0.6f * dt);
         p.velocity *= drag;
         p.pos += p.velocity * dt;
         // Growth tapers off: most expansion happens in the first 40% of
@@ -113,14 +115,27 @@ void ParticleSystem::update(float dt) {
 
 void ParticleSystem::render(const Shader& billboardShader, glm::vec3 cameraPos, glm::vec3 cameraFront) {
     if (!glReady) init();
+    (void)cameraFront;
 
-    // Build up to POOL_SIZE quads. Compute right/up axes per-particle so they
-    // always face the camera regardless of head angle.
-    std::vector<float> verts;
-    verts.reserve(POOL_SIZE * VERTS_PER_QUAD * VERT_FLOATS);
+    // Bucket particles by unique tint so we can tint-per-batch via the
+    // existing tintColor uniform without adding a per-vertex attribute.
+    // The common case (all white) compacts into one pass.
+    struct Batch {
+        glm::vec3 tint;
+        std::vector<float> verts;
+        int quads = 0;
+    };
+    std::vector<Batch> batches;
+    auto findBatch = [&](glm::vec3 t) -> Batch& {
+        for (auto& b : batches) {
+            if (glm::all(glm::epsilonEqual(b.tint, t, 0.001f))) return b;
+        }
+        batches.push_back({t, {}, 0});
+        batches.back().verts.reserve(64 * VERTS_PER_QUAD * VERT_FLOATS);
+        return batches.back();
+    };
 
     glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
-    int liveQuads = 0;
     for (auto& p : pool) {
         if (!p.alive) continue;
         glm::vec3 toCam = glm::normalize(cameraPos - p.pos);
@@ -128,7 +143,6 @@ void ParticleSystem::render(const Shader& billboardShader, glm::vec3 cameraPos, 
         if (glm::dot(right, right) < 1e-5f) right = glm::vec3(1, 0, 0);
         right = glm::normalize(right) * p.size;
         glm::vec3 up = glm::normalize(glm::cross(toCam, right / p.size)) * p.size;
-        (void)cameraFront;
 
         // Cartoonish alpha curve: fully opaque for ~1/3 of life, then a
         // steep linear fade. Reads as a solid puff that suddenly
@@ -143,35 +157,39 @@ void ParticleSystem::render(const Shader& billboardShader, glm::vec3 cameraPos, 
         glm::vec3 v2 = p.pos + right + up;
         glm::vec3 v3 = p.pos + right - up;
 
+        Batch& b = findBatch(p.tint);
         auto emit = [&](glm::vec3 pos, float u, float v) {
-            verts.push_back(pos.x);
-            verts.push_back(pos.y);
-            verts.push_back(pos.z);
-            verts.push_back(u);
-            verts.push_back(v);
-            verts.push_back(0.0f); // normal ignored by billboard_frag
-            verts.push_back(0.0f);
-            verts.push_back(1.0f);
-            verts.push_back(layer);
-            verts.push_back(bright);
+            b.verts.push_back(pos.x);
+            b.verts.push_back(pos.y);
+            b.verts.push_back(pos.z);
+            b.verts.push_back(u);
+            b.verts.push_back(v);
+            b.verts.push_back(0.0f);
+            b.verts.push_back(0.0f);
+            b.verts.push_back(1.0f);
+            b.verts.push_back(layer);
+            b.verts.push_back(bright);
         };
         emit(v0, 0, 0);
         emit(v1, 0, 1);
         emit(v2, 1, 1);
         emit(v3, 1, 0);
-        ++liveQuads;
+        ++b.quads;
     }
 
-    if (liveQuads == 0) return;
+    if (batches.empty()) return;
 
     billboardShader.setMat4("model", glm::mat4(1.0f));
-    billboardShader.setVec3("tintColor", glm::vec3(1.0f));
     billboardShader.setFloat("glowMode", 0.0f);
 
     glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, verts.size() * sizeof(float), verts.data());
-    glDrawElements(GL_TRIANGLES, liveQuads * INDICES_PER_QUAD, GL_UNSIGNED_INT, nullptr);
+    for (auto& b : batches) {
+        if (b.quads == 0) continue;
+        billboardShader.setVec3("tintColor", b.tint);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, b.verts.size() * sizeof(float), b.verts.data());
+        glDrawElements(GL_TRIANGLES, b.quads * INDICES_PER_QUAD, GL_UNSIGNED_INT, nullptr);
+    }
     glBindVertexArray(0);
 }
 
@@ -190,6 +208,55 @@ void ParticleSystem::spawnSmokePlume(glm::vec3 pos) {
         p.maxLife = 1.8f + rand01() * 0.8f;
         p.size = 1.4f + rand01() * 0.7f;   // chunky from the start
         p.growth = 2.5f + rand01() * 1.0f; // pops bigger quickly, then holds
+        p.alive = true;
+    }
+}
+
+void ParticleSystem::spawnBubbles(glm::vec3 pos, int count) {
+    for (int i = 0; i < count; ++i) {
+        Particle& p = allocParticle();
+        float angle = rand01() * 6.2831853f;
+        float r = rand01() * 0.6f;
+        p.pos = pos + glm::vec3(std::cos(angle) * r,
+                                (rand01() - 0.3f) * 0.6f,
+                                std::sin(angle) * r);
+        p.velocity = glm::vec3((rand01() - 0.5f) * 0.8f,
+                               2.2f + rand01() * 1.2f,
+                               (rand01() - 0.5f) * 0.8f);
+        p.tint = glm::vec3(0.55f, 0.80f, 1.00f); // cool water-bubble blue
+        p.life = 0.0f;
+        p.maxLife = 0.5f + rand01() * 0.4f;
+        p.size = 0.08f + rand01() * 0.06f;
+        p.growth = 0.12f;
+        p.alive = true;
+    }
+}
+
+void ParticleSystem::spawnUnderwaterDrift(glm::vec3 cameraPos, glm::vec3 cameraFront, int count, float lightFactor) {
+    // Spawn points sit in a sphere mostly in front of the camera so the
+    // player sees the motes drift through their view rather than behind
+    // their head. Particles hold almost still — parallax from player motion
+    // does the visual work. Tiny sizes + lighting-scaled tint keep them subtle.
+    float lf = std::clamp(lightFactor, 0.0f, 1.0f);
+    glm::vec3 base(0.82f, 0.84f, 0.86f); // grayish-white, hair cooler than neutral
+    for (int i = 0; i < count; ++i) {
+        Particle& p = allocParticle();
+        glm::vec3 biased = cameraFront * (1.5f + rand01() * 2.5f);
+        glm::vec3 jitter((rand01() - 0.5f) * 5.0f,
+                         (rand01() - 0.5f) * 3.0f,
+                         (rand01() - 0.5f) * 5.0f);
+        p.pos = cameraPos + biased + jitter;
+        p.velocity = glm::vec3((rand01() - 0.5f) * 0.06f,
+                               (rand01() - 0.3f) * 0.04f,
+                               (rand01() - 0.5f) * 0.06f);
+        // Light-scaled gray. Floor ensures motes don't vanish completely at
+        // night — a tiny spectral glow is still readable.
+        p.tint = base * (0.15f + 0.85f * lf);
+        p.life = 0.0f;
+        p.maxLife = 4.0f + rand01() * 3.0f;
+        p.size = 0.012f + rand01() * 0.015f;
+        p.growth = 0.0f;
+        p.buoyant = false;
         p.alive = true;
     }
 }

@@ -1550,6 +1550,21 @@ int main(int argc, char* argv[]) {
                 float depth = std::max(0.0f, WATER_SURFACE - player.getPosition().y);
                 waterDepthFactor = std::min(depth / WATER_DEPTH_RANGE, 1.0f);
             }
+            // Drip a trickle of motes into the volume around the camera so
+            // the parallax reads as water rushing past when the player moves.
+            // Rate is deliberately low — target ~30 motes in view at steady
+            // state, not a sandstorm.
+            static double lastDriftSpawn = 0.0;
+            if (underwater && w && w->particles) {
+                double now = glfwGetTime();
+                if (now - lastDriftSpawn > 0.15) {
+                    lastDriftSpawn = now;
+                    // Brightness tracks time of day and dims with depth, so
+                    // motes turn nearly invisible at night / deep under.
+                    float driftLight = daylight * (1.0f - 0.6f * waterDepthFactor);
+                    w->particles->spawnUnderwaterDrift(player.getPosition(), player.getFront(), 1, driftLight);
+                }
+            }
             glm::vec3 clearColor = underwater ? glm::mix(SHALLOW_BLUE, DEEP_BLUE, waterDepthFactor) : skyColor;
             glClearColor(clearColor.r, clearColor.g, clearColor.b, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
