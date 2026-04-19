@@ -4,6 +4,38 @@
 #include <cmath>
 #include <cstdio>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#include <cstdlib>
+
+// Hook the browser's native paste event so Ctrl+V "just works" without the
+// clipboard-read permission prompt. The event only fires in response to an
+// actual user paste gesture, so the browser grants read access for free.
+// Installed once on first beginFrame(); text lands in Module._widgetsClipboard
+// and beginFrame drains it into pendingChars next tick.
+EM_JS(void, widgets_clipboard_install, (), {
+    if (Module._widgetsClipboardInstalled) return;
+    Module._widgetsClipboardInstalled = true;
+    document.addEventListener("paste", function(ev) {
+        var dt = ev.clipboardData || window.clipboardData;
+        if (!dt) return;
+        var text = dt.getData("text");
+        if (!text) return;
+        Module._widgetsClipboard = text;
+        ev.preventDefault();
+    });
+});
+EM_JS(const char*, widgets_clipboard_take, (), {
+    if (!Module._widgetsClipboard) return 0;
+    var text = Module._widgetsClipboard;
+    Module._widgetsClipboard = null;
+    var len = lengthBytesUTF8(text) + 1;
+    var ptr = _malloc(len);
+    stringToUTF8(text, ptr, len);
+    return ptr;
+});
+#endif
+
 void Widgets::beginFrame(GLFWwindow* window) {
     glfwGetCursorPos(window, &mx, &my);
     bool down = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
@@ -12,6 +44,20 @@ void Widgets::beginFrame(GLFWwindow* window) {
     mouseIsDown = down && !clickConsumed;
     if (!down) activeSlider = -1;
     pendingTooltips.clear();
+#ifdef __EMSCRIPTEN__
+    widgets_clipboard_install();
+    // Drain any clipboard text the browser captured since last frame and
+    // push it into pendingChars — the active textField picks it up via the
+    // same path as typed characters.
+    const char* cb = widgets_clipboard_take();
+    if (cb) {
+        for (const char* p = cb; *p; ++p) {
+            unsigned char c = static_cast<unsigned char>(*p);
+            if (c >= 0x20 && c < 0x7F) pendingChars.push_back(c);
+        }
+        std::free((void*)cb);
+    }
+#endif
 }
 
 void Widgets::endFrame(UIRenderer& ui) {
@@ -204,9 +250,11 @@ void Widgets::onKeyInput(GLFWwindow* window, int key, int action, int mods) {
     else if (key == GLFW_KEY_ESCAPE) escPressedLatch = true;
     else if (key == GLFW_KEY_TAB) tabPressedLatch = true;
     else if (key == GLFW_KEY_V && (mods & GLFW_MOD_CONTROL)) {
-        // Ctrl+V → feed clipboard chars into the active textField this frame.
-        // glfwGetClipboardString bridges both desktop (native) and web
-        // (Emscripten GLFW wraps the async Clipboard API) with a single call.
+        // Ctrl+V on desktop: read the OS clipboard directly. On web, the
+        // document-level `paste` handler installed in beginFrame() already
+        // captured the clipboard data via the native paste event — no
+        // permission prompt, no work here.
+#ifndef __EMSCRIPTEN__
         const char* cb = glfwGetClipboardString(window);
         if (cb) {
             for (const char* p = cb; *p; ++p) {
@@ -214,6 +262,9 @@ void Widgets::onKeyInput(GLFWwindow* window, int key, int action, int mods) {
                 if (c >= 0x20 && c < 0x7F) pendingChars.push_back(c);
             }
         }
+#else
+        (void)window;
+#endif
     }
     else pendingKeys.push_back(key);
 }
