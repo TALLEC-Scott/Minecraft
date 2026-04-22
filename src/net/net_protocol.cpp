@@ -1,5 +1,6 @@
 #include "net/net_protocol.h"
 
+#include <algorithm>
 #include <cstring>
 
 namespace netp {
@@ -8,6 +9,11 @@ namespace {
 
 inline void putU8(std::vector<uint8_t>& out, uint8_t v) {
     out.push_back(v);
+}
+
+inline void putU16LE(std::vector<uint8_t>& out, uint16_t v) {
+    out.push_back(static_cast<uint8_t>(v & 0xFF));
+    out.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
 }
 
 inline void putU32LE(std::vector<uint8_t>& out, uint32_t v) {
@@ -31,6 +37,10 @@ inline void putF64LE(std::vector<uint8_t>& out, double v) {
     uint64_t bits;
     std::memcpy(&bits, &v, sizeof(bits));
     for (int i = 0; i < 8; ++i) out.push_back(static_cast<uint8_t>((bits >> (i * 8)) & 0xFF));
+}
+
+inline uint16_t getU16LE(const uint8_t* p) {
+    return static_cast<uint16_t>(static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8));
 }
 
 inline uint32_t getU32LE(const uint8_t* p) {
@@ -65,6 +75,7 @@ constexpr std::size_t PLACE_APPLY_LEN = 1 + 4 * 3 + 1;
 constexpr std::size_t DESTROY_APPLY_LEN = 1 + 4 * 3;
 constexpr std::size_t BYE_LEN = 1 + 4;
 constexpr std::size_t TIME_SYNC_LEN = 1 + 8;
+constexpr std::size_t CHAT_HEADER_LEN = 1 + 4 + 2;
 
 } // namespace
 
@@ -124,6 +135,14 @@ void encodeBye(std::vector<uint8_t>& out, const ByeMsg& m) {
 void encodeTimeSync(std::vector<uint8_t>& out, const TimeSyncMsg& m) {
     putU8(out, static_cast<uint8_t>(Op::TimeSync));
     putF64LE(out, m.gameTime);
+}
+
+void encodeChat(std::vector<uint8_t>& out, const ChatMsg& m) {
+    const std::size_t n = std::min(m.text.size(), CHAT_MAX_TEXT_LEN);
+    putU8(out, static_cast<uint8_t>(Op::Chat));
+    putU32LE(out, m.peerId);
+    putU16LE(out, static_cast<uint16_t>(n));
+    out.insert(out.end(), m.text.begin(), m.text.begin() + static_cast<std::ptrdiff_t>(n));
 }
 
 // --- Decoders ---
@@ -195,6 +214,17 @@ bool decodeBye(const uint8_t* buf, std::size_t len, ByeMsg& out) {
 bool decodeTimeSync(const uint8_t* buf, std::size_t len, TimeSyncMsg& out) {
     if (len != TIME_SYNC_LEN || buf[0] != static_cast<uint8_t>(Op::TimeSync)) return false;
     out.gameTime = getF64LE(buf + 1);
+    return true;
+}
+
+bool decodeChat(const uint8_t* buf, std::size_t len, ChatMsg& out) {
+    if (len < CHAT_HEADER_LEN || buf[0] != static_cast<uint8_t>(Op::Chat)) return false;
+    uint32_t peerId = getU32LE(buf + 1);
+    uint16_t textLen = getU16LE(buf + 5);
+    if (textLen > CHAT_MAX_TEXT_LEN) return false;
+    if (len != CHAT_HEADER_LEN + textLen) return false;
+    out.peerId = peerId;
+    out.text.assign(reinterpret_cast<const char*>(buf + CHAT_HEADER_LEN), textLen);
     return true;
 }
 

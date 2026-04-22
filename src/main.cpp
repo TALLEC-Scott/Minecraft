@@ -55,6 +55,7 @@
 #include "entity_manager.h"
 #include "particle_system.h"
 #include "player_renderer.h"
+#include "net/chat_overlay.h"
 #include "net/net_session.h"
 #include "net/multiplayer_menu.h"
 
@@ -142,6 +143,7 @@ static GLFWwindow* g_window = nullptr;
 static Shader* g_shader = nullptr;
 static UIRenderer* g_uiRenderer = nullptr;
 static Menu* g_menu = nullptr;
+static ChatOverlay* g_chat = nullptr;
 static GLuint sunVAO, sunVBO, sunEBO;
 static GLuint cloudVAO, cloudVBO, cloudEBO;
 static GLuint starVAO, starVBO;
@@ -218,11 +220,13 @@ void scrollCallback(GLFWwindow* /*window*/, double /*xOffset*/, double yOffset) 
 
 void charCallback(GLFWwindow* /*window*/, unsigned int codepoint) {
     if (g_menu) g_menu->onCharInput(codepoint);
+    if (g_chat) g_chat->onCharInput(codepoint);
 }
 
 void keyCallback(GLFWwindow* window, int key, int /*scancode*/, int action, int mods) {
     // Forward to menu for active text inputs — menu gates by whether an input is active.
     if (g_menu) g_menu->onKeyInput(window, key, action, mods);
+    if (g_chat) g_chat->onKeyInput(window, key, action, mods);
 }
 
 glm::vec3 getSkyColor(float angle) {
@@ -317,6 +321,10 @@ static void buildHeldBlockMesh(block_type bt) {
 }
 
 void processInput(GLFWwindow* window) {
+    // Chat captures every game-world key while open (movement, pause, E, …).
+    // Return early so a stray T / Esc / WASD press doesn't leak through.
+    if (g_chat && g_chat->isOpen()) return;
+
     // Pause: ESC on desktop, M on web (ESC exits pointer lock in browsers
     // and TAB is intercepted by tab-stop focus cycling).
 #ifdef __EMSCRIPTEN__
@@ -369,6 +377,15 @@ void processInput(GLFWwindow* window) {
         }
     }
     eKeyPressed = eKeyDown;
+
+    // Chat open: 'T' key (edge-triggered). Not allowed when the inventory
+    // is up so we don't eat the player's keystrokes mid-menu.
+    static bool tKeyPressed = false;
+    bool tKeyDown = glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS;
+    if (tKeyDown && !tKeyPressed && g_chat && !inventory.isOpen()) {
+        g_chat->open();
+    }
+    tKeyPressed = tKeyDown;
 
     // Skip player input while inventory is open
     if (inventory.isOpen()) return;
@@ -567,6 +584,12 @@ int main(int argc, char* argv[]) {
         Menu menuObj;
     menuObj.init();
     g_menu = &menuObj;
+
+#ifdef __EMSCRIPTEN__
+    static
+#endif
+        ChatOverlay chatObj;
+    g_chat = &chatObj;
 
     // Share audio engine with player for footstep sounds
     player.initAudio(menuObj.getAudioEngine());
@@ -785,6 +808,9 @@ int main(int argc, char* argv[]) {
 #endif
             NetSession netSession;
         player.setNetSession(&netSession);
+        netSession.setOnChat([](uint32_t peerId, const std::string& text) {
+            if (g_chat) g_chat->pushRemoteMessage(peerId, text);
+        });
 
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
@@ -1683,6 +1709,13 @@ int main(int argc, char* argv[]) {
                 double netNow = glfwGetTime();
                 netSession.poll(netNow);
                 netSession.tickBroadcast(player, netNow);
+                if (g_chat) {
+                    std::string outgoing;
+                    if (g_chat->takePendingSend(outgoing)) {
+                        netSession.sendChat(outgoing);
+                        g_chat->pushLocalMessage(outgoing);
+                    }
+                }
             }
             player.getCamera().setShake(w ? w->cameraShake : 0.0f, glfwGetTime());
             glm::mat4 viewProjection = projection * player.getViewMatrix();
@@ -2222,6 +2255,7 @@ int main(int argc, char* argv[]) {
                     std::string num = std::to_string((i + 1) % 10);
                     uiRenderer.drawTextShadow(num, sx + 2, sy + 2, 1.0f);
                 }
+                if (g_chat) g_chat->draw(uiRenderer, windowWidth, windowHeight, glfwGetTime());
                 uiRenderer.end();
             }
 

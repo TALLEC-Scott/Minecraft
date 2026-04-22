@@ -118,3 +118,60 @@ TEST(NetProtocol, WrongOpcodeRejected) {
     HelloMsg out{};
     EXPECT_FALSE(decodeHello(buf.data(), buf.size(), out));
 }
+
+TEST(NetProtocol, ChatRoundtrip) {
+    ChatMsg in{0xABCD1234u, "hello world"};
+    std::vector<uint8_t> buf;
+    encodeChat(buf, in);
+    Op op;
+    ASSERT_TRUE(decodeOp(buf.data(), buf.size(), op));
+    EXPECT_EQ(op, Op::Chat);
+    ChatMsg out{};
+    ASSERT_TRUE(decodeChat(buf.data(), buf.size(), out));
+    EXPECT_EQ(out.peerId, in.peerId);
+    EXPECT_EQ(out.text, in.text);
+}
+
+TEST(NetProtocol, ChatEmptyRoundtrip) {
+    ChatMsg in{7u, ""};
+    std::vector<uint8_t> buf;
+    encodeChat(buf, in);
+    // 1 byte opcode + 4 byte peerId + 2 byte length + 0 text.
+    EXPECT_EQ(buf.size(), 1u + 4u + 2u);
+    ChatMsg out{};
+    ASSERT_TRUE(decodeChat(buf.data(), buf.size(), out));
+    EXPECT_EQ(out.peerId, in.peerId);
+    EXPECT_TRUE(out.text.empty());
+}
+
+TEST(NetProtocol, ChatTruncatedRejected) {
+    // Encoding a message and lopping off the last byte should fail the
+    // "len == header + textLen" guard in decodeChat.
+    ChatMsg in{1u, "abcdefgh"};
+    std::vector<uint8_t> buf;
+    encodeChat(buf, in);
+    buf.pop_back();
+    ChatMsg out{};
+    EXPECT_FALSE(decodeChat(buf.data(), buf.size(), out));
+
+    // Flipping the length prefix so it claims more bytes than the buffer
+    // provides must also fail.
+    buf.clear();
+    encodeChat(buf, in);
+    buf[5] = 0xFF; // low byte of textLen
+    buf[6] = 0xFF; // high byte of textLen
+    EXPECT_FALSE(decodeChat(buf.data(), buf.size(), out));
+}
+
+TEST(NetProtocol, ChatOversizedLengthPrefixRejected) {
+    // Hand-craft a header whose textLen exceeds CHAT_MAX_TEXT_LEN.
+    std::vector<uint8_t> buf;
+    buf.push_back(static_cast<uint8_t>(Op::Chat));
+    buf.insert(buf.end(), {0x01, 0x00, 0x00, 0x00});       // peerId
+    uint16_t overCap = static_cast<uint16_t>(CHAT_MAX_TEXT_LEN + 1);
+    buf.push_back(static_cast<uint8_t>(overCap & 0xFF));
+    buf.push_back(static_cast<uint8_t>((overCap >> 8) & 0xFF));
+    buf.resize(buf.size() + overCap, 'x');
+    ChatMsg out{};
+    EXPECT_FALSE(decodeChat(buf.data(), buf.size(), out));
+}

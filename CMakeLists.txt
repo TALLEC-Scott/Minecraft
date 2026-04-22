@@ -56,6 +56,7 @@ set(COMMON_SOURCES
     src/net/net_protocol.cpp
     src/net/net_session.cpp
     src/net/multiplayer_menu.cpp
+    src/net/chat_overlay.cpp
 )
 
 if(EMSCRIPTEN)
