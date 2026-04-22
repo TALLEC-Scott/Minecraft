@@ -122,6 +122,14 @@ class NetSession {
     // Bind the world so incoming APPLY packets can reach it.
     void bindWorld(World* w) { world_ = w; }
 
+    // Chat. Both roles may send and receive freely over the same data
+    // channel. `sendChat` no-ops when disconnected so callers don't need
+    // to gate on connected().
+    void sendChat(const std::string& text);
+    void setOnChat(std::function<void(uint32_t peerId, const std::string& text)> cb) {
+        onChat_ = std::move(cb);
+    }
+
     const std::vector<RemotePlayer>& remotes() const { return remotes_; }
 
   private:
@@ -134,6 +142,7 @@ class NetSession {
     double timeOffset_ = 0.0;
     std::vector<RemotePlayer> remotes_;
     World* world_ = nullptr;
+    std::function<void(uint32_t, const std::string&)> onChat_;
 
     // Web-only: handle into the JS side's RTCPeerConnection registry.
     // Unused on desktop builds (kept to keep the struct layout identical

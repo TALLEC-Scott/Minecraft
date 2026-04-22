@@ -23,6 +23,8 @@ enum class Op : uint8_t {
     // Host → client authoritative game-clock broadcast. Clients snap an
     // internal offset to it so the day/night cycle stays in lockstep.
     TimeSync = 0x08,
+    // Symmetric peer-to-peer chat line. Both host and client send.
+    Chat = 0x09,
 };
 
 struct HelloMsg {
@@ -65,6 +67,15 @@ struct TimeSyncMsg {
     double gameTime = 0.0;
 };
 
+// Hard cap on the byte length of a chat line on the wire. Keeps frames
+// small and bounds memory on the receive side.
+constexpr std::size_t CHAT_MAX_TEXT_LEN = 256;
+
+struct ChatMsg {
+    uint32_t peerId = 0;
+    std::string text;
+};
+
 // Encoders append a little-endian framed message (opcode + payload) to `out`.
 void encodeHello(std::vector<uint8_t>& out, const HelloMsg& m);
 void encodePlayerState(std::vector<uint8_t>& out, const PlayerStateMsg& m);
@@ -74,6 +85,7 @@ void encodePlaceApply(std::vector<uint8_t>& out, const PlaceApplyMsg& m);
 void encodeDestroyApply(std::vector<uint8_t>& out, const DestroyApplyMsg& m);
 void encodeBye(std::vector<uint8_t>& out, const ByeMsg& m);
 void encodeTimeSync(std::vector<uint8_t>& out, const TimeSyncMsg& m);
+void encodeChat(std::vector<uint8_t>& out, const ChatMsg& m);
 
 // Decoders: read opcode at buf[0], verify length matches the payload for
 // that opcode, and fill `out`. Return true on success, false on short /
@@ -87,5 +99,6 @@ bool decodePlaceApply(const uint8_t* buf, std::size_t len, PlaceApplyMsg& out);
 bool decodeDestroyApply(const uint8_t* buf, std::size_t len, DestroyApplyMsg& out);
 bool decodeBye(const uint8_t* buf, std::size_t len, ByeMsg& out);
 bool decodeTimeSync(const uint8_t* buf, std::size_t len, TimeSyncMsg& out);
+bool decodeChat(const uint8_t* buf, std::size_t len, ChatMsg& out);
 
 } // namespace netp

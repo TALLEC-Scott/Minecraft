@@ -647,6 +647,12 @@ void NetSession::handleMessage(const uint8_t* data, std::size_t len, double now)
         timeOffset_ = m.gameTime - now;
         break;
     }
+    case netp::Op::Chat: {
+        netp::ChatMsg m;
+        if (!netp::decodeChat(data, len, m)) return;
+        if (onChat_) onChat_(m.peerId, m.text);
+        break;
+    }
     }
 }
 
@@ -719,6 +725,15 @@ void NetSession::notifyLocalPlace(glm::ivec3 pos, uint8_t blockType) {
         netp::PlaceIntentMsg m{pos, blockType};
         netp::encodePlaceIntent(buf, m);
     }
+    sendRaw(buf);
+}
+
+void NetSession::sendChat(const std::string& text) {
+    if (!connected() || text.empty()) return;
+    netp::ChatMsg m{selfPeerId_, text};
+    if (m.text.size() > netp::CHAT_MAX_TEXT_LEN) m.text.resize(netp::CHAT_MAX_TEXT_LEN);
+    std::vector<uint8_t> buf;
+    netp::encodeChat(buf, m);
     sendRaw(buf);
 }
 
