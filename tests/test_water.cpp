@@ -181,6 +181,68 @@ TEST(WaterSimulator, FlowingWaterDoesNotSheetOverCliff) {
     EXPECT_EQ(getType(s.world, 13, y, 8), AIR);
 }
 
+// --- Drop-seeking: spread flows toward the nearest hole, not everywhere ---
+
+TEST(WaterSimulator, DropSeekingFlowsOnlyTowardHole) {
+    PedestalScene s;
+    const int y = PedestalScene::FLOOR_Y + 1;
+    // Punch a hole in the floor 3 cells east of the source. The drop scan
+    // (range 4) should find it and channel all spread toward it.
+    s.world.setBlock(11, PedestalScene::FLOOR_Y, 8, AIR, 0);
+    s.world.setBlock(8, y, 8, WATER, 0);
+    s.sim.activate(8, y, 8);
+    runTicks(s.sim, 15);
+
+    // Path to the hole is wet...
+    EXPECT_EQ(getType(s.world, 9, y, 8), WATER);
+    EXPECT_EQ(getType(s.world, 10, y, 8), WATER);
+    EXPECT_EQ(getType(s.world, 11, y, 8), WATER);
+    // ...and the other three directions stay dry: the source only spreads
+    // toward the shortest drop, and downstream cells re-derive the same
+    // direction from their own scan.
+    EXPECT_EQ(getType(s.world, 7, y, 8), AIR);
+    EXPECT_EQ(getType(s.world, 8, y, 7), AIR);
+    EXPECT_EQ(getType(s.world, 8, y, 9), AIR);
+}
+
+TEST(WaterSimulator, DropSeekingBlockedPathFallsBackToPooling) {
+    PedestalScene s;
+    const int y = PedestalScene::FLOOR_Y + 1;
+    // Same hole 3 cells east, but a wall at spread height right next to
+    // the source blocks the direct path — the scan must not see through
+    // walls, so the source pools in the remaining directions. (Downstream
+    // cells may still route around the wall via their own scans.)
+    s.world.setBlock(11, PedestalScene::FLOOR_Y, 8, AIR, 0);
+    s.world.setBlock(9, y, 8, STONE, 0);
+    s.world.setBlock(8, y, 8, WATER, 0);
+    s.sim.activate(8, y, 8);
+    runTicks(s.sim, 15);
+
+    EXPECT_EQ(getType(s.world, 7, y, 8), WATER);
+    EXPECT_EQ(getType(s.world, 8, y, 7), WATER);
+    EXPECT_EQ(getType(s.world, 8, y, 9), WATER);
+    // The wall cell itself stays dry.
+    EXPECT_EQ(getType(s.world, 9, y, 8), STONE);
+}
+
+TEST(WaterSimulator, DropSeekingTieSpreadsBothWays) {
+    PedestalScene s;
+    const int y = PedestalScene::FLOOR_Y + 1;
+    // Two holes at equal distance east and west — both directions are
+    // tied for shortest path and both must receive water.
+    s.world.setBlock(11, PedestalScene::FLOOR_Y, 8, AIR, 0);
+    s.world.setBlock(5, PedestalScene::FLOOR_Y, 8, AIR, 0);
+    s.world.setBlock(8, y, 8, WATER, 0);
+    s.sim.activate(8, y, 8);
+    runTicks(s.sim, 15);
+
+    EXPECT_EQ(getType(s.world, 11, y, 8), WATER);
+    EXPECT_EQ(getType(s.world, 5, y, 8), WATER);
+    // Perpendicular directions stay dry.
+    EXPECT_EQ(getType(s.world, 8, y, 7), AIR);
+    EXPECT_EQ(getType(s.world, 8, y, 9), AIR);
+}
+
 // --- Drain is monotonic: water count strictly decreases until zero ---
 
 // --- Infinite water source rule ---

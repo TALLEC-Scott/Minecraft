@@ -42,6 +42,9 @@ class WaterSimulator {
     void activateNeighbors(int x, int y, int z);
 
     static constexpr int MAX_BLOCKS_PER_TICK = 512;
+    // How far horizontal spread scans for a hole to pour into (Rule 2
+    // drop-seeking). Matches Minecraft's 4-block flow lookahead.
+    static constexpr int DROP_SCAN_RANGE = 4;
     // Seconds between ticks — FPS-agnostic, wall-clock timed.
     // 0.25s = 4 ticks/second (matches Minecraft's fluid tick rate).
     static constexpr double TICK_SECONDS = 0.25;
