@@ -1,5 +1,6 @@
 #include "camera.h"
 #include "collision.h"
+#include <algorithm>
 #include <cmath>
 
 // PLAYER_TOTAL_HEIGHT and PLAYER_HALF_WIDTH defined in collision.h
@@ -121,14 +122,27 @@ void Camera::update(BlockCheck isSolid, void* ctx, WaterCheck isWater, WaterFlow
         velocityY = glm::clamp(velocityY, -0.15f, 0.15f);
         move.y = 0;
         // Water current: push player horizontally along stream; falling
-        // water (flow.y < 0) pushes vertically down.
-        if (getFlow) {
+        // water (flow.y < 0) pushes vertically down. Flow is averaged over
+        // the cells the player AABB occupies (feet / torso / eyes) so the
+        // push doesn't flicker per-frame when straddling a still/flowing
+        // cell boundary.
+        if (getFlow && isWater) {
             constexpr float WATER_CURRENT_PUSH = 0.025f; // blocks/frame at 60fps
             constexpr float WATERFALL_DOWN_PUSH = 0.014f;
             int fx = (int)std::floor(cameraPosition.x + 0.5f);
             int fy = (int)std::floor(cameraPosition.y - PLAYER_HEIGHT + 0.5f);
             int fz = (int)std::floor(cameraPosition.z + 0.5f);
-            glm::vec3 flow = getFlow(fx, fy, fz, ctx);
+            int hy = (int)std::floor(cameraPosition.y + 0.5f);
+            glm::vec3 flow(0.0f);
+            int samples = 0;
+            int ys[3] = {fy, fy + 1, hy};
+            for (int i = 0; i < 3; i++) {
+                if (i > 0 && ys[i] == ys[i - 1]) continue; // eye cell may coincide with torso
+                if (!isWater(fx, ys[i], fz, ctx)) continue;
+                flow += getFlow(fx, ys[i], fz, ctx);
+                samples++;
+            }
+            if (samples > 0) flow /= (float)samples;
             glm::vec2 horiz(flow.x, flow.z);
             if (glm::dot(horiz, horiz) > 0.000001f) {
                 horiz = glm::normalize(horiz);
@@ -139,6 +153,20 @@ void Camera::update(BlockCheck isSolid, void* ctx, WaterCheck isWater, WaterFlow
             if (flow.y < -0.001f) {
                 velocityY -= WATERFALL_DOWN_PUSH * deltaTime * 60.0f;
             }
+        }
+    }
+
+    // Swim-out hop: pressing horizontally into a 1-block ledge while at
+    // the surface boosts the player up out of the water — without this,
+    // climbing onto a shore ledge requires fiddly jump-swimming.
+    if (inWater && !eyesInWater && (move.x * move.x + move.z * move.z) > 0.000001f) {
+        glm::vec2 dir = glm::normalize(glm::vec2(move.x, move.z));
+        int lx = (int)std::floor(cameraPosition.x + dir.x * 0.8f + 0.5f);
+        int lz = (int)std::floor(cameraPosition.z + dir.y * 0.8f + 0.5f);
+        int fy = (int)std::floor(cameraPosition.y - PLAYER_HEIGHT + 0.5f);
+        // Ledge = solid at feet level ahead with standing room above it.
+        if (isSolid(lx, fy, lz, ctx) && !isSolid(lx, fy + 1, lz, ctx) && !isSolid(lx, fy + 2, lz, ctx)) {
+            velocityY = std::max(velocityY, JUMP_VELOCITY * 0.85f);
         }
     }
 

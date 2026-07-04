@@ -1,4 +1,5 @@
 #include "WaterSimulator.h"
+#include <climits>
 #include <miniaudio.h>
 #include "tracy_shim.h"
 #include "world.h"
@@ -222,7 +223,37 @@ void WaterSimulator::tick() {
         uint8_t spreadLevel = falling ? 0 : level;
         bool allowSpread = landed && (falling ? canSpreadFalling : true);
         if (spreadLevel < WATER_MAX_FLOW && allowSpread) {
-            for (auto& hd : HDIRS) {
+            // Drop-seeking: water flows toward the nearest hole it can pour
+            // into rather than fanning out uniformly. For each direction,
+            // walk up to DROP_SCAN_RANGE cells at this height through
+            // passable cells (AIR or WATER) and record the distance to the
+            // first cell with a drop below (AIR or falling water). Spread
+            // only in the direction(s) tied for the shortest path; when no
+            // drop is reachable, fall back to spreading everywhere (pooling).
+            int dirDist[4] = {INT_MAX, INT_MAX, INT_MAX, INT_MAX};
+            int bestDist = INT_MAX;
+            if (y > 0) {
+                for (int d = 0; d < 4; d++) {
+                    for (int step = 1; step <= DROP_SCAN_RANGE; step++) {
+                        int sx = x + HDIRS[d][0] * step, sz = z + HDIRS[d][1] * step;
+                        auto s = resolver.local(sx, sz);
+                        if (!s.chunk) break;
+                        block_type t = s.chunk->getBlockType(s.lx, y, s.lz);
+                        if (t != AIR && t != WATER) break; // wall — no path this way
+                        block_type below = s.chunk->getBlockType(s.lx, y - 1, s.lz);
+                        bool drop = below == AIR ||
+                                    (below == WATER && waterIsFalling(s.chunk->getWaterLevel(s.lx, y - 1, s.lz)));
+                        if (drop) {
+                            dirDist[d] = step;
+                            break;
+                        }
+                    }
+                    if (dirDist[d] < bestDist) bestDist = dirDist[d];
+                }
+            }
+            for (int d = 0; d < 4; d++) {
+                if (bestDist != INT_MAX && dirDist[d] != bestDist) continue;
+                const auto& hd = HDIRS[d];
                 int nx = x + hd[0], nz = z + hd[1];
                 auto n = resolver.local(nx, nz);
                 if (!n.chunk) continue;
@@ -255,14 +286,23 @@ void WaterSimulator::tick() {
     }
 
     // Apply pre-pass decays. Each decay adds 6 neighbor inserts to
-    // nextActive, so grow the reserve before the loop.
+    // nextActive, so grow the reserve before the loop. Bounded by the
+    // same per-tick budget as the main pass — draining a huge system
+    // otherwise fires thousands of setBlock + light floods in one tick.
+    // Cells past the cap are re-queued and recompute support next tick.
     size_t decayCount = 0;
     for (const auto& cell : tickCells)
         if (cell.willDecay) decayCount++;
     if (decayCount > 0) {
         nextActive.reserve(nextActive.size() + decayCount * 6);
+        int decaysApplied = 0;
         for (const auto& cell : tickCells) {
             if (!cell.willDecay) continue;
+            if (decaysApplied >= MAX_BLOCKS_PER_TICK) {
+                nextActive.insert(cell.pos);
+                continue;
+            }
+            decaysApplied++;
             world->setBlock(cell.pos.x, cell.pos.y, cell.pos.z, AIR, 0);
             activateNeighbors(cell.pos.x, cell.pos.y, cell.pos.z);
             anyChanged = true;
