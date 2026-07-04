@@ -249,12 +249,17 @@ bool TerrainGenerator::isCave(int wx, int wy, int wz) {
     // roughens their walls. The threshold falls with depth, so near the
     // surface caverns are rare pockets while deep down they open into
     // proper rooms (Minecraft's cheese caves live at the bottom too).
-    double c = perlinNoise.noise(wx * 0.009 + 2100.0, wy * 0.016 + 2100.0, wz * 0.009 + 2100.0);
-    c += 0.35 * perlinNoise.noise(wx * 0.027 + 2100.0, wy * 0.048 + 2100.0, wz * 0.027 + 2100.0);
     double depth01 = std::clamp(1.0 - wy / 64.0, 0.0, 1.0); // 0 at sea level, 1 at world floor
     // Steep depth bias: near the surface caverns barely exist; the big
     // rooms live in the bottom third of the world.
-    return c > 0.66 - 0.38 * depth01;
+    double thr = 0.66 - 0.38 * depth01;
+    double c = perlinNoise.noise(wx * 0.009 + 2100.0, wy * 0.016 + 2100.0, wz * 0.009 + 2100.0);
+    // The wall-roughening octave contributes at most ±0.35 — skip it for
+    // the vast majority of blocks that can't reach the threshold anyway.
+    if (c + 0.35 < thr) return false;
+    if (c - 0.35 > thr) return true;
+    c += 0.35 * perlinNoise.noise(wx * 0.027 + 2100.0, wy * 0.048 + 2100.0, wz * 0.027 + 2100.0);
+    return c > thr;
 }
 
 double TerrainGenerator::getNoise(int x, int y) {
