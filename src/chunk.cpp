@@ -140,6 +140,13 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
 
             int limit_stone = std::max(1, (int)(0.7 * height));
 
+            // Cave carve ceiling: on land caves carve through the surface
+            // block itself, so tunnels that climb breach as entrance holes;
+            // under water a thick roof keeps the ocean from draining in.
+            constexpr int CAVE_FLOOR = 5;
+            constexpr int OCEAN_ROOF = 6;
+            int caveCeil = (height <= WATER_LEVEL + 1) ? height - OCEAN_ROOF : height;
+
             for (int j = 0; j < CHUNK_HEIGHT; j++) {
                 Cube* block = &flatBlocks[i * CHUNK_HEIGHT * CHUNK_SIZE + j * CHUNK_SIZE + k];
                 double detailNoise = terrain.getNoise(globalX, globalZ, j);
@@ -148,6 +155,8 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
                     block->setType(j <= WATER_LEVEL ? WATER : AIR);
                 } else if (j == 0) {
                     block->setType(BEDROCK);
+                } else if (j >= CAVE_FLOOR && j <= caveCeil && terrain.isCave(globalX, j, globalZ)) {
+                    block->setType(AIR);
                 } else if (j < limit_stone) {
                     block->setType((detailNoise > 0.45 && detailNoise < 0.5) ? COAL_ORE : STONE);
                 } else if (j == height) {
