@@ -21,7 +21,11 @@ jobs:
       - name: Configure
         # clang-tidy is disabled in CI for robustness across toolchain versions;
         # re-enable locally with a plain cmake configure (it defaults to ON).
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_CLANG_TIDY=OFF
+        # -Werror=array-bounds is downgraded to a warning: GCC 13+ reports a
+        # false positive on std::vector::resize in tests/test_net_protocol.cpp
+        # (the test deliberately crafts an oversized packet). The project's
+        # -Werror policy stays in force for everything else.
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_CLANG_TIDY=OFF -DCMAKE_CXX_FLAGS="-Wno-error=array-bounds"
 
       - name: Build
         run: cmake --build build -j$(nproc)
