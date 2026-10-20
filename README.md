@@ -6,7 +6,7 @@ The purpose was mainly to see how far I could take agentic coding, namely anthro
 
 I'm sure that I could have simply decompiled the original minecraft into C++ source code (bedrock edition) and then recompile it to web assembly (next iteration ?) but playing around and thinking about the design of minecraft while testing the limits of agentic coding seemed fun to me. 
 
-Perhaps I should make a blog detailing some of the rough edges and detail the techniques I used, (for instance i had the agent solve problems in lower dimension space)
+Perhaps I should make a blog detailing some of the rough edges and detail the techniques I used, for instance i had the agent solve problems in lower dimension space.
 I take little credit for this work, the LLMs have me beat on this one and surely will take my job too.
 
 ## Screenshots
