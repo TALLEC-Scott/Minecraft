@@ -1,6 +1,7 @@
 # Minecraft Clone in C++/OpenGL
 
 A Minecraft-like voxel sandbox built with C++ and OpenGL 3.3 Core Profile. Procedural terrain, biomes, cellular-automaton water, primed TNT with entity physics, cross-texture plants, day/night cycle, multithreaded chunk streaming, persistent saves, and a WebAssembly build.
+
 The purpose was mainly to see how far I could take agentic coding, namely anthropic models, on an old throwaway college project (see first screenshot in earlier versions) to test the capabilities of the models. The progress is as you can see remarkable, yes I had to steer quite a bit for the optimization parts and for the cellular automata for the cascading water effect (the early 2026 models struggled with geometry). 
 
 I'm sure that I could have simply decompiled the original minecraft into C++ source code (bedrock edition) and then recompile it to web assembly (next iteration ?) but playing around and thinking about the design of minecraft while testing the limits of agentic coding seemed fun to me. 
