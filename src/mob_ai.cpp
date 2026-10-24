@@ -116,6 +116,34 @@ bool randomStandTarget(Mob& mob, MobContext& ctx, float radius, bool avoidWater,
     return false;
 }
 
+bool hasLineOfSight(const MobContext& ctx, glm::vec3 from, glm::vec3 to) {
+    // Amanatides–Woo grid walk. Block N spans [N-0.5, N+0.5), so shift by
+    // half a block into a plain floor() grid first.
+    glm::vec3 a = from + 0.5f;
+    glm::vec3 d = (to + 0.5f) - a;
+    glm::ivec3 cell(glm::floor(a));
+    glm::ivec3 end(glm::floor(a + d));
+    glm::ivec3 step(0);
+    glm::vec3 tMax(2.0f), tDelta(0.0f); // t in [0, 1] along the segment; > 1 = never
+    for (int i = 0; i < 3; ++i) {
+        if (std::abs(d[i]) < 1e-9f) continue;
+        step[i] = d[i] > 0.0f ? 1 : -1;
+        float boundary = static_cast<float>(cell[i] + (step[i] > 0 ? 1 : 0));
+        tMax[i] = (boundary - a[i]) / d[i];
+        tDelta[i] = 1.0f / std::abs(d[i]);
+    }
+    int maxSteps = std::abs(end.x - cell.x) + std::abs(end.y - cell.y) + std::abs(end.z - cell.z) + 1;
+    for (int n = 0; n < maxSteps; ++n) {
+        if (ctx.isSolid(cell.x, cell.y, cell.z)) return false;
+        if (cell == end) break;
+        int axis = (tMax.x < tMax.y) ? (tMax.x < tMax.z ? 0 : 2) : (tMax.y < tMax.z ? 1 : 2);
+        if (tMax[axis] > 1.0f) break;
+        cell[axis] += step[axis];
+        tMax[axis] += tDelta[axis];
+    }
+    return true;
+}
+
 } // namespace mobai
 
 // ---------------------------------------------------------------------------
