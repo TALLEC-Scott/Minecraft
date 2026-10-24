@@ -1,35 +1,40 @@
 //
 // Created by scott on 03/07/23.
 //
-// Minecraft 1.18-style terrain shaping: three low-frequency climate
-// noises (continentalness, erosion, weirdness) are mapped through
-// splines to a terrain height, instead of noise driving height
+// Minecraft 1.18-style terrain shaping: low-frequency climate noises
+// (continentalness, erosion) plus a ridged "mountain" noise are mapped
+// through splines to a terrain height, instead of noise driving height
 // directly. See https://www.alanzucconi.com/2022/06/05/minecraft-world-generation/
 //
-//   height = seaLevel + offset(C) + inlandness · PV · amp(E) + detail
+//   height = seaLevel + offset(C) + relief + cliffs + detail, then rivers
 //
 // - offset(C):  base elevation by distance from coast (ocean floor
 //               plateau, sharp coastline, inland plains, highlands).
-// - amp(E):     mountain amplitude by erosion — heavily eroded land is
-//               flat no matter how far inland it is.
-// - PV:         "peaks & valleys", weirdness folded through
-//               1 - |3|W| - 2|. The fold creates ridgelines where the
-//               noise crosses its extremes; negative values carve
-//               valleys below the base offset.
+// - relief:     inlandness · amp(E) · ridge. amp(E) is mountain amplitude
+//               by erosion (heavily eroded land stays flat); ridge is
+//               ridged multifractal noise — 1 along connected crest
+//               lines, falling off into valleys — so mountains form
+//               ranges instead of the rings a folded-noise PV produced.
+// - cliffs:     in low-erosion (jagged) land the height is pulled toward
+//               a terraced version of itself: flat benches separated by
+//               steep risers, i.e. real cliffs.
 // - inlandness: 0 at sea, ramps to 1 inland, so mountains never grow
 //               out of the ocean or the beach.
+// - rivers:     a separate low-frequency noise; along its zero line the
+//               land is carved down to a channel a few blocks below sea
+//               level, with sloped banks, so rivers fill with water.
 #include "TerrainGenerator.h"
 #include <algorithm>
 #include <cmath>
 
 const BiomeParams TerrainGenerator::BIOME_TABLE[BIOME_COUNT] = {
-    // surface       subsurface   baseH  amp   treeDens  treeChance
-    {SAND, SAND, 0.0f, 0.0f, 0.0f, 0.0f},    // OCEAN (height handled specially)
-    {SAND, SAND, 0.0f, 0.0f, 0.0f, 0.0f},    // BEACH (height handled specially)
-    {GRASS, DIRT, 0.0f, 0.0f, 0.15f, 20.0f}, // PLAINS
-    {GRASS, DIRT, 0.0f, 0.0f, 0.8f, 50.0f},  // FOREST
-    {SAND, SAND, 0.0f, 0.0f, 0.0f, 0.0f},    // DESERT
-    {SNOW, DIRT, 0.0f, 0.0f, 0.0f, 0.0f},    // TUNDRA
+    // surface  subsurface  treeDensity (chance per tree-grid cell)
+    {SAND, SAND, 0.0f},    // OCEAN (height handled specially)
+    {SAND, SAND, 0.0f},    // BEACH (height handled specially)
+    {GRASS, DIRT, 0.05f},  // PLAINS: the odd lone tree
+    {GRASS, DIRT, 0.60f},  // FOREST: dense canopy
+    {SAND, SAND, 0.0f},    // DESERT
+    {SNOW, DIRT, 0.08f},   // TUNDRA: sparse snowy trees
 };
 
 namespace {
@@ -52,6 +57,11 @@ template <int N> double splineEval(const SplinePt (&pts)[N], double x) {
     return pts[i].y + t * (pts[i + 1].y - pts[i].y);
 }
 
+double smoothstep(double e0, double e1, double x) {
+    double t = std::clamp((x - e0) / (e1 - e0), 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
+
 // Base elevation (blocks relative to sea level) by continentalness.
 // The steep -0.19 → -0.11 segment is the coastline cliff; the long
 // flat middle keeps most land near sea level like Minecraft's plains.
@@ -62,36 +72,63 @@ constexpr SplinePt OFFSET_SPLINE[] = {
     {-0.11, 1.0},   // coastline
     {0.03, 3.0},    // coastal plains
     {0.30, 9.0},    // inland
-    {0.65, 16.0},   // far inland plateau
-    {1.00, 22.0},   // highlands
+    {0.65, 18.0},   // far inland plateau
+    {1.00, 26.0},   // highlands
 };
 
 // Mountain amplitude (blocks) by erosion. Low erosion → dramatic
-// relief; high erosion → planed-flat terrain even far inland.
+// relief; high erosion → planed-flat terrain even far inland. Peaks
+// reach the upper quarter of the 128-block world.
 constexpr SplinePt AMP_SPLINE[] = {
-    {-1.00, 34.0}, // jagged peaks
-    {-0.60, 22.0},
-    {-0.20, 12.0},
-    {0.20, 6.0},
-    {0.60, 3.0},
-    {1.00, 1.5}, // near-flat
+    {-1.00, 62.0}, // jagged peaks
+    {-0.60, 44.0},
+    {-0.20, 22.0},
+    {0.20, 9.0},
+    {0.60, 4.0},
+    {1.00, 2.0}, // near-flat
 };
 
 // Normalized FBM rarely leaves ±0.4 (octave averaging compresses the
 // range), which would starve the spline endpoints — no deep oceans, no
-// jagged-peak erosion, and a PV fold stuck in valley territory. Stretch
-// back toward the nominal -1..1 before the splines see the value.
-double stretch(double n, double k) { return std::clamp(n * k, -1.0, 1.0); }
+// jagged-peak erosion. Stretch back toward the nominal -1..1 before the
+// splines see the value.
+double stretch(double n, double k) {
+    return std::clamp(n * k, -1.0, 1.0);
+}
 
 // Continentalness thresholds shared by height shaping and biome pick.
 constexpr double OCEAN_END = -0.11;  // below: ocean
 constexpr double BEACH_END = -0.04;  // below: beach
 constexpr double INLAND_FULL = 0.12; // mountains at full strength
 
+// Cliffs: in jagged terrain the height is pulled toward terraces of this
+// many blocks; the riser occupies the middle RISER fraction of each step.
+constexpr double TERRACE_STEP = 7.0;
+constexpr double TERRACE_RISER = 0.08;
+// Escarpment step height, and the half-width (in noise units) of the
+// transition: noise gradient is ~0.01/block, so 0.012 ≈ a 2-3 block wall.
+constexpr double ESCARPMENT_HEIGHT = 9.0;
+constexpr double ESCARPMENT_EDGE = 0.012;
+
+// Rivers: distance-from-zero of the river noise below which the channel
+// (core) and its banks are carved. Bed sits RIVER_DEPTH below sea level.
+constexpr double RIVER_CORE = 0.005;
+constexpr double RIVER_BANK = 0.016;
+
+// Shifts continentalness toward land: unbiased, about half the world was
+// one featureless ocean.
+constexpr double LAND_BIAS = 0.08;
+constexpr double RIVER_DEPTH = 3.0;
+
+// Peaks are soft-capped so the tallest trees (≤ 13 blocks) still fit
+// under the world ceiling.
+constexpr double PEAK_SOFT_CAP = 108.0;
+constexpr int PEAK_HARD_CAP = 114;
+
 } // namespace
 
 TerrainGenerator::TerrainGenerator(unsigned int seed, float scale, int minHeight, int maxHeight)
-    : perlinNoise(seed), scale(scale), minHeight(minHeight), maxHeight(maxHeight) {}
+    : perlinNoise(seed), seed(seed), scale(scale), minHeight(minHeight), maxHeight(maxHeight) {}
 
 double TerrainGenerator::octaveNoise(double x, double y, int octaves, double persistence, double lacunarity) {
     double total = 0.0;
@@ -107,18 +144,37 @@ double TerrainGenerator::octaveNoise(double x, double y, int octaves, double per
     return total / maxVal;
 }
 
+double TerrainGenerator::ridgedNoise(double x, double y, int octaves) {
+    double total = 0.0, amplitude = 1.0, frequency = 1.0, maxVal = 0.0;
+    for (int i = 0; i < octaves; i++) {
+        // 1 at the noise's zero line, 0 once |n| ≥ 0.45: thin crests that
+        // join into ranges. Squaring sharpens the crest profile.
+        double r = std::max(0.0, 1.0 - std::abs(perlinNoise.noise(x * frequency, y * frequency)) / 0.45);
+        total += r * r * amplitude;
+        maxVal += amplitude;
+        amplitude *= 0.5;
+        frequency *= 2.0;
+    }
+    return total / maxVal;
+}
+
+// Climate noises vary over ~800 blocks (5× the continent detail of the
+// old 0.06 / 0.08 factors), so biomes form coherent regions instead of
+// 150-block blobs; a faint high-frequency jitter roughens the borders.
 double TerrainGenerator::getTemperature(int x, int y) {
     double nx = x * scale;
     double ny = y * scale;
-    double t = octaveNoise(nx * 0.06 + 2000.0, ny * 0.06 + 2000.0, 2, 0.5, 2.0);
-    return (t + 1.0) * 0.5;
+    double t = octaveNoise(nx * 0.012 + 2000.0, ny * 0.012 + 2000.0, 3, 0.5, 2.0) * 1.6;
+    t += 0.09 * octaveNoise(nx * 0.15 + 2500.0, ny * 0.15 + 2500.0, 2, 0.5, 2.0);
+    return std::clamp((t + 1.0) * 0.5, 0.0, 1.0);
 }
 
 double TerrainGenerator::getMoisture(int x, int y) {
     double nx = x * scale;
     double ny = y * scale;
-    double m = octaveNoise(nx * 0.08 + 1000.0, ny * 0.08 + 1000.0, 2, 0.5, 2.0);
-    return (m + 1.0) * 0.5;
+    double m = octaveNoise(nx * 0.016 + 1000.0, ny * 0.016 + 1000.0, 3, 0.5, 2.0) * 1.6;
+    m += 0.09 * octaveNoise(nx * 0.15 + 1500.0, ny * 0.15 + 1500.0, 2, 0.5, 2.0);
+    return std::clamp((m + 1.0) * 0.5, 0.0, 1.0);
 }
 
 TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y) {
@@ -128,12 +184,9 @@ TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y) {
     ColumnSample s{};
     // Climate noises. Distinct large offsets decorrelate them despite
     // sharing one permutation table (same trick as temperature/moisture).
-    s.continentalness = stretch(octaveNoise(nx * 0.006, ny * 0.006, 4, 0.5, 2.0), 1.7);
+    s.continentalness = std::clamp(stretch(octaveNoise(nx * 0.006, ny * 0.006, 4, 0.5, 2.0), 1.7) + LAND_BIAS, -1.0, 1.0);
     s.erosion = stretch(octaveNoise(nx * 0.015 + 3000.0, ny * 0.015 + 3000.0, 3, 0.5, 2.0), 1.9);
-    double weirdness = stretch(octaveNoise(nx * 0.035 + 4000.0, ny * 0.035 + 4000.0, 3, 0.5, 2.0), 2.2);
-    // Fold weirdness into peaks & valleys: extremes of W become ridge
-    // crests (PV → 1), the middle becomes valley floors (PV → -1).
-    s.peaksValleys = 1.0 - std::abs(3.0 * std::abs(weirdness) - 2.0);
+    s.ridge = ridgedNoise(nx * 0.03 + 4000.0, ny * 0.03 + 4000.0, 3);
 
     // --- Height ---
     int seaLevel = maxHeight / 2;
@@ -141,18 +194,50 @@ TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y) {
 
     // Mountains fade in across the shore band so the beach stays flat
     // and the ocean floor never sprouts ridges.
-    double inland = std::clamp((s.continentalness - BEACH_END) / (INLAND_FULL - BEACH_END), 0.0, 1.0);
-    inland = inland * inland * (3.0 - 2.0 * inland);
+    double inland = smoothstep(BEACH_END, INLAND_FULL, s.continentalness);
     double amp = splineEval(AMP_SPLINE, s.erosion);
-    // Valleys carve at reduced depth so PV < 0 doesn't dig channels
-    // below sea level in low plains.
-    double pv = s.peaksValleys < 0.0 ? s.peaksValleys * 0.35 : s.peaksValleys;
-    height += inland * pv * amp;
+    // Ridges carry the full amplitude; a gentle rolling term keeps the
+    // land between ranges from being dead flat.
+    double rolling = 0.18 * octaveNoise(nx * 0.06 + 6000.0, ny * 0.06 + 6000.0, 2, 0.5, 2.0);
+    s.relief = inland * amp * (s.ridge + rolling);
+    height += s.relief;
+
+    // Cliffs: jagged (low-erosion) land gets escarpments — the ground steps
+    // up ESCARPMENT_HEIGHT blocks across the zero line of a separate noise,
+    // over just 2-3 blocks horizontally — and is pulled toward terraces,
+    // which sharpens slopes that already exist into benches and risers.
+    double cliffMask = inland * smoothstep(0.05, -0.3, s.erosion);
+    if (cliffMask > 0.0) {
+        double e = octaveNoise(nx * 0.12 + 6500.0, ny * 0.12 + 6500.0, 2, 0.5, 2.0);
+        height += cliffMask * ESCARPMENT_HEIGHT * smoothstep(-ESCARPMENT_EDGE, ESCARPMENT_EDGE, e);
+        double base = std::floor(height / TERRACE_STEP) * TERRACE_STEP;
+        double f = (height - base) / TERRACE_STEP;
+        double lo = 0.5 - TERRACE_RISER * 0.5;
+        double terraced = base + TERRACE_STEP * smoothstep(lo, 1.0 - lo, f);
+        height += (terraced - height) * cliffMask * 0.9;
+    }
 
     // Small-scale surface detail, everywhere (dunes, ocean-floor ripple).
     height += octaveNoise(nx * 0.35, ny * 0.35, 3, 0.45, 2.0) * 2.0;
 
-    s.height = std::clamp(static_cast<int>(height), minHeight, maxHeight);
+    // Rivers: carve along the zero line of a low-frequency noise, on land
+    // only. The bank blend slopes down to sea level, the core drops to the
+    // bed so the channel holds water.
+    // Fades in from the coastline itself (not the inland edge of the beach)
+    // so channels cut through the beach and actually reach the sea.
+    double landMask = smoothstep(OCEAN_END, OCEAN_END + 0.03, s.continentalness);
+    if (landMask > 0.0) {
+        double rd = std::abs(octaveNoise(nx * 0.005 + 5000.0, ny * 0.005 + 5000.0, 2, 0.5, 2.0));
+        double bank = (1.0 - smoothstep(RIVER_CORE, RIVER_BANK, rd)) * landMask;
+        if (bank > 0.0) {
+            double core = 1.0 - smoothstep(RIVER_CORE * 0.4, RIVER_CORE * 1.4, rd);
+            double bed = seaLevel + 1.0 - (RIVER_DEPTH + 1.0) * core;
+            height += (std::min(height, bed) - height) * bank;
+        }
+    }
+
+    if (height > PEAK_SOFT_CAP) height = PEAK_SOFT_CAP + (height - PEAK_SOFT_CAP) * 0.4;
+    s.height = std::clamp(static_cast<int>(height), minHeight, std::min(maxHeight, PEAK_HARD_CAP));
 
     // --- Biome ---
     if (s.continentalness < OCEAN_END) {
@@ -164,14 +249,14 @@ TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y) {
         double humid = getMoisture(x, y);
         // Desert: hot + dry lowlands. Mountain relief suppresses it so
         // peaks don't read as sand dunes.
-        double relief = inland * s.peaksValleys * amp;
-        if (temp > 0.48 && humid < 0.42 && relief < 14.0) {
+        if (temp > 0.53 && humid < 0.46 && s.relief < 14.0) {
             s.biome = BIOME_DESERT;
         } else {
-            // Altitude cooling: high base offset or strong relief → colder.
+            // Altitude cooling: high ground is colder, so tall ranges get
+            // tundra (snowy) tops inside otherwise temperate regions.
             double altitude = (s.height - seaLevel) / (double)seaLevel;
-            temp -= std::max(0.0, altitude) * 0.7;
-            if (temp < 0.3)
+            temp -= std::max(0.0, altitude) * 0.45;
+            if (temp < 0.26)
                 s.biome = BIOME_TUNDRA;
             else if (humid > 0.5)
                 s.biome = BIOME_FOREST;
@@ -254,20 +339,35 @@ bool TerrainGenerator::isCave(int wx, int wy, int wz) {
     // rooms live in the bottom third of the world.
     double thr = 0.66 - 0.38 * depth01;
     double c = perlinNoise.noise(wx * 0.009 + 2100.0, wy * 0.016 + 2100.0, wz * 0.009 + 2100.0);
-    // The wall-roughening octave contributes at most ±0.35 — skip it for
+    // The wall-roughening octave contributes at most ±ROUGH — skip it for
     // the vast majority of blocks that can't reach the threshold anyway.
-    if (c + 0.35 < thr) return false;
-    if (c - 0.35 > thr) return true;
-    c += 0.35 * perlinNoise.noise(wx * 0.027 + 2100.0, wy * 0.048 + 2100.0, wz * 0.027 + 2100.0);
+    // Kept modest: a strong octave flips isolated blocks past the threshold
+    // far from any cavern, speckling the stone with 1-3 block air pockets.
+    constexpr double ROUGH = 0.18;
+    if (c + ROUGH < thr) return false;
+    if (c - ROUGH > thr) return true;
+    c += ROUGH * perlinNoise.noise(wx * 0.027 + 2100.0, wy * 0.048 + 2100.0, wz * 0.027 + 2100.0);
     return c > thr;
 }
 
-double TerrainGenerator::getNoise(int x, int y) {
-    double noise = perlinNoise.noise(x * scale, y * scale) + 1.0 / 2.0;
-    return noise;
+bool TerrainGenerator::caveEntranceAllowed(int x, int z) {
+    // ~50-block patches; only the top of the noise range qualifies.
+    return perlinNoise.noise(x * 0.02 + 7700.0, z * 0.02 + 7700.0) > 0.5;
 }
 
-double TerrainGenerator::getNoise(int x, int y, int z) {
-    double noise = perlinNoise.noise(x * scale, y * scale, z * scale) + 1.0 / 2.0;
+bool TerrainGenerator::isCoalOre(int wx, int wy, int wz) {
+    // Blobs a few blocks across: thresholding a mid-frequency 3D noise
+    // high keeps only isolated peaks, unlike the old near-zero band that
+    // traced thin contour shells through all the stone.
+    return perlinNoise.noise(wx * 0.19 + 9100.0, wy * 0.19 + 9100.0, wz * 0.19 + 9100.0) > 0.57;
+}
+
+int TerrainGenerator::soilDepth(int x, int z) {
+    double n = perlinNoise.noise(x * 0.07 + 8300.0, z * 0.07 + 8300.0); // ~ -0.7..0.7
+    return 3 + std::clamp(static_cast<int>((n + 0.7) / 1.4 * 3.0), 0, 2);
+}
+
+double TerrainGenerator::getNoise(int x, int y) {
+    double noise = perlinNoise.noise(x * scale, y * scale) + 0.5;
     return noise;
 }
