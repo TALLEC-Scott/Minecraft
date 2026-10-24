@@ -4,8 +4,10 @@
 
 #include "mob.h"
 #include "mobs/chicken.h"
+#include "mobs/cow.h"
 #include "mobs/creeper.h"
 #include "mobs/pig.h"
+#include "mobs/sheep.h"
 #include "mobs/spider.h"
 
 namespace {
@@ -23,6 +25,8 @@ constexpr MobInfo MOB_TABLE[] = {
     {MobType::Chicken, "chicken", &makeMob<Chicken>, MobCategory::Passive, 0.2f, 0.7f, 4.0f, biomeBit(BIOME_PLAINS) | biomeBit(BIOME_FOREST), 2, 4, 10},
     {MobType::Creeper, "creeper", &makeMob<Creeper>, MobCategory::Hostile, 0.3f, 1.7f, 20.0f, ALL_LAND_BIOMES, 1, 4, 100},
     {MobType::Spider,  "spider",  &makeMob<Spider>,  MobCategory::Hostile, 0.7f, 0.9f, 16.0f, ALL_LAND_BIOMES, 1, 4, 100},
+    {MobType::Cow, "cow", &makeMob<Cow>, MobCategory::Passive, 0.45f, 1.4f,   10.0f, biomeBit(BIOME_PLAINS) | biomeBit(BIOME_FOREST) | biomeBit(BIOME_TUNDRA), 2, 4, 8},
+    {MobType::Sheep, "sheep", &makeMob<Sheep>, MobCategory::Passive, 0.45f, 1.3f, 8.0f, biomeBit(BIOME_PLAINS) | biomeBit(BIOME_FOREST) | biomeBit(BIOME_TUNDRA), 2, 4, 12},
 };
 // clang-format on
 
