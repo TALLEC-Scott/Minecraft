@@ -1263,6 +1263,10 @@ int main(int argc, char* argv[]) {
                                                     (float)windowWidth / (float)windowHeight, 0.1f, 5000.0f);
             glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
             int frame = 0;
+            constexpr int SETTLE_FRAMES = 30;
+            constexpr double MAX_WARMUP_SECONDS = 60.0;
+            int idleFrames = 0;
+            const double warmupStart = glfwGetTime();
 
             while (!glfwWindowShouldClose(window) && frame < WARMUP_FRAMES + MEASURE_FRAMES) {
                 bool measuring = (frame >= WARMUP_FRAMES);
@@ -1355,6 +1359,20 @@ int main(int argc, char* argv[]) {
 
                 glfwPollEvents();
                 FrameMark;
+
+                // Warmup = the 600-frame spin, then hold on its last frame
+                // until chunk streaming has settled (SETTLE_FRAMES idle
+                // frames in a row, capped at MAX_WARMUP_SECONDS). At ~1000
+                // fps the spin alone finishes before the spawn area has even
+                // meshed, and the measured phase ran on a half-loaded world.
+                if (frame == WARMUP_FRAMES - 1) {
+                    idleFrames = w->chunkManager->streamingIdle() ? idleFrames + 1 : 0;
+                    double waited = glfwGetTime() - warmupStart;
+                    if (idleFrames < SETTLE_FRAMES && waited < MAX_WARMUP_SECONDS) continue;
+                    std::cout << "[benchmark] warmup " << waited << " s, " << w->chunkManager->chunks.size()
+                              << " chunks loaded" << (idleFrames < SETTLE_FRAMES ? " (timed out)" : "")
+                              << std::endl;
+                }
                 frame++;
             }
 

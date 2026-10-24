@@ -43,6 +43,18 @@ class ChunkManager {
     void setRenderDistance(int rd) { renderDistance = rd; }
     int getRenderDistance() const { return renderDistance; }
     void setWorldSave(WorldSave* ws) { worldSave = ws; }
+
+    // True when no chunk generation or mesh build is queued, running, or
+    // waiting to be drained — i.e. the world around the last update()
+    // position has finished streaming. Used by the benchmark warmup. Web
+    // builds generate synchronously, so they're always idle.
+    bool streamingIdle() const {
+#ifndef __EMSCRIPTEN__
+        return pendingChunks.empty() && meshesOutstanding == 0;
+#else
+        return true;
+#endif
+    }
     void saveAllModifiedChunks();
     // Sum of Chunk::memoryUsage across all loaded chunks, in bytes.
     size_t totalChunkMemory() const;
@@ -95,6 +107,8 @@ class ChunkManager {
 
     std::queue<MeshRequest> meshRequestQueue;
     std::queue<MeshResult> meshResultQueue; // guarded by resultMutex
+    // Mesh builds queued but not yet drained (main thread only).
+    int meshesOutstanding = 0;
 
     // Worker threads
     std::vector<std::thread> workers;
