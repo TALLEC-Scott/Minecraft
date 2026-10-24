@@ -1,8 +1,7 @@
 #pragma once
 
-// Optional per-mob sound effects. The repo ships no mob audio (and must not
-// ship Minecraft's), so everything here degrades to a silent no-op when the
-// files are absent. To give a mob sounds, drop WAVs at
+// Per-mob sound effects. Missing files degrade to a silent no-op. Sounds
+// live as WAVs (Git LFS, like every *.wav in the repo) at
 //     assets/Sounds/mob/<name>/<event>N.wav
 // where <name> is the registry name (e.g. "pig"), <event> is one of
 // ambient | hurt | death | step | attack, and N = 1..MAX_VARIANTS. The
