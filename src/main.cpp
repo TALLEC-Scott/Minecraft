@@ -1345,7 +1345,15 @@ int main(int argc, char* argv[]) {
                 if (measuring) profiler.beginUpdate();
                 // Benchmark runs at a fixed step so frame-rate measurements
                 // aren't perturbed by real dt; entities don't exist here.
-                w->update(player.getPosition(), 1.0f / 60.0f, glfwGetTime());
+                // The settle hold only streams chunks: running the
+                // simulation there would advance the world by however long
+                // streaming took, so the measured phase would start from a
+                // different state on faster or slower machines.
+                bool holding = frame == WARMUP_FRAMES - 1 && holdFrames > 0;
+                if (holding)
+                    w->chunkManager->update(player.getPosition());
+                else
+                    w->update(player.getPosition(), 1.0f / 60.0f, glfwGetTime());
                 if (measuring) profiler.endUpdate();
 
                 glm::mat4 vp = projection * player.getViewMatrix();
