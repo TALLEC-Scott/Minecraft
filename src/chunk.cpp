@@ -10,6 +10,7 @@
 #include <random>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 
 // PackedVertex / WaterVertex, waterHeightFromRaw, CellKind, WaterCellSample,
 // waterCellHeightT, and computeWaterTopCornersT live in mesh_types.h /
@@ -574,9 +575,28 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
     // merge only when block type, the face's sky + block light, and AO all
     // match — and AO must be uniform across the face's four corners, or a
     // per-block gradient would be stretched over the merged span. -1 = emit
-    // this face on its own (also water, whose top heights/flow are per block).
+    // this face on its own.
+    //
+    // Water: only flat source-water tops merge (open sea, lake interiors).
+    // Their four corner heights are equal, so the merged quad — which takes
+    // its corners from the first block — is exactly flat, and sources carry
+    // no flow direction. Shore tops slope (air neighbors pull corners down),
+    // flowing water has per-block flow, and side faces have per-column
+    // heights: all stay 1×1. The flat height is part of the key.
     auto mergeKey = [&](const FaceDef& fd, const int c[3], block_type bt) -> int {
-        if (hasFlag(bt, BF_LIQUID)) return -1;
+        int waterBits = 0;
+        if (hasFlag(bt, BF_LIQUID)) {
+            if (fd.d != 1 || fd.d_sign != 1) return -1; // top faces only
+            size_t wi = static_cast<size_t>(c[0]) * CHUNK_HEIGHT * CHUNK_SIZE +
+                        static_cast<size_t>(c[1]) * CHUNK_SIZE + c[2];
+            uint8_t raw = waterLevels ? waterLevels.get()[wi] : 0;
+            if (!waterIsSource(raw)) return -1;
+            float corners[4];
+            computeWaterTopCorners(blocks, waterLevels.get(), c[0], c[1], c[2], fd.u_sign, fd.v_sign, corners, nc);
+            for (int i = 1; i < 4; i++)
+                if (corners[i] != corners[0]) return -1;
+            waterBits = (17 + static_cast<int>(std::lround((corners[0] - c[1]) * 32.0f))) << 18;
+        }
         int p[3] = {c[0], c[1], c[2]};
         p[fd.d] += fd.d_sign;
         int aoFirst = -1;
@@ -599,7 +619,7 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
         }
         int sky = slDirect(p[0], p[1], p[2]);
         int blk = blDirect(p[0], p[1], p[2]);
-        return static_cast<int>(bt) | (aoFirst << 8) | (sky << 10) | (blk << 14);
+        return static_cast<int>(bt) | (aoFirst << 8) | (sky << 10) | (blk << 14) | waterBits;
     };
 
     int mask[MAX_DIM][MAX_DIM]; // block type of each visible face, -1 = none

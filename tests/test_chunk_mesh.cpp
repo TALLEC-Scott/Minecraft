@@ -564,6 +564,118 @@ TEST(ChunkMesh, GreedyPreservesShadingOnMixedScene) {
     expectGreedyPreservesShading(in);
 }
 
+// --- Greedy water ----------------------------------------------------------------
+
+namespace {
+
+// Water pool: sources at y = 10 over a stone floor (x, z in [lo, hi]); with
+// `walls`, a stone rim at y = 10 so no top-face corner averages with air.
+void waterPool(MeshInputs& in, int lo, int hi, bool walls) {
+    for (int x = lo - 1; x <= hi + 1; x++)
+        for (int z = lo - 1; z <= hi + 1; z++) {
+            in.setBlock(x, 9, z, STONE);
+            bool rim = x < lo || x > hi || z < lo || z > hi;
+            if (!rim)
+                in.setBlock(x, 10, z, WATER);
+            else if (walls)
+                in.setBlock(x, 10, z, STONE);
+        }
+}
+
+struct WaterTop {
+    std::array<float, 3> lo, hi; // ×2-encoded bounds
+    std::array<float, 4> y;      // per-corner ×2 heights
+};
+
+std::vector<WaterTop> waterTops(const MeshData& m) {
+    std::vector<WaterTop> out;
+    size_t verts = m.waterVerts.size() / sizeof(WaterVertex);
+    for (size_t i = 0; i + 3 < verts; i += 4) {
+        if (waterVert(m, i).normalIdx != 4) continue;
+        WaterTop t{{1e9f, 1e9f, 1e9f}, {-1e9f, -1e9f, -1e9f}, {}};
+        for (int k = 0; k < 4; k++) {
+            const WaterVertex& v = waterVert(m, i + k);
+            float p[3] = {v.px, v.py, v.pz};
+            for (int a = 0; a < 3; a++) {
+                t.lo[a] = std::min(t.lo[a], p[a]);
+                t.hi[a] = std::max(t.hi[a], p[a]);
+            }
+            t.y[k] = v.py;
+        }
+        out.push_back(t);
+    }
+    return out;
+}
+
+MeshData buildWith(MeshInputs& in, bool greedy) {
+    GreedyGuard g(greedy);
+    return in.build();
+}
+
+} // namespace
+
+TEST(ChunkMesh, GreedyMergesFlatWaterIntoOneQuad) {
+    MeshInputs in;
+    waterPool(in, 5, 10, /*walls=*/true);
+    EXPECT_EQ(waterTops(buildWith(in, false)).size(), 36u);
+    auto tops = waterTops(buildWith(in, true));
+    ASSERT_EQ(tops.size(), 1u);
+    for (float y : tops[0].y) EXPECT_FLOAT_EQ(y, tops[0].y[0]) << "merged water must stay flat";
+}
+
+TEST(ChunkMesh, GreedyKeepsSlopedWaterEdgesSeparate) {
+    // No rim: edge tops average with air and slope, so they stay 1×1 while
+    // the flat interior merges.
+    MeshInputs in;
+    waterPool(in, 4, 11, /*walls=*/false);
+    size_t plain = waterTops(buildWith(in, false)).size();
+    auto tops = waterTops(buildWith(in, true));
+    EXPECT_GT(tops.size(), 1u);
+    EXPECT_LT(tops.size(), plain);
+    // Every merged (wider than one block) quad is flat; every sloped quad is 1×1.
+    for (const WaterTop& t : tops) {
+        bool flat = std::all_of(t.y.begin(), t.y.end(), [&](float y) { return y == t.y[0]; });
+        bool unit = (t.hi[0] - t.lo[0]) == 2.0f && (t.hi[2] - t.lo[2]) == 2.0f;
+        EXPECT_TRUE(flat || unit) << "sloped water quad was merged";
+    }
+}
+
+TEST(ChunkMesh, GreedyNeverMergesFlowingWater) {
+    MeshInputs in;
+    waterPool(in, 5, 10, /*walls=*/true);
+    for (int x = 5; x <= 10; x++)
+        for (int z = 5; z <= 10; z++) in.water[lightIdx(x, 10, z)] = 3; // flow level 3
+    EXPECT_EQ(waterTops(buildWith(in, true)).size(), waterTops(buildWith(in, false)).size());
+}
+
+TEST(ChunkMesh, GreedyWaterMatchesPlainSurfaceHeights) {
+    // Mixed pool (rim on two sides, air on the others): every greedy water
+    // quad must cover unit faces that the plain mesher draws flat at the
+    // quad's height.
+    MeshInputs in;
+    waterPool(in, 4, 11, /*walls=*/false);
+    for (int i = 3; i <= 12; i++) {
+        in.setBlock(i, 10, 3, STONE);
+        in.setBlock(3, 10, i, STONE);
+    }
+    std::map<std::pair<int, int>, WaterTop> unit;
+    for (const WaterTop& t : waterTops(buildWith(in, false)))
+        unit[{static_cast<int>(t.lo[0]), static_cast<int>(t.lo[2])}] = t;
+    size_t covered = 0;
+    for (const WaterTop& t : waterTops(buildWith(in, true))) {
+        for (float x = t.lo[0]; x < t.hi[0]; x += 2.0f)
+            for (float z = t.lo[2]; z < t.hi[2]; z += 2.0f) {
+                auto it = unit.find({static_cast<int>(x), static_cast<int>(z)});
+                ASSERT_NE(it, unit.end());
+                covered++;
+                bool merged = (t.hi[0] - t.lo[0]) > 2.0f || (t.hi[2] - t.lo[2]) > 2.0f;
+                if (!merged) continue;
+                for (float y : it->second.y) EXPECT_FLOAT_EQ(y, t.y[0]) << "merged over a non-flat water face";
+            }
+    }
+    EXPECT_EQ(covered, unit.size());
+}
+
 TEST(ChunkMesh, GlowstoneOnNegZEdgeFaceUsesNeighborBorderLight) {
     MeshInputs in;
     in.setBlock(8, 8, 0, GLOWSTONE);
