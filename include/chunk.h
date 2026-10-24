@@ -93,6 +93,9 @@ class Chunk {
             sectionMeshes[i] = std::move(other.sectionMeshes[i]);
         }
         std::memcpy(heights, other.heights, sizeof(heights));
+        std::memcpy(sectionConn, other.sectionConn, sizeof(sectionConn));
+        std::memcpy(sectionRanges, other.sectionRanges, sizeof(sectionRanges));
+        visibleSections = other.visibleSections;
         other.chunkVAO = other.chunkVBO = other.chunkEBO = 0;
         other.waterVAO = other.waterVBO = other.waterEBO = 0;
     }
@@ -130,6 +133,9 @@ class Chunk {
             pendingMesh = std::move(other.pendingMesh);
             meshBuildInFlight = other.meshBuildInFlight;
             std::memcpy(heights, other.heights, sizeof(heights));
+            std::memcpy(sectionConn, other.sectionConn, sizeof(sectionConn));
+            std::memcpy(sectionRanges, other.sectionRanges, sizeof(sectionRanges));
+            visibleSections = other.visibleSections;
 
             other.chunkVAO = other.chunkVBO = other.chunkEBO = 0;
             other.waterVAO = other.waterVBO = other.waterEBO = 0;
@@ -184,6 +190,10 @@ class Chunk {
     void markSectionDirty(int sy) {
         if (sy < 0 || sy >= NUM_SECTIONS) return;
         sectionDirty |= (1u << sy);
+        // An edit may have opened a passage — treat the section as fully
+        // connected until its mesh (and mask) are rebuilt, so cave
+        // culling never blanks a freshly dug hole for a frame.
+        sectionConn[sy] = secvis::CONN_ALL;
         // If a build is in flight or pending upload, also record this
         // bit so uploadMesh can restore it — otherwise the upload's
         // builtDirtyMask clear wipes changes made after the snapshot.
@@ -328,6 +338,16 @@ class Chunk {
     // Cached per-section mesh data. Clean sections are reused across
     // incremental rebuilds; only dirty sections get re-meshed.
     SectionMesh sectionMeshes[NUM_SECTIONS];
+
+    // --- Cave culling ---
+    // Per-section air connectivity from the last uploaded mesh (CONN_ALL
+    // until known, so unmeshed sections are never wrongly culled) and the
+    // per-section index subranges of the currently uploaded buffers.
+    // visibleSections is rewritten each frame by World::render's BFS.
+    uint16_t sectionConn[NUM_SECTIONS] = {secvis::CONN_ALL, secvis::CONN_ALL, secvis::CONN_ALL, secvis::CONN_ALL,
+                                          secvis::CONN_ALL, secvis::CONN_ALL, secvis::CONN_ALL, secvis::CONN_ALL};
+    SectionDrawRanges sectionRanges[NUM_SECTIONS];
+    uint8_t visibleSections = 0xFF;
 
   private:
     void computeSkyLight();

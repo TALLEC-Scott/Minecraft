@@ -147,16 +147,39 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
     const float worldOff[3] = {(float)(chunkX * CHUNK_SIZE), 0.0f, (float)(chunkZ * CHUNK_SIZE)};
     const int effDIM[3] = {CHUNK_SIZE, maxSolidY + 2, CHUNK_SIZE};
 
+    // Cave culling needs per-section index subranges, so geometry is
+    // emitted section by section — the Y axis (whether it's the slice
+    // axis d or the in-plane axis v) is clamped to [yMin, yMax) exactly
+    // like the online per-section builder in chunk.cpp. Quads therefore
+    // never span a section boundary; the extra splits on tall faces are
+    // the price of section-granular draws.
+    SectionDrawRanges ranges[secvis::NUM_SECTIONS];
+    std::vector<unsigned int> crossIdx;
+
+    for (int sect = 0; sect < secvis::NUM_SECTIONS; sect++) {
+        const int yMin = sect * 16;
+        const int yMax = std::min(yMin + 16, (int)CHUNK_HEIGHT);
+        auto& range = ranges[sect];
+        range.opaqueStart = (uint32_t)opaqueIdx.size();
+        range.crossStart = (uint32_t)crossIdx.size();
+        range.waterStart = (uint32_t)waterIdx.size();
+
     for (int f = 0; f < 6; f++) {
         const FaceDef& fd = FACE_DEFS[f];
         const int d_dim = std::min(DIM[fd.d], effDIM[fd.d]);
         const int u_dim = std::min(DIM[fd.u], effDIM[fd.u]);
         const int v_dim = std::min(DIM[fd.v], effDIM[fd.v]);
 
-        for (int d = 0; d < d_dim; d++) {
+        // Clamp the Y-related axis to the current section's range.
+        const int d_start = (fd.d == 1) ? std::max(yMin, 0) : 0;
+        const int d_end = (fd.d == 1) ? std::min(yMax, d_dim) : d_dim;
+        const int v_start = (fd.v == 1) ? std::max(yMin, 0) : 0;
+        const int v_end = (fd.v == 1) ? std::min(yMax, v_dim) : v_dim;
+
+        for (int d = d_start; d < d_end; d++) {
             bool anyFace = false;
             for (int u = 0; u < u_dim; u++) {
-                for (int v = 0; v < v_dim; v++) {
+                for (int v = v_start; v < v_end; v++) {
                     int c[3];
                     c[fd.d] = d;
                     c[fd.u] = u;
@@ -188,7 +211,7 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
             if (!anyFace) continue;
 
             for (int u = 0; u < u_dim; u++) {
-                for (int v = 0; v < v_dim;) {
+                for (int v = v_start; v < v_end;) {
                     int bt = mask[u][v];
                     if (bt == -1) {
                         v++;
@@ -197,7 +220,7 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
 
                     int h = 1, w = 1;
                     if (g_greedyMeshing) {
-                        while (v + h < v_dim && mask[u][v + h] == bt) h++;
+                        while (v + h < v_end && mask[u][v + h] == bt) h++;
                         w = 1;
                         while (u + w < u_dim) {
                             bool ok = true;
@@ -357,12 +380,11 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
         }
     }
 
-    // --- Cross-quad pass for plants (BF_CROSS) ---
+    // --- Cross-quad pass for plants (BF_CROSS), this section only ---
     // Each plant is rendered as two intersecting planes (X shape) made
     // double-sided by emitting each quad twice with opposite winding.
     // Texture cutout is handled in the fragment shader (alpha < 0.5 →
     // discard for plant layers).
-    std::vector<unsigned int> crossIdx;
     auto emitCross = [&](int lx, int ly, int lz, block_type bt) {
         float layer = (float)block_layers::layerForFace(bt, 0);
         int skyL = slDirect(lx, ly, lz);
@@ -414,7 +436,7 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
     };
 
     for (int x = 0; x < CHUNK_SIZE; ++x) {
-        for (int y = 0; y < opaqueH; ++y) {
+        for (int y = yMin; y < std::min(yMax, opaqueH); ++y) {
             for (int z = 0; z < CHUNK_SIZE; ++z) {
                 block_type t = blocks[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].getType();
                 if (hasFlag(t, BF_CROSS)) emitCross(x, y, z, t);
@@ -422,12 +444,21 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
         }
     }
 
+    range.opaqueCount = (uint32_t)opaqueIdx.size() - range.opaqueStart;
+    range.crossCount = (uint32_t)crossIdx.size() - range.crossStart;
+    range.waterCount = (uint32_t)waterIdx.size() - range.waterStart;
+    } // end per-section loop
+
     MeshData result;
     result.verts = std::move(opaqueVerts);
     result.waterVerts = std::move(waterVerts);
     result.opaqueIdx = std::move(opaqueIdx);
     result.crossIdx = std::move(crossIdx);
     result.waterIdx = std::move(waterIdx);
+    for (int s = 0; s < secvis::NUM_SECTIONS; s++) {
+        result.ranges[s] = ranges[s];
+        result.sectionConn[s] = secvis::computeSectionConnectivity(blocks, s);
+    }
     result.ready = true;
     return result;
 }

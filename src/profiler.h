@@ -55,6 +55,11 @@ struct FrameAccum {
     int waterDrawCalls = 0;
     int chunksRendered = 0;
     int vertexCount = 0;
+    // Cave culling: sections drawn vs skipped among frustum-visible
+    // chunks, plus how many sections the visibility BFS traversed.
+    int sectionsRendered = 0;
+    int sectionsCulled = 0;
+    int caveBfsVisited = 0;
     // Total CPU-side memory of all loaded chunks (sum of Chunk::memoryUsage).
     // Sampled by ChunkManager::update each frame. Preserved across reset()
     // since it's a state snapshot, not a per-frame accumulator.
@@ -107,6 +112,8 @@ struct FrameProfile {
     int chunksRendered = 0;
     int chunksTotal = 0;
     int vertexCount = 0;
+    int sectionsRendered = 0;
+    int sectionsCulled = 0;
 
     // GPU timer query result
     double gpuMs = 0;
@@ -193,6 +200,8 @@ class Profiler {
         cur.chunksRendered = g_frame.chunksRendered;
         cur.chunksTotal = chunksTotal;
         cur.vertexCount = g_frame.vertexCount;
+        cur.sectionsRendered = g_frame.sectionsRendered;
+        cur.sectionsCulled = g_frame.sectionsCulled;
 
         frames.push_back(cur);
         cur = {};
@@ -216,7 +225,7 @@ class Profiler {
 
         // Extract per-metric vectors
         std::vector<double> total, update, render, swap, meshBuild, gpu;
-        std::vector<int> meshBuilds, opaqueTri, waterTri, drawCalls, chunks, verts;
+        std::vector<int> meshBuilds, opaqueTri, waterTri, drawCalls, chunks, verts, secRendered, secCulled;
         for (auto& f : frames) {
             total.push_back(f.totalMs);
             update.push_back(f.updateMs);
@@ -230,6 +239,8 @@ class Profiler {
             drawCalls.push_back(f.opaqueDrawCalls + f.waterDrawCalls);
             chunks.push_back(f.chunksRendered);
             verts.push_back(f.vertexCount);
+            secRendered.push_back(f.sectionsRendered);
+            secCulled.push_back(f.sectionsCulled);
         }
 
         double avgTotal = avg(total);
@@ -281,8 +292,13 @@ class Profiler {
             out << "  p99:  " << percentile(gpu, 0.99) << " ms\n\n";
         }
 
+        double avgSecRendered = std::accumulate(secRendered.begin(), secRendered.end(), 0.0) / n;
+        double avgSecCulled = std::accumulate(secCulled.begin(), secCulled.end(), 0.0) / n;
+
         out << "Geometry (avg per frame):\n";
         out << "  chunks:    " << (int)avgChunks << " rendered / " << avgTotal_chunks << " loaded\n";
+        out << "  sections:  " << (int)avgSecRendered << " visible / " << (int)avgSecCulled
+            << " cave-culled\n";
         out << "  triangles: " << (int)avgOpaqueTri << " opaque + " << (int)avgWaterTri
             << " water = " << (int)(avgOpaqueTri + avgWaterTri) << " total\n";
         out << "  vertices:  " << (int)avgVerts << "\n\n";

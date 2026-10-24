@@ -69,6 +69,11 @@ class Menu {
     GameState settingsReturnState = GameState::MainMenu;
 
     ma_engine* getAudioEngine() { return audioInitialized ? &audioEngine : nullptr; }
+    // Master mute — benchmark runs are silent (music through speakers
+    // during an unattended headless run is just noise).
+    void muteAll() {
+        if (audioInitialized) ma_engine_set_volume(&audioEngine, 0.0f);
+    }
     void startMusic();
     void stopMusic();
     void startMenuMusic();

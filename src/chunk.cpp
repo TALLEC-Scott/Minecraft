@@ -24,6 +24,7 @@ static bool isBlockFiltering(block_type t);
 // World::loadChunkData et al.); repeating it here adds nothing.
 
 #include "tracy_shim.h"
+#include "terrain_fill.h"
 
 // Sync sampler: reads in-chunk from blocks[]/waterLevels[], cross-chunk
 // via Chunk pointers (including diagonals for 4-chunk corners).
@@ -118,6 +119,7 @@ static void compressIntoSections(std::unique_ptr<ChunkSection> sections[], const
 }
 
 ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
+    ZoneScopedN("generateChunkData");
     ChunkData d;
     // Generate terrain into a temporary flat buffer, then compress into sections
     auto flatBlocks = std::shared_ptr<Cube[]>(new Cube[static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE]);
@@ -125,260 +127,8 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
     d.chunkX = chunkX;
     d.chunkZ = chunkZ;
 
-    constexpr int WATER_LEVEL = CHUNK_HEIGHT / 2;
-
-    for (int i = 0; i < CHUNK_SIZE; i++) {
-        for (int k = 0; k < CHUNK_SIZE; k++) {
-            int globalX = chunkX * CHUNK_SIZE + i;
-            int globalZ = chunkZ * CHUNK_SIZE + k;
-
-            Biome biome;
-            int height = terrain.getHeightAndBiome(globalX, globalZ, biome);
-            d.heights[i][k] = height;
-            d.biomes[i][k] = biome;
-            const BiomeParams& bp = terrain.getBiomeParams(biome);
-
-            int limit_stone = std::max(1, (int)(0.7 * height));
-
-            for (int j = 0; j < CHUNK_HEIGHT; j++) {
-                Cube* block = &flatBlocks[i * CHUNK_HEIGHT * CHUNK_SIZE + j * CHUNK_SIZE + k];
-                double detailNoise = terrain.getNoise(globalX, globalZ, j);
-
-                if (j > height) {
-                    block->setType(j <= WATER_LEVEL ? WATER : AIR);
-                } else if (j == 0) {
-                    block->setType(BEDROCK);
-                } else if (j < limit_stone) {
-                    block->setType((detailNoise > 0.45 && detailNoise < 0.5) ? COAL_ORE : STONE);
-                } else if (j == height) {
-                    // Surface: altitude overrides biome at high elevations
-                    int snowLine = WATER_LEVEL + 35;  // ~99
-                    int stoneLine = WATER_LEVEL + 15; // ~79
-                    if (height >= snowLine && biome == BIOME_TUNDRA)
-                        block->setType(SNOW); // snow peaks in cold biomes
-                    else if (height >= stoneLine)
-                        block->setType(STONE); // exposed rock at high altitude
-                    else
-                        block->setType(bp.surfaceBlock); // biome surface (grass/sand/snow)
-                } else {
-                    // Below surface (limit_stone <= j < height): subsurface material
-                    block->setType(bp.subsurfaceBlock);
-                }
-            }
-        }
-    }
-
-    // --- Shore post-pass: convert blocks adjacent to water ---
-    for (int i = 0; i < CHUNK_SIZE; i++) {
-        block_type shoreBlock = (d.biomes[i][0] == BIOME_TUNDRA) ? GRAVEL : SAND;
-        for (int k = 0; k < CHUNK_SIZE; k++) {
-            if (d.biomes[i][k] == BIOME_TUNDRA)
-                shoreBlock = GRAVEL;
-            else
-                shoreBlock = SAND;
-
-            for (int j = 0; j <= WATER_LEVEL + 1 && j < CHUNK_HEIGHT; j++) {
-                Cube* block = getBlockFromFlat(flatBlocks.get(), i, j, k);
-                block_type bt = block->getType();
-                if (bt != DIRT && bt != GRASS && bt != STONE && bt != GRAVEL) continue;
-
-                if (j < WATER_LEVEL) {
-                    Cube* above = getBlockFromFlat(flatBlocks.get(), i, j + 1, k);
-                    if (above && above->getType() == WATER) {
-                        block->setType(shoreBlock);
-                        continue;
-                    }
-                }
-                static const int dirs[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
-                for (auto& dir : dirs) {
-                    Cube* nb = getBlockFromFlat(flatBlocks.get(), i + dir[0], j + dir[1], k + dir[2]);
-                    if (nb && nb->getType() == WATER) {
-                        block->setType(shoreBlock);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    // --- Unified vegetation placement ---
-    // Trees, cacti and plants all share a single `claimed` occupancy map so
-    // each (x,z) cell can grow at most one vegetation type. Trees claim the
-    // full canopy footprint (radius+1 on each side) so plants/cacti don't
-    // end up shadowed under leaves.
-    bool claimed[CHUNK_SIZE][CHUNK_SIZE] = {};
-
-    // Deterministic per-chunk PRNG seeded from chunk coordinates
-    uint64_t treeSeed = static_cast<uint64_t>(chunkX) * 73856093ULL ^ static_cast<uint64_t>(chunkZ) * 19349663ULL;
-    std::mt19937 rng(static_cast<unsigned int>(treeSeed));
-    std::uniform_int_distribution<int> posDist(3, CHUNK_SIZE - 4);
-    std::uniform_int_distribution<int> chanceDist(0, 99);
-    std::uniform_int_distribution<int> trunkDist(4, 7);
-    std::uniform_int_distribution<int> radiusDist(2, 3);
-    std::uniform_int_distribution<int> layersDist(3, 5);
-
-    // Tree density from biome params (checked per tree position for accuracy at borders)
-
-    constexpr int MAX_TREE_ATTEMPTS = 5;
-    constexpr int TREE_WATER_LEVEL = CHUNK_HEIGHT / 2;
-
-    for (int t = 0; t < MAX_TREE_ATTEMPTS; t++) {
-        int tx = posDist(rng);
-        int tz = posDist(rng);
-
-        // Check biome at this tree position for density/chance
-        int treeGlobalX = chunkX * CHUNK_SIZE + tx;
-        int treeGlobalZ = chunkZ * CHUNK_SIZE + tz;
-        Biome treeBiome = terrain.getBiome(treeGlobalX, treeGlobalZ);
-        const BiomeParams& tbp = terrain.getBiomeParams(treeBiome);
-        if (tbp.treeDensity <= 0.0f) continue;
-
-        // Scale attempts: consume RNG but skip low-density biomes probabilistically
-        int roll = chanceDist(rng);
-        int effectiveChance = static_cast<int>(tbp.treeChance * tbp.treeDensity);
-        if (roll >= effectiveChance) continue;
-
-        int trunkH = trunkDist(rng);
-        int radius = radiusDist(rng);
-        int layers = layersDist(rng);
-        int totalH = trunkH + layers + 1;
-
-        int surface = d.heights[tx][tz];
-        if (surface <= TREE_WATER_LEVEL) continue;
-        if (surface + totalH >= CHUNK_HEIGHT) continue;
-        if (tx - radius < 1 || tx + radius >= CHUNK_SIZE - 1) continue;
-        if (tz - radius < 1 || tz + radius >= CHUNK_SIZE - 1) continue;
-
-        Cube* surfaceBlock = getBlockFromFlat(flatBlocks.get(), tx, surface, tz);
-        if (!surfaceBlock || surfaceBlock->getType() != tbp.surfaceBlock) continue;
-        if (tbp.surfaceBlock != GRASS) continue; // only plant trees on grass
-
-        // Slope check + claim check on the canopy footprint (radius+1 on each
-        // side). The claim check prevents two trees from overlapping and
-        // blocks plants/cacti from landing under this canopy.
-        int footprint = radius + 1;
-        bool tooSteep = false, overlaps = false;
-        for (int dx = -footprint; dx <= footprint && !tooSteep && !overlaps; dx++) {
-            for (int dz = -footprint; dz <= footprint && !tooSteep && !overlaps; dz++) {
-                int nx = tx + dx, nz = tz + dz;
-                if (nx < 0 || nx >= CHUNK_SIZE || nz < 0 || nz >= CHUNK_SIZE) continue;
-                if (claimed[nx][nz]) overlaps = true;
-                if (std::abs(dx) <= 1 && std::abs(dz) <= 1 && !(dx == 0 && dz == 0)) {
-                    if (std::abs(d.heights[nx][nz] - surface) > 2) tooSteep = true;
-                }
-            }
-        }
-        if (tooSteep || overlaps) continue;
-
-        for (int dx = -footprint; dx <= footprint; dx++)
-            for (int dz = -footprint; dz <= footprint; dz++) {
-                int nx = tx + dx, nz = tz + dz;
-                if (nx >= 0 && nx < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) claimed[nx][nz] = true;
-            }
-
-        // Trunk
-        for (int y = surface + 1; y <= surface + trunkH; y++) {
-            Cube* b = getBlockFromFlat(flatBlocks.get(), tx, y, tz);
-            if (b) b->setType(WOOD);
-        }
-
-        int canopyBase = surface + trunkH;
-        for (int ly = 0; ly < layers; ly++) {
-            int layerR = std::max(1, radius - ly / 2);
-            for (int dx = -layerR; dx <= layerR; dx++) {
-                for (int dz = -layerR; dz <= layerR; dz++) {
-                    if (abs(dx) == layerR && abs(dz) == layerR && layerR > 1) continue;
-                    if (dx == 0 && dz == 0 && ly == 0) continue;
-                    int bx = tx + dx, by = canopyBase + ly, bz = tz + dz;
-                    if (bx < 0 || bx >= CHUNK_SIZE || bz < 0 || bz >= CHUNK_SIZE) continue;
-                    Cube* b = getBlockFromFlat(flatBlocks.get(), bx, by, bz);
-                    if (b && b->getType() == AIR) b->setType(LEAVES);
-                }
-            }
-        }
-
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dz = -1; dz <= 1; dz++) {
-                if (abs(dx) == 1 && abs(dz) == 1) continue;
-                int bx = tx + dx, bz = tz + dz;
-                if (bx < 0 || bx >= CHUNK_SIZE || bz < 0 || bz >= CHUNK_SIZE) continue;
-                Cube* crown = getBlockFromFlat(flatBlocks.get(), bx, canopyBase + layers, bz);
-                if (crown && crown->getType() == AIR) crown->setType(LEAVES);
-            }
-        }
-    }
-
-    // --- Cactus placement (uses shared claimed[] — see tree pass) ---
-    std::uniform_int_distribution<int> cactusDist(2, 4);
-    for (int t = 0; t < 3; t++) {
-        int cx = posDist(rng);
-        int cz = posDist(rng);
-        if (claimed[cx][cz]) continue;
-        int roll = chanceDist(rng);
-        if (roll >= 30) continue;
-
-        if (d.biomes[cx][cz] != BIOME_DESERT) continue;
-
-        int surface = d.heights[cx][cz];
-        if (surface <= WATER_LEVEL) continue;
-        int cactusH = cactusDist(rng);
-        if (surface + cactusH >= CHUNK_HEIGHT) continue;
-
-        Cube* surfBlock = getBlockFromFlat(flatBlocks.get(), cx, surface, cz);
-        if (!surfBlock || surfBlock->getType() != SAND) continue;
-
-        for (int y = surface + 1; y <= surface + cactusH; y++) {
-            Cube* b = getBlockFromFlat(flatBlocks.get(), cx, y, cz);
-            if (b && b->getType() == AIR) b->setType(CACTUS);
-        }
-        claimed[cx][cz] = true;
-    }
-
-    // --- Plant placement (uses shared claimed[] — see tree pass) ---
-    // Any cell claimed by a tree canopy or a cactus is skipped, so plants
-    // never appear shadowed under leaves or awkwardly next to a cactus.
-    for (int px = 0; px < CHUNK_SIZE; ++px) {
-        for (int pz = 0; pz < CHUNK_SIZE; ++pz) {
-            if (claimed[px][pz]) continue;
-            Biome bi = d.biomes[px][pz];
-            if (bi == BIOME_OCEAN || bi == BIOME_DESERT) continue;
-            int surface = d.heights[px][pz];
-            if (surface <= WATER_LEVEL) continue;
-            if (surface + 1 >= CHUNK_HEIGHT) continue;
-            Cube* surf = getBlockFromFlat(flatBlocks.get(), px, surface, pz);
-            if (!surf || surf->getType() != GRASS) continue;
-            Cube* above = getBlockFromFlat(flatBlocks.get(), px, surface + 1, pz);
-            if (!above || above->getType() != AIR) continue;
-            int roll = chanceDist(rng); // 0..99
-            block_type pick = AIR;
-            switch (bi) {
-            case BIOME_PLAINS:
-                if (roll < 10)
-                    pick = TALL_GRASS;
-                else if (roll < 11)
-                    pick = DANDELION;
-                else if (roll < 12)
-                    pick = POPPY;
-                break;
-            case BIOME_FOREST:
-                if (roll < 8)
-                    pick = TALL_GRASS;
-                else if (roll < 9)
-                    pick = POPPY;
-                break;
-            case BIOME_TUNDRA:
-            case BIOME_BEACH:
-                if (roll < 2) pick = TALL_GRASS;
-                break;
-            default:
-                break;
-            }
-            if (pick != AIR) {
-                above->setType(pick);
-                claimed[px][pz] = true;
-            }
-        }
-    }
+    // Terrain, caves, ore, shores and vegetation (GL-free, see terrain_fill.cpp).
+    fillChunkTerrain(terrain, chunkX, chunkZ, flatBlocks.get(), d.heights, d.biomes);
 
     // Compute maxSolidY
     d.maxSolidY = 0;
@@ -1230,6 +980,12 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
         unsigned int opaqueVertOff = 0, waterVertOff = 0;
         for (int s = 0; s < NUM_SECTIONS; s++) {
             auto& sm = sectionMeshes[s];
+            // Record each section's index subrange (per region) so cave
+            // culling can draw a subset of sections later.
+            auto& r = pendingMesh.ranges[s];
+            r.opaqueStart = (uint32_t)pendingMesh.opaqueIdx.size();
+            r.crossStart = (uint32_t)pendingMesh.crossIdx.size();
+            r.waterStart = (uint32_t)pendingMesh.waterIdx.size();
             // Opaque + cross plants share the same VBO, so both use opaqueVertOff.
             pendingMesh.verts.insert(pendingMesh.verts.end(), sm.verts.begin(), sm.verts.end());
             for (auto idx_val : sm.opaqueIdx) pendingMesh.opaqueIdx.push_back(idx_val + opaqueVertOff);
@@ -1239,6 +995,16 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
             pendingMesh.waterVerts.insert(pendingMesh.waterVerts.end(), sm.waterVerts.begin(), sm.waterVerts.end());
             for (auto idx_val : sm.waterIdx) pendingMesh.waterIdx.push_back(idx_val + waterVertOff);
             waterVertOff += (unsigned int)(sm.waterVerts.size() / WATER_BYTES_PER_VERT);
+            r.opaqueCount = (uint32_t)pendingMesh.opaqueIdx.size() - r.opaqueStart;
+            r.crossCount = (uint32_t)pendingMesh.crossIdx.size() - r.crossStart;
+            r.waterCount = (uint32_t)pendingMesh.waterIdx.size() - r.waterStart;
+        }
+        // Section connectivity: recompute only sections rebuilt this pass;
+        // clean sections keep their previously computed mask.
+        for (int s = 0; s < NUM_SECTIONS; s++) {
+            pendingMesh.sectionConn[s] = (sectionDirty & (1u << s))
+                                             ? secvis::computeSectionConnectivity(sections[s].get())
+                                             : sectionConn[s];
         }
         pendingMesh.ready = true;
     }
@@ -1372,6 +1138,13 @@ void Chunk::uploadMesh() {
     opaqueIndexCount = (int)pendingMesh.opaqueIdx.size();
     crossIndexCount = (int)pendingMesh.crossIdx.size();
     waterIndexCount = (int)pendingMesh.waterIdx.size();
+    // Cave-culling metadata travels with the mesh so ranges always match
+    // the buffers uploaded just above. Sections dirtied after this mesh
+    // was built keep CONN_ALL via markSectionDirty (never wrongly cull).
+    for (int s = 0; s < NUM_SECTIONS; s++) {
+        sectionRanges[s] = pendingMesh.ranges[s];
+        if (!(dirtyDuringBuild & (1u << s))) sectionConn[s] = pendingMesh.sectionConn[s];
+    }
     // Clear the bits that the uploaded mesh was built from, then restore
     // any bits that were re-set during the build (e.g., by the water sim
     // creating new cells in the same section). Without the restore, rapid
@@ -1400,24 +1173,79 @@ std::vector<Cube*> Chunk::render(const Shader& /*shaderProgram*/, const Neighbor
         g_frame.meshBuildBudget--;
     }
 
-    if (opaqueIndexCount > 0 || crossIndexCount > 0) {
+    // Cave culling: draw only BFS-visible sections. Contiguous visible
+    // sections merge into one glDrawElements to keep draw calls low; the
+    // all-visible mask takes the same single-draw path as before culling.
+    // `emit(startIdx, count, regionBaseIdx)` issues one ranged draw.
+    auto drawRuns = [this](auto&& rangeOf, auto&& emit) {
+        int runStart = -1;
+        uint32_t runFirst = 0, runCount = 0;
+        for (int s = 0; s <= NUM_SECTIONS; s++) {
+            bool vis = s < NUM_SECTIONS && (visibleSections & (1u << s));
+            uint32_t cnt = vis ? rangeOf(s).second : 0;
+            if (vis && cnt > 0) {
+                if (runStart < 0) {
+                    runStart = s;
+                    runFirst = rangeOf(s).first;
+                    runCount = 0;
+                }
+                runCount += cnt;
+            } else if (runStart >= 0) {
+                emit(runFirst, runCount);
+                runStart = -1;
+            }
+        }
+    };
+
+    if ((opaqueIndexCount > 0 || crossIndexCount > 0) && visibleSections != 0) {
         glBindVertexArray(chunkVAO);
         if (opaqueIndexCount > 0) {
-            glDrawElements(GL_TRIANGLES, opaqueIndexCount, GL_UNSIGNED_INT, nullptr);
-            g_frame.opaqueTriangles += opaqueIndexCount / 3;
-            g_frame.vertexCount += opaqueIndexCount / 6 * 4;
-            g_frame.opaqueDrawCalls++;
+            if (visibleSections == 0xFF) {
+                glDrawElements(GL_TRIANGLES, opaqueIndexCount, GL_UNSIGNED_INT, nullptr);
+                g_frame.opaqueTriangles += opaqueIndexCount / 3;
+                g_frame.vertexCount += opaqueIndexCount / 6 * 4;
+                g_frame.opaqueDrawCalls++;
+            } else {
+                drawRuns(
+                    [this](int s) {
+                        return std::pair<uint32_t, uint32_t>{sectionRanges[s].opaqueStart,
+                                                             sectionRanges[s].opaqueCount};
+                    },
+                    [](uint32_t first, uint32_t count) {
+                        glDrawElements(GL_TRIANGLES, (GLsizei)count, GL_UNSIGNED_INT,
+                                       (const void*)(static_cast<size_t>(first) * sizeof(unsigned int)));
+                        g_frame.opaqueTriangles += (int)count / 3;
+                        g_frame.vertexCount += (int)count / 6 * 4;
+                        g_frame.opaqueDrawCalls++;
+                    });
+            }
         }
         if (crossIndexCount > 0) {
             // Cross-plant pass: disable cull so each quad is visible from
             // both sides without duplicating reverse-winding indices.
+            // Cross region sits after the opaque region in the same EBO.
             glDisable(GL_CULL_FACE);
-            const void* crossOffset = (const void*)(static_cast<size_t>(opaqueIndexCount) * sizeof(unsigned int));
-            glDrawElements(GL_TRIANGLES, crossIndexCount, GL_UNSIGNED_INT, crossOffset);
+            const size_t crossBase = static_cast<size_t>(opaqueIndexCount);
+            if (visibleSections == 0xFF) {
+                glDrawElements(GL_TRIANGLES, crossIndexCount, GL_UNSIGNED_INT,
+                               (const void*)(crossBase * sizeof(unsigned int)));
+                g_frame.opaqueTriangles += crossIndexCount / 3;
+                g_frame.vertexCount += crossIndexCount / 6 * 4;
+                g_frame.opaqueDrawCalls++;
+            } else {
+                drawRuns(
+                    [this](int s) {
+                        return std::pair<uint32_t, uint32_t>{sectionRanges[s].crossStart, sectionRanges[s].crossCount};
+                    },
+                    [crossBase](uint32_t first, uint32_t count) {
+                        glDrawElements(GL_TRIANGLES, (GLsizei)count, GL_UNSIGNED_INT,
+                                       (const void*)((crossBase + first) * sizeof(unsigned int)));
+                        g_frame.opaqueTriangles += (int)count / 3;
+                        g_frame.vertexCount += (int)count / 6 * 4;
+                        g_frame.opaqueDrawCalls++;
+                    });
+            }
             glEnable(GL_CULL_FACE);
-            g_frame.opaqueTriangles += crossIndexCount / 3;
-            g_frame.vertexCount += crossIndexCount / 6 * 4;
-            g_frame.opaqueDrawCalls++;
         }
     }
     return {};
@@ -1425,11 +1253,33 @@ std::vector<Cube*> Chunk::render(const Shader& /*shaderProgram*/, const Neighbor
 
 void Chunk::renderWater(const Shader& /*shaderProgram*/, Chunk* /*nx_neg*/, Chunk* /*nx_pos*/, Chunk* /*nz_neg*/,
                         Chunk* /*nz_pos*/) {
-    if (waterIndexCount > 0) {
-        glBindVertexArray(waterVAO);
+    if (waterIndexCount <= 0 || visibleSections == 0) return;
+    glBindVertexArray(waterVAO);
+    if (visibleSections == 0xFF) {
         glDrawElements(GL_TRIANGLES, waterIndexCount, GL_UNSIGNED_INT, nullptr);
         g_frame.waterTriangles += waterIndexCount / 3;
         g_frame.waterDrawCalls++;
+        return;
+    }
+    int runStart = -1;
+    uint32_t runFirst = 0, runCount = 0;
+    for (int s = 0; s <= NUM_SECTIONS; s++) {
+        bool vis = s < NUM_SECTIONS && (visibleSections & (1u << s));
+        uint32_t cnt = vis ? sectionRanges[s].waterCount : 0;
+        if (vis && cnt > 0) {
+            if (runStart < 0) {
+                runStart = s;
+                runFirst = sectionRanges[s].waterStart;
+                runCount = 0;
+            }
+            runCount += cnt;
+        } else if (runStart >= 0) {
+            glDrawElements(GL_TRIANGLES, (GLsizei)runCount, GL_UNSIGNED_INT,
+                           (const void*)(static_cast<size_t>(runFirst) * sizeof(unsigned int)));
+            g_frame.waterTriangles += (int)runCount / 3;
+            g_frame.waterDrawCalls++;
+            runStart = -1;
+        }
     }
 }
 

@@ -169,6 +169,7 @@ static void applySettings() {
             for (auto& [pos, chunk] : w->chunkManager->chunks) chunk.markDirty();
         }
     }
+    g_caveCulling = gameSettings.caveCulling;
     // Only apply resolution while windowed - fullscreen keeps its
     // monitor-native size and the preset takes effect on exit.
     if (g_window && glfwGetWindowMonitor(g_window) == nullptr) {
@@ -583,6 +584,9 @@ int main(int argc, char* argv[]) {
 #endif
         Menu menuObj;
     menuObj.init();
+#ifndef __EMSCRIPTEN__
+    if (benchmarkMode) menuObj.muteAll();
+#endif
     g_menu = &menuObj;
 
 #ifdef __EMSCRIPTEN__
@@ -624,17 +628,6 @@ int main(int argc, char* argv[]) {
         bool skipPlayerRestore = false;
 #endif
 
-#ifndef __EMSCRIPTEN__
-        // Benchmark-only default-world picker: most-recent in saves/, else
-        // legacy "world", else a fresh "World" folder. Interactive runs use
-        // the Singleplayer menu instead.
-        auto pickInitialFolder = []() -> std::string {
-            auto all = listWorlds();
-            if (!all.empty()) return all[0].folder;
-            if (std::filesystem::exists("saves/world/level.dat")) return "world";
-            return uniqueFolderName("World");
-        };
-#endif
 
         auto captureCurrentPlayer = [&]() {
             PlayerSaveData pd;
@@ -791,11 +784,14 @@ int main(int argc, char* argv[]) {
         // one in the Singleplayer menu.
 #ifndef __EMSCRIPTEN__
         if (benchmarkMode) {
-            std::string initialFolder = pickInitialFolder();
-            bool freshWorld = !std::filesystem::exists("saves/" + initialFolder + "/level.dat");
-            std::optional<unsigned int> cliSeed;
-            if (worldSeed != 0 && freshWorld) cliSeed = worldSeed;
-            switchToWorld(initialFolder, cliSeed, freshWorld ? initialFolder : "");
+            // Hermetic benchmark world: wiped and regenerated from a fixed
+            // seed every run (override with --seed), so results compare
+            // across runs and machines and user saves are never touched.
+            constexpr unsigned int BENCHMARK_DEFAULT_SEED = 42;
+            std::error_code ec;
+            std::filesystem::remove_all("saves/_benchmark", ec);
+            unsigned int benchSeed = (worldSeed != 0) ? worldSeed : BENCHMARK_DEFAULT_SEED;
+            switchToWorld("_benchmark", benchSeed, "_benchmark");
         }
 #endif
 
