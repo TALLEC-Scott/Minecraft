@@ -1,6 +1,7 @@
 #include "player.h"
 #include "collision.h"
 #include "mob_manager.h"
+#include "mobs/sheep.h"
 #include "net/net_session.h"
 #include "particle_system.h"
 #include "world.h"
@@ -194,9 +195,14 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     }
     leftClickHeld = leftDown;
 
-    // Right click: ignite TNT if targeted, otherwise place block
+    // Right click: interact with a mob (shear) if one is in front, else
+    // ignite TNT if targeted, otherwise place block
     bool rightDown = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
-    if (rightDown && !rightClickHeld && world && hasHighlight) {
+    bool rightPressed = rightDown && !rightClickHeld && world;
+    if (rightPressed && tryInteractMob(world)) {
+        isPunching = true;
+        punchStartTime = glfwGetTime();
+    } else if (rightPressed && hasHighlight) {
         Cube* targetBlock = world->getBlock(targeted.x, targeted.y, targeted.z);
         if (targetBlock && targetBlock->getType() == TNT) {
             world->igniteTnt(targeted, glfwGetTime());
@@ -255,6 +261,25 @@ bool Player::tryAttackMob(World* world) {
         dmg *= 1.5f;
     if (world->mobManager->attackMob(*mob, dmg, eye)) playHitSound();
     return true;
+}
+
+bool Player::tryInteractMob(World* world) {
+    if (!world->mobManager) return false;
+    glm::vec3 eye = camera.getPosition();
+    glm::vec3 dir = camera.getFront();
+    float mobDist = 0.0f;
+    Mob* mob = world->mobManager->raycast(eye, dir, ATTACK_REACH, mobDist);
+    if (!mob || mob->type != MobType::Sheep) return false;
+    // A targeted block nearer than the mob shields it.
+    if (hasHighlight) {
+        float blockDist = 0.0f;
+        glm::vec3 b(targeted);
+        if (rayIntersectsAABB(eye, dir, b - glm::vec3(0.5f), b + glm::vec3(0.5f), REACH, blockDist) &&
+            blockDist < mobDist)
+            return false;
+    }
+    // Already-sheared sheep fall through to normal block placement.
+    return static_cast<Sheep*>(mob)->shear();
 }
 
 void Player::playHitSound() {
