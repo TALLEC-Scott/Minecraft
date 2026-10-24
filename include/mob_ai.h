@@ -177,4 +177,8 @@ bool findStandY(const MobContext& ctx, int x, int z, int nearY, float halfWidth,
 // `avoidWater`. Returns false after a few failed attempts.
 bool randomStandTarget(Mob& mob, MobContext& ctx, float radius, bool avoidWater, glm::vec3& out,
                        glm::vec3 awayFrom = glm::vec3(0.0f), bool biasAway = false);
+// Voxel line of sight between two world points (e.g. mob eye → player
+// eye): false if any solid block (MobContext::isSolid — unloaded chunks
+// count as solid) lies on the segment. Exact grid walk, no step skipping.
+bool hasLineOfSight(const MobContext& ctx, glm::vec3 from, glm::vec3 to);
 } // namespace mobai
