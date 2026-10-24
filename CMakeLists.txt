@@ -28,12 +28,14 @@ set(COMMON_SOURCES
     src/camera.cpp
     src/chunk.cpp
     src/chunk_mesh.cpp
+    src/section_visibility.cpp
     src/cube.cpp
     src/shader.cpp
     src/stb_image.cpp
     src/texture.cpp
     src/world.cpp
     src/TerrainGenerator.cpp
+    src/terrain_fill.cpp
     src/perlin_noise.cpp
     src/ChunkManager.cpp
     src/texture_array.cpp
@@ -219,7 +221,11 @@ else()
         tests/test_world_directory.cpp
         tests/test_lighting_boundary.cpp
         tests/test_net_protocol.cpp
+        tests/test_section_visibility.cpp
+        tests/test_worldgen.cpp
         src/TerrainGenerator.cpp
+        src/terrain_fill.cpp
+        src/section_visibility.cpp
         src/perlin_noise.cpp
         src/game_state.cpp
         src/WaterSimulator.cpp

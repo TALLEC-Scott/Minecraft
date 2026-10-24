@@ -78,7 +78,5 @@ TEST_F(BiomeTest, BiomeParamsValid) {
         const BiomeParams& bp = terrain.getBiomeParams(static_cast<Biome>(i));
         EXPECT_GE(bp.treeDensity, 0.0f);
         EXPECT_LE(bp.treeDensity, 1.0f);
-        EXPECT_GE(bp.treeChance, 0.0f);
-        EXPECT_LE(bp.treeChance, 100.0f);
     }
 }
