@@ -35,6 +35,9 @@ class Menu {
     GameState drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window);
     GameState drawSettings(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window, GameSettings& settings);
     GameState drawPauseMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window);
+    // "You died!" overlay drawn over the still-running world. Returns true
+    // the frame the Respawn button is clicked.
+    bool drawDeathScreen(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window);
 
     // Multiplayer panel — delegates to drawMultiplayerMenu() with our widget state.
     GameState drawMultiplayer(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window, NetSession& net);
