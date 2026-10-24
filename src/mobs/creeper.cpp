@@ -78,19 +78,6 @@ const CreeperModel& creeperModel() {
     return cm;
 }
 
-// Coarse line of sight: march from eye to eye in quarter-block steps and
-// fail on any solid block (leaves included — good enough for a fuse).
-bool hasLineOfSight(const MobContext& ctx, glm::vec3 from, glm::vec3 to) {
-    glm::vec3 d = to - from;
-    float len = glm::length(d);
-    int steps = std::max(1, static_cast<int>(std::ceil(len / 0.25f)));
-    for (int i = 1; i < steps; ++i) {
-        glm::ivec3 b = MobContext::blockAtPos(from + d * (static_cast<float>(i) / static_cast<float>(steps)));
-        if (ctx.isSolid(b.x, b.y, b.z)) return false;
-    }
-    return true;
-}
-
 // Walk straight at the player (no cliff avoidance) — Minecraft's
 // MeleeAttackGoal minus the hit; the swell goal takes over up close.
 class CreeperChaseGoal : public MobGoal {
@@ -130,7 +117,7 @@ class SwellGoal : public MobGoal {
     void tick(Mob& mob, MobContext& ctx) override {
         mob.stopNavigation();
         swelling = ctx.playerTargetable && glm::distance(mob.pos, ctx.playerFeet) <= Creeper::DEFUSE_RANGE &&
-                   hasLineOfSight(ctx, mob.eyePos(), ctx.playerEye);
+                   mobai::hasLineOfSight(ctx, mob.eyePos(), ctx.playerEye);
         if (ctx.playerTargetable) mob.lookAt(ctx.playerEye, 30.0f, 30.0f);
         creeper.setSwellDir(swelling ? 1 : -1);
     }
