@@ -58,7 +58,12 @@ TEST(PlayerHealthTest, DeathAndRespawn) {
 TEST(PlayerHealthTest, FallDamageFormula) {
     EXPECT_FLOAT_EQ(PlayerHealth::fallDamage(0.0f), 0.0f);
     EXPECT_FLOAT_EQ(PlayerHealth::fallDamage(3.0f), 0.0f);
-    EXPECT_FLOAT_EQ(PlayerHealth::fallDamage(3.2f), 1.0f);
+    // Jumping off a 2-block ledge (~3.9 with our jump arc) is free, as in
+    // Minecraft — the old ceil() charged half a heart for it.
+    EXPECT_FLOAT_EQ(PlayerHealth::fallDamage(3.2f), 0.0f);
+    EXPECT_FLOAT_EQ(PlayerHealth::fallDamage(3.94f), 0.0f);
+    EXPECT_FLOAT_EQ(PlayerHealth::fallDamage(3.9999f), 1.0f); // float noise on a 4-block drop
+    EXPECT_FLOAT_EQ(PlayerHealth::fallDamage(4.0f), 1.0f);
     EXPECT_FLOAT_EQ(PlayerHealth::fallDamage(10.0f), 7.0f);
-    EXPECT_FLOAT_EQ(PlayerHealth::fallDamage(23.5f), 21.0f);
+    EXPECT_FLOAT_EQ(PlayerHealth::fallDamage(23.5f), 20.0f);
 }

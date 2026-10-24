@@ -62,8 +62,14 @@ class PlayerHealth {
         return static_cast<float>(1.0 - t / FLASH_SECONDS);
     }
 
-    // Minecraft fall damage: ceil(distance - 3).
-    static float fallDamage(float fallDistance) { return std::max(0.0f, std::ceil(fallDistance - 3.0f)); }
+    // Minecraft fall damage (minecraft.wiki/w/Damage#Fall_damage):
+    // max(0, floor(distance - safe_fall_distance)), safe distance 3 — so a
+    // 4-block drop costs 1 HP and anything shorter is free. The epsilon
+    // keeps float accumulation (3.9999 for a 4-block drop) on the right side.
+    static constexpr float SAFE_FALL_DISTANCE = 3.0f;
+    static float fallDamage(float fallDistance) {
+        return std::max(0.0f, std::floor(fallDistance - SAFE_FALL_DISTANCE + 1e-3f));
+    }
 
   private:
     double lastHurtTime = 0.0;

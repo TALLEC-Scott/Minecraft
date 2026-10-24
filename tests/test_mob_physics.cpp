@@ -34,10 +34,28 @@ TEST(MobPhysicsTest, LongFallDealsFallDamage) {
     MobHarness h;
     h.floor();
     TestMob m;
-    // Feet 9.8 blocks above the floor top → ceil(9.8 - 3) = 7 damage.
+    // Feet 9.8 blocks above the floor top → floor(9.8 - 3) = 6 damage.
     m.pos = m.prevPos = glm::vec3(0.0f, 10.3f, 0.0f);
     h.run(m, 80);
-    EXPECT_FLOAT_EQ(m.health, m.maxHealth - 7.0f);
+    EXPECT_FLOAT_EQ(m.health, m.maxHealth - 6.0f);
+}
+
+TEST(MobPhysicsTest, FallJustUnderFourBlocksIsHarmless) {
+    MobHarness h;
+    h.floor();
+    TestMob m;
+    m.pos = m.prevPos = glm::vec3(0.0f, 4.3f, 0.0f); // 3.8-block drop
+    h.run(m, 60);
+    EXPECT_FLOAT_EQ(m.health, m.maxHealth);
+}
+
+TEST(MobPhysicsTest, FourBlockFallCostsOne) {
+    MobHarness h;
+    h.floor();
+    TestMob m;
+    m.pos = m.prevPos = glm::vec3(0.0f, 4.5f, 0.0f); // exactly 4 blocks
+    h.run(m, 60);
+    EXPECT_FLOAT_EQ(m.health, m.maxHealth - 1.0f);
 }
 
 TEST(MobPhysicsTest, ShortFallIsHarmless) {
