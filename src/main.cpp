@@ -1,3 +1,4 @@
+#include <climits>
 #include <iostream>
 #include "gl_header.h"
 #include <GLFW/glfw3.h>
@@ -424,18 +425,56 @@ int main(int argc, char* argv[]) {
     bool stressWater = false;
     unsigned int worldSeed = 0;
     int benchMeasureFrames = 600; // --bench-frames N: longer samples at high fps
+    // Benchmarks pin the mesher options instead of reading settings.txt, so
+    // runs are reproducible; defaults match a fresh install.
+    bool benchGreedy = GameSettings{}.greedyMeshing;
+    bool benchFancyLeaves = GameSettings{}.fancyLeaves;
+    std::string benchLabel = "benchmark"; // first non-flag argument
+    bool benchLabelSet = false;
+    std::string benchConfig; // recorded in the results so runs are self-describing
+    // Parse the integer value following option argv[i]; false (with a
+    // message) when it's missing, malformed or outside [lo, hi].
+    auto intArg = [&](int& i, long long lo, long long hi, long long& out) {
+        std::string name = argv[i];
+        if (i + 1 >= argc) {
+            std::cerr << name << " needs a value\n";
+            return false;
+        }
+        std::string val = argv[++i];
+        try {
+            size_t used = 0;
+            out = std::stoll(val, &used);
+            if (used == val.size() && out >= lo && out <= hi) return true;
+        } catch (const std::exception&) {
+        }
+        std::cerr << name << ": expected an integer in [" << lo << ", " << hi << "], got '" << val << "'\n";
+        return false;
+    };
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
+        long long v = 0;
         if (arg == "--benchmark")
             benchmarkMode = true;
         else if (arg == "--headless")
             headlessMode = true;
         else if (arg == "--stress-water")
             stressWater = true;
-        else if (arg == "--seed" && i + 1 < argc)
-            worldSeed = std::stoul(argv[++i]);
-        else if (arg == "--bench-frames" && i + 1 < argc)
-            benchMeasureFrames = std::max(1, std::stoi(argv[++i]));
+        else if (arg == "--seed") {
+            if (!intArg(i, 0, UINT_MAX, v)) return 1;
+            worldSeed = static_cast<unsigned int>(v);
+        } else if (arg == "--bench-frames") {
+            if (!intArg(i, 1, 10'000'000, v)) return 1;
+            benchMeasureFrames = static_cast<int>(v);
+        } else if (arg == "--greedy") {
+            if (!intArg(i, 0, 1, v)) return 1;
+            benchGreedy = v != 0;
+        } else if (arg == "--fancy-leaves") {
+            if (!intArg(i, 0, 1, v)) return 1;
+            benchFancyLeaves = v != 0;
+        } else if (!arg.empty() && arg[0] != '-' && !benchLabelSet) {
+            benchLabel = arg;
+            benchLabelSet = true;
+        }
     }
 #endif
     if (!glfwInit()) {
@@ -797,7 +836,16 @@ int main(int argc, char* argv[]) {
             std::error_code ec;
             std::filesystem::remove_all("saves/_benchmark", ec);
             unsigned int benchSeed = (worldSeed != 0) ? worldSeed : BENCHMARK_DEFAULT_SEED;
+            // Pin mesher options (--greedy / --fancy-leaves) before any
+            // chunk meshes, overriding what applySettings read from the
+            // user's settings.txt.
+            g_greedyMeshing = benchGreedy;
+            g_fancyLeaves = benchFancyLeaves;
             switchToWorld("_benchmark", benchSeed, "_benchmark");
+            benchConfig = "seed=" + std::to_string(benchSeed) + " greedy=" + (benchGreedy ? "1" : "0") +
+                          " fancyLeaves=" + (benchFancyLeaves ? "1" : "0") +
+                          " caveCulling=" + (gameSettings.caveCulling ? "1" : "0") +
+                          " renderDistance=" + std::to_string(gameSettings.renderDistance);
         }
 #endif
 
@@ -1251,23 +1299,11 @@ int main(int argc, char* argv[]) {
         if (benchmarkMode) {
             constexpr int WARMUP_FRAMES = 600;
             const int MEASURE_FRAMES = benchMeasureFrames;
-
-            // Find label: first arg that isn't a flag or a flag's value
-            std::string label = "benchmark";
-            for (int i = 1; i < argc; i++) {
-                std::string a = argv[i];
-                if (a == "--seed" || a == "--bench-frames") {
-                    ++i;
-                    continue;
-                }
-                if (a[0] != '-') {
-                    label = a;
-                    break;
-                }
-            }
+            const std::string& label = benchLabel;
 
             Profiler profiler;
             profiler.init();
+            profiler.config = benchConfig;
 
             glm::mat4 projection = glm::perspective(glm::radians(gameSettings.fov),
                                                     (float)windowWidth / (float)windowHeight, 0.1f, 5000.0f);
