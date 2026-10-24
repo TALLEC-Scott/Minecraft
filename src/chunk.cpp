@@ -822,7 +822,43 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
         return unpackBlock(sampleLightNeighbors(lightPtr, nx_neg, nx_pos, nz_neg, nz_pos, x, y, z));
     };
 
-    int mask[MAX_DIM][MAX_DIM];
+    // Greedy merge key for a visible face. AO and light are sampled only at
+    // the four corners of a merged quad, so merging on block type alone
+    // stretched corner values over the whole quad and erased interior AO and
+    // light (shadow strips, glowstone pools, wall-floor creases). Faces may
+    // merge only when block type, the face's sky + block light, and AO all
+    // match — and AO must be uniform across the face's four corners, or a
+    // per-block gradient would be stretched over the merged span. -1 = emit
+    // this face on its own (also water, whose top heights/flow are per block).
+    auto mergeKey = [&](const FaceDef& fd, const int c[3], block_type bt) -> int {
+        if (hasFlag(bt, BF_LIQUID)) return -1;
+        int p[3] = {c[0], c[1], c[2]};
+        p[fd.d] += fd.d_sign;
+        int aoFirst = -1;
+        for (int su : {-1, 1}) {
+            for (int sv : {-1, 1}) {
+                int a[3] = {p[0], p[1], p[2]}, b[3] = {p[0], p[1], p[2]};
+                a[fd.u] += su;
+                b[fd.v] += sv;
+                int ab[3] = {a[0], a[1], a[2]};
+                ab[fd.v] += sv;
+                int s1 = (a[1] >= 0 && a[1] < opaqueH) ? opaq[oIdx(a[0], a[1], a[2])] : 0;
+                int s2 = (b[1] >= 0 && b[1] < opaqueH) ? opaq[oIdx(b[0], b[1], b[2])] : 0;
+                int cr = (ab[1] >= 0 && ab[1] < opaqueH) ? opaq[oIdx(ab[0], ab[1], ab[2])] : 0;
+                int aoVal = (s1 && s2) ? 0 : 3 - (s1 + s2 + cr);
+                if (aoFirst < 0)
+                    aoFirst = aoVal;
+                else if (aoVal != aoFirst)
+                    return -1;
+            }
+        }
+        int sky = slDirect(p[0], p[1], p[2]);
+        int blk = blDirect(p[0], p[1], p[2]);
+        return static_cast<int>(bt) | (aoFirst << 8) | (sky << 10) | (blk << 14);
+    };
+
+    int mask[MAX_DIM][MAX_DIM]; // block type of each visible face, -1 = none
+    int mkey[MAX_DIM][MAX_DIM]; // greedy merge key (mergeKey), -1 = don't merge
     const float worldOff[3] = {(float)(chunkX * CHUNK_SIZE), 0.0f, (float)(chunkY * CHUNK_SIZE)};
 
     // Effective dimensions capped by maxSolidY+1 (skip pure-air region above)
@@ -878,6 +914,7 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                         // the latter are emitted as quads after this loop.
                         if (bt == AIR || hasFlag(bt, BF_CROSS)) {
                             mask[u][v] = -1;
+                            mkey[u][v] = -1;
                             continue;
                         }
 
@@ -897,6 +934,7 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                         }
                         int val = show ? (int)bt : -1;
                         mask[u][v] = val;
+                        mkey[u][v] = (show && g_greedyMeshing) ? mergeKey(fd, c, bt) : -1;
                         if (val != -1) anyFace = true;
                     }
                 }
@@ -912,13 +950,17 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                             continue;
                         }
 
+                        // Merge only faces with an identical key (mergeKey).
+                        // Stop at v_end: rows past the section were never
+                        // filled for this slice.
                         int h = 1, w = 1;
-                        if (g_greedyMeshing) {
-                            while (v + h < v_dim && mask[u][v + h] == bt) h++;
+                        const int key = mkey[u][v];
+                        if (g_greedyMeshing && key != -1) {
+                            while (v + h < v_end && mkey[u][v + h] == key) h++;
                             w = 1;
                             while (u + w < u_dim) {
                                 bool ok = true;
-                                for (int dv = 0; dv < h && ok; dv++) ok = (mask[u + w][v + dv] == bt);
+                                for (int dv = 0; dv < h && ok; dv++) ok = (mkey[u + w][v + dv] == key);
                                 if (!ok) break;
                                 w++;
                             }
@@ -1162,7 +1204,7 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
 
                         if (g_greedyMeshing) {
                             for (int du = 0; du < w; du++)
-                                for (int dv = 0; dv < h; dv++) mask[u + du][v + dv] = -1;
+                                for (int dv = 0; dv < h; dv++) mask[u + du][v + dv] = mkey[u + du][v + dv] = -1;
                         }
                         v += h;
                     }

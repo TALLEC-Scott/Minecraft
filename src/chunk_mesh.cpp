@@ -143,7 +143,38 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
         return unpackBlock(sampleLightBorder(light, nb, x, y, z));
     };
 
-    int mask[MAX_DIM][MAX_DIM];
+    // Greedy merge key for a visible face (see mergeKey in chunk.cpp for
+    // the rationale): block type + the face's light + its AO, and only when
+    // all four AO corners agree. -1 = emit this face on its own.
+    auto mergeKey = [&](const FaceDef& fd, const int c[3], block_type bt) -> int {
+        if (hasFlag(bt, BF_LIQUID)) return -1; // water tops/flow are per block
+        int p[3] = {c[0], c[1], c[2]};
+        p[fd.d] += fd.d_sign;
+        int aoFirst = -1;
+        for (int su : {-1, 1}) {
+            for (int sv : {-1, 1}) {
+                int a[3] = {p[0], p[1], p[2]}, b[3] = {p[0], p[1], p[2]};
+                a[fd.u] += su;
+                b[fd.v] += sv;
+                int ab[3] = {a[0], a[1], a[2]};
+                ab[fd.v] += sv;
+                int s1 = (a[1] >= 0 && a[1] < opaqueH) ? opaq[oIdx(a[0], a[1], a[2])] : 0;
+                int s2 = (b[1] >= 0 && b[1] < opaqueH) ? opaq[oIdx(b[0], b[1], b[2])] : 0;
+                int cr = (ab[1] >= 0 && ab[1] < opaqueH) ? opaq[oIdx(ab[0], ab[1], ab[2])] : 0;
+                int aoVal = (s1 && s2) ? 0 : 3 - (s1 + s2 + cr);
+                if (aoFirst < 0)
+                    aoFirst = aoVal;
+                else if (aoVal != aoFirst)
+                    return -1;
+            }
+        }
+        int sky = slDirect(p[0], p[1], p[2]);
+        int blk = blDirect(p[0], p[1], p[2]);
+        return static_cast<int>(bt) | (aoFirst << 8) | (sky << 10) | (blk << 14);
+    };
+
+    int mask[MAX_DIM][MAX_DIM]; // block type of each visible face, -1 = none
+    int mkey[MAX_DIM][MAX_DIM]; // greedy merge key (mergeKey), -1 = don't merge
     const float worldOff[3] = {(float)(chunkX * CHUNK_SIZE), 0.0f, (float)(chunkZ * CHUNK_SIZE)};
     const int effDIM[3] = {CHUNK_SIZE, maxSolidY + 2, CHUNK_SIZE};
 
@@ -190,6 +221,7 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                     // cube faces.
                     if (bt == AIR || hasFlag(bt, BF_CROSS)) {
                         mask[u][v] = -1;
+                        mkey[u][v] = -1;
                         continue;
                     }
                     int nc[3] = {c[0], c[1], c[2]};
@@ -205,6 +237,7 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                     }
                     int val = show ? (int)bt : -1;
                     mask[u][v] = val;
+                    mkey[u][v] = (show && g_greedyMeshing) ? mergeKey(fd, c, bt) : -1;
                     if (val != -1) anyFace = true;
                 }
             }
@@ -218,13 +251,17 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                         continue;
                     }
 
+                    // Merge only faces with an identical key — same block,
+                    // light and uniform AO — so the per-corner AO/light
+                    // sampled below stays exact across the merged quad.
                     int h = 1, w = 1;
-                    if (g_greedyMeshing) {
-                        while (v + h < v_end && mask[u][v + h] == bt) h++;
+                    const int key = mkey[u][v];
+                    if (g_greedyMeshing && key != -1) {
+                        while (v + h < v_end && mkey[u][v + h] == key) h++;
                         w = 1;
                         while (u + w < u_dim) {
                             bool ok = true;
-                            for (int dv = 0; dv < h && ok; dv++) ok = (mask[u + w][v + dv] == bt);
+                            for (int dv = 0; dv < h && ok; dv++) ok = (mkey[u + w][v + dv] == key);
                             if (!ok) break;
                             w++;
                         }
@@ -372,7 +409,7 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
 
                     if (g_greedyMeshing) {
                         for (int du = 0; du < w; du++)
-                            for (int dv = 0; dv < h; dv++) mask[u + du][v + dv] = -1;
+                            for (int dv = 0; dv < h; dv++) mask[u + du][v + dv] = mkey[u + du][v + dv] = -1;
                     }
                     v += h;
                 }
