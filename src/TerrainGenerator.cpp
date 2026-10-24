@@ -110,20 +110,14 @@ constexpr double TERRACE_RISER = 0.08;
 constexpr double ESCARPMENT_HEIGHT = 9.0;
 constexpr double ESCARPMENT_EDGE = 0.012;
 
-// Rivers: distance-from-zero of the river noise below which the water
-// channel (core) is carved, and out to which the land forms a valley
-// (relief scaled down by up to VALLEY_FLATTEN) and the banks slope down to
-// the water. The flat-bottomed
-// channel's depth wanders between RIVER_DEPTH_MIN and RIVER_DEPTH_MAX along
-// the river, and it only exists where the valley floor is within
-// RIVER_LOWLAND_FULL..END blocks of sea level.
-constexpr double RIVER_CORE = 0.008;
-constexpr double RIVER_VALLEY = 0.05;
-constexpr double VALLEY_FLATTEN = 0.85;
-constexpr double RIVER_DEPTH_MIN = 2.0;
-constexpr double RIVER_DEPTH_MAX = 4.0;
-constexpr double RIVER_LOWLAND_FULL = 6.0;
-constexpr double RIVER_LOWLAND_END = 12.0;
+// Rivers: distance-from-zero of the river noise below which the channel
+// (core) and its banks are carved. The bed sits between RIVER_DEPTH_MIN
+// and RIVER_DEPTH_MAX below sea level, wandering gently along the river;
+// heights truncate to whole blocks, so this gives 2-4 blocks of water.
+constexpr double RIVER_CORE = 0.005;
+constexpr double RIVER_BANK = 0.016;
+constexpr double RIVER_DEPTH_MIN = 1.5;
+constexpr double RIVER_DEPTH_MAX = 3.5;
 
 // Shifts continentalness toward land: unbiased, about half the world was
 // one featureless ocean.
@@ -205,24 +199,17 @@ TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y) {
     // and the ocean floor never sprouts ridges.
     double inland = smoothstep(BEACH_END, INLAND_FULL, s.continentalness);
     double amp = splineEval(AMP_SPLINE, s.erosion);
-    // River line: distance from the zero line of a low-frequency noise. Like
-    // Minecraft's peaks-and-valleys "valleys" band, the land around it forms
-    // a valley first (relief and cliffs suppressed), so mountains part
-    // around a river instead of being sliced through; water only fills the
-    // valley floor where it is low (see Rivers below).
-    double rd = std::abs(octaveNoise(nx * 0.005 + 5000.0, ny * 0.005 + 5000.0, 2, 0.5, 2.0));
-    double valley = 1.0 - smoothstep(RIVER_CORE, RIVER_VALLEY, rd);
     // Ridges carry the full amplitude; a gentle rolling term keeps the
     // land between ranges from being dead flat.
     double rolling = 0.18 * octaveNoise(nx * 0.06 + 6000.0, ny * 0.06 + 6000.0, 2, 0.5, 2.0);
-    s.relief = inland * amp * (s.ridge + rolling) * (1.0 - VALLEY_FLATTEN * valley);
+    s.relief = inland * amp * (s.ridge + rolling);
     height += s.relief;
 
     // Cliffs: jagged (low-erosion) land gets escarpments — the ground steps
     // up ESCARPMENT_HEIGHT blocks across the zero line of a separate noise,
     // over just 2-3 blocks horizontally — and is pulled toward terraces,
     // which sharpens slopes that already exist into benches and risers.
-    double cliffMask = inland * smoothstep(0.05, -0.3, s.erosion) * (1.0 - valley);
+    double cliffMask = inland * smoothstep(0.05, -0.3, s.erosion);
     if (cliffMask > 0.0) {
         double e = octaveNoise(nx * 0.12 + 6500.0, ny * 0.12 + 6500.0, 2, 0.5, 2.0);
         height += cliffMask * ESCARPMENT_HEIGHT * smoothstep(-ESCARPMENT_EDGE, ESCARPMENT_EDGE, e);
@@ -236,33 +223,23 @@ TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y) {
     // Small-scale surface detail, everywhere (dunes, ocean-floor ripple).
     height += octaveNoise(nx * 0.35, ny * 0.35, 3, 0.45, 2.0) * 2.0;
 
-    // Rivers fill the valley floor only in lowlands: the channel fades out
-    // where the floor sits more than RIVER_LOWLAND_END above sea level, so
-    // inland rivers end or run dry in high country (as in Minecraft) rather
-    // than carving canyons down to sea level. On land only, fading in from
-    // the coastline itself so channels cross the beach and reach the sea.
+    // Rivers: carve along the zero line of a low-frequency noise, on land
+    // only. The bank blend slopes down to sea level, the core drops to the
+    // bed so the channel holds water.
+    // Fades in from the coastline itself (not the inland edge of the beach)
+    // so channels cut through the beach and actually reach the sea.
     double landMask = smoothstep(OCEAN_END, OCEAN_END + 0.03, s.continentalness);
-    double lowland = 1.0 - smoothstep(RIVER_LOWLAND_FULL, RIVER_LOWLAND_END, height - seaLevel);
-    double strength = landMask * lowland;
-    if (strength > 0.0) {
-        // As a river leaves the lowlands it narrows and shoals into a
-        // stream before vanishing, instead of stopping as a blunt trench.
-        double core = RIVER_CORE * (0.35 + 0.65 * strength);
-        // Banks blend over the whole valley width, so the land slopes
-        // gently down to the water rather than dropping as a ditch wall.
-        double bank = (1.0 - smoothstep(core, RIVER_VALLEY, rd)) * strength;
+    if (landMask > 0.0) {
+        double rd = std::abs(octaveNoise(nx * 0.005 + 5000.0, ny * 0.005 + 5000.0, 2, 0.5, 2.0));
+        double bank = (1.0 - smoothstep(RIVER_CORE, RIVER_BANK, rd)) * landMask;
         if (bank > 0.0) {
-            // Flat-bottomed channel: full depth across the middle, sloping
-            // up over the outer part of the channel.
-            double across = rd / core;
-            double profile = 1.0 - smoothstep(0.55, 1.0, across);
+            double core = 1.0 - smoothstep(RIVER_CORE * 0.4, RIVER_CORE * 1.4, rd);
             // Depth wanders gently along the river (~100-250 block wavelength).
-            double depthVar = 0.5 + 0.5 * octaveNoise(nx * 0.04 + 5500.0, ny * 0.04 + 5500.0, 2, 0.5, 2.0) * 1.6;
+            double depthVar = 0.5 + 0.5 * octaveNoise(nx * 0.04 + 5500.0, ny * 0.04 + 5500.0, 2, 0.5, 2.0) * 3.0;
             double depth = RIVER_DEPTH_MIN + (RIVER_DEPTH_MAX - RIVER_DEPTH_MIN) * std::clamp(depthVar, 0.0, 1.0);
-            depth *= 0.4 + 0.6 * strength;
-            double bed = seaLevel + 1.0 - (depth + 1.0) * profile;
+            double bed = seaLevel + 1.0 - (depth + 1.0) * core;
             height += (std::min(height, bed) - height) * bank;
-            s.river = profile * bank;
+            s.river = core * bank;
         }
     }
 
