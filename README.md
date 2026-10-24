@@ -2,6 +2,13 @@
 
 A Minecraft-like voxel sandbox built with C++ and OpenGL 3.3 Core Profile. Procedural terrain, biomes, cellular-automaton water, primed TNT with entity physics, cross-texture plants, day/night cycle, multithreaded chunk streaming, persistent saves, and a WebAssembly build.
 
+The purpose was mainly to see how far I could take agentic coding, namely anthropic models, on an old throwaway college project (see first screenshot in earlier versions) to test the capabilities of the models. The progress is as you can see remarkable, yes I had to steer quite a bit for the optimization parts and for the cellular automata for the cascading water effect (the early 2026 models struggled with geometry). 
+
+I'm sure that I could have simply decompiled the original minecraft into C++ source code (bedrock edition) and then recompile it to web assembly (next iteration ?) but playing around and thinking about the design of minecraft while testing the limits of agentic coding seemed fun to me. 
+
+Perhaps I should make a blog detailing some of the rough edges and detail the techniques I used, for instance i had the agent solve problems in lower dimension space.
+I take little credit for this work, the LLMs have me beat on this one and surely will take my job too.
+
 ## Screenshots
 
 ### v0.7
@@ -62,7 +69,7 @@ https://github.com/user-attachments/assets/c95a33fa-b7e2-41ac-b8ba-79bb7edf997f
 - Per-chunk batched VAO/VBO with packed vertex formats - `PackedVertex` (12 B) for opaque, `WaterVertex` (20 B, 4-byte aligned for WebGL) for fluids
 - Section-level incremental remesh via an 8-bit `sectionDirty` bitmask
 - Sky light flood-fill + block light (glowstone = 15) with cross-chunk propagation; sparse per-section storage (~8 KB/chunk vs a flat 32 KB)
-- Per-vertex AO with branchless face-brightness multiplier; runtime-toggleable greedy meshing (off by default - AO artifacts)
+- Per-vertex AO with branchless face-brightness multiplier; greedy meshing (on by default, toggleable) that only merges faces with matching light and uniform AO
 - Frustum culling (AABB per chunk), distance fog ramping to sky color or blue underwater fog
 - Directional sun with day/night cycle, bloom halos on sun + moon billboards, stars at night, volumetric-raymarched clouds
 - Cross-texture plants with leaf-sway shader (tall grass tips bob in wind, stem stays anchored)
@@ -206,7 +213,7 @@ A summary of the non-trivial perf work in this engine - written out since this r
 - **Shader uniform cache** - `Shader` class caches `glGetUniformLocation` results by name hash; uniform lookups are free after the first call. (`shader.h`)
 - **Split plant draw pass** - plant indices live in the same EBO as cube faces but after a boundary offset. Chunks are drawn in two `glDrawElements` calls: cube faces with `GL_CULL_FACE` on, then plants with culling disabled so each quad shows both sides from 6 indices instead of 12. Halves plant index memory at the cost of one state change per chunk. (`Chunk::render`, `emitPlane`)
 - **Branchless shading** - face brightness, AO multiplier, leaf cutout and water tint computed via `step()`/`mix()` chains instead of conditionals so the GPU doesn't serialize warps. (`frag.shd`)
-- **Runtime-toggleable greedy meshing** - adjacent faces merged into larger quads when the user opts in; off by default because per-vertex AO interpolation across merged faces produces dark streaks.
+- **Lighting-aware greedy meshing** - adjacent faces merge into larger quads only when block type, light and (uniform) AO match, so merged quads shade exactly like per-block faces; on by default, toggleable in Settings.
 
 ### Memory / Data structures
 
@@ -250,14 +257,14 @@ A summary of the non-trivial perf work in this engine - written out since this r
 
 ### Greedy Meshing with Shader-Based Lighting
 
-Greedy meshing is a runtime toggle (`Settings → Greedy Meshing`, off by default). Merging adjacent faces into larger quads drops triangle count dramatically but causes AO and sky-light interpolation artifacts - dark streaks appear diagonally across merged faces where corner values differ. Minecraft itself avoids greedy meshing for the same reason.
+Greedy meshing is on by default (`Settings → Greedy Meshing`). Naively merging every same-block face erased interior lighting, because AO and light are only sampled at a merged quad's four corners. The mesher now merges faces only when block type, sky + block light **and** AO all match, and only faces whose four AO corners are uniform — so shading is identical to the non-greedy mesh. That keeps about a third fewer triangles at RD 16 (636k → 443k, −24% GPU time on an RTX 2080 Ti) instead of the ~67% a lighting-blind merge gets.
 
-A potential fix: compute AO and sky light **per-pixel in the fragment shader** instead of per-vertex interpolation:
+To merge further without losing shading, AO and sky light could move **per-pixel into the fragment shader** instead of per-vertex interpolation:
 
 1. **Fragment-based AO**: use `fract(FragPos)` to determine the pixel's position within the block and snap to the nearest corner's AO value, avoiding cross-block interpolation.
 2. **3D light texture**: upload per-block sky light and AO as a 16×128×16 3D texture per chunk. The fragment shader samples it at `FragPos`, giving pixel-perfect lighting with zero interpolation artifacts.
 
-Either would allow re-enabling greedy meshing (~12× fewer triangles) while keeping correct lighting. The tradeoff is shader complexity and texture bandwidth.
+Either would let every same-block face merge again while keeping correct lighting. The tradeoff is shader complexity and texture bandwidth. Merging flat source water (not merged today) is a cheaper next step.
 
 ### VBO Consolidation
 
