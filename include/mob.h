@@ -43,6 +43,7 @@ class Mob {
     static constexpr float SWIM_UP = 0.04f;
     static constexpr float JUMP_SPEED = 0.42f; // apex ~1.25 blocks
     static constexpr float MAX_STEP_MOVE = 0.45f; // sub-step horizontal moves longer than this
+    static constexpr float CLIMB_SPEED = 0.2f;    // upward speed while wall-climbing (climbsWalls())
     // --- Combat constants ---
     static constexpr int HURT_FLASH_TICKS = 10;
     static constexpr int INVULNERABLE_TICKS = 10;
@@ -157,6 +158,8 @@ class Mob {
     virtual void onDeath() {}
     virtual float fallDamageMultiplier() const { return 1.0f; }
     virtual bool floatsInWater() const { return true; }
+    // Spiders: walking into a wall climbs it at CLIMB_SPEED.
+    virtual bool climbsWalls() const { return false; }
     // Ticks between ambient sounds on average (0 = silent).
     virtual int ambientSoundInterval() const { return 120; }
 

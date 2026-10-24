@@ -256,6 +256,12 @@ void Mob::physicsTick(MobContext& ctx) {
             velocity.y = JUMP_SPEED;
             onGround = false;
         }
+        // Wall climbing (Minecraft Spider.onClimbable): pressing into a
+        // wall lifts the mob at a fixed rate; no fall damage builds up.
+        if (!dying && moving && horizontalCollision && climbsWalls()) {
+            velocity.y = std::max(velocity.y, CLIMB_SPEED);
+            fallDistance = 0.0f;
+        }
     }
     wantJump = false;
 
