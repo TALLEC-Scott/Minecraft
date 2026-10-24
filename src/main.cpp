@@ -584,7 +584,9 @@ int main(int argc, char* argv[]) {
 #endif
         Menu menuObj;
     menuObj.init();
+#ifndef __EMSCRIPTEN__
     if (benchmarkMode) menuObj.muteAll();
+#endif
     g_menu = &menuObj;
 
 #ifdef __EMSCRIPTEN__

@@ -1470,7 +1470,7 @@ std::vector<Cube*> Chunk::render(const Shader& /*shaderProgram*/, const Neighbor
                         return std::pair<uint32_t, uint32_t>{sectionRanges[s].opaqueStart,
                                                              sectionRanges[s].opaqueCount};
                     },
-                    [this](uint32_t first, uint32_t count) {
+                    [](uint32_t first, uint32_t count) {
                         glDrawElements(GL_TRIANGLES, (GLsizei)count, GL_UNSIGNED_INT,
                                        (const void*)(static_cast<size_t>(first) * sizeof(unsigned int)));
                         g_frame.opaqueTriangles += (int)count / 3;
