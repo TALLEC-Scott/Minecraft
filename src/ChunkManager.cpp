@@ -360,6 +360,7 @@ void ChunkManager::queueMeshBuild(glm::ivec2 pos) {
         std::lock_guard<std::mutex> lock(requestMutex);
         meshRequestQueue.push(std::move(req));
     }
+    ++meshesOutstanding;
     requestCV.notify_one();
 }
 
@@ -441,6 +442,7 @@ void ChunkManager::drainResults() {
             res = std::move(meshResultQueue.front());
             meshResultQueue.pop();
         }
+        --meshesOutstanding;
 
         auto it = chunks.find(res.pos);
         if (it == chunks.end()) continue; // chunk was unloaded
