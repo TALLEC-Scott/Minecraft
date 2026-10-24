@@ -76,7 +76,12 @@ void main() {
     blockLight = blkRaw / 15.0;
 
     vec3 pos = aPos * 0.5; // undo x2 encoding
-    Normal = NORMALS[int(aNormalIdx)];
+    // Rotate the face normal with the model so posed entities (mobs, remote
+    // players) shade by their world orientation. Chunks draw with an
+    // identity model, so this is a no-op for terrain. mat3(model) keeps an
+    // axis-aligned box normal pointing the right way even under
+    // non-uniform scale; the fragment shader renormalizes.
+    Normal = mat3(model) * NORMALS[int(aNormalIdx)];
     // Wind sway: leaves sway every vertex; tall grass sways only its top
     // verts (v=1 in UV) so the stem stays anchored to the ground.
     float isLeaf = step(9.5, aTexLayer) * step(aTexLayer, 10.5);

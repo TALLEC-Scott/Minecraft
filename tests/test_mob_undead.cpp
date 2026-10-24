@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+#include <glm/gtc/constants.hpp>
+
 #include "mob_test_support.h"
 #include "mobs/skeleton.h"
 #include "mobs/zombie.h"
@@ -65,6 +67,25 @@ TEST(UndeadTest, RegistryRows) {
         EXPECT_GT(m->eyeHeight(), 1.5f);
         EXPECT_LT(m->eyeHeight(), m->height);
     }
+}
+
+TEST(UndeadTest, SkeletonModelAnatomy) {
+    Skeleton s;
+    const MobModel& m = s.model();
+    for (const char* part : {"head", "eye_r", "eye_l", "nose", "mouth", "tooth", "spine", "sternum", "rib",
+                             "pelvis", "arm_r", "leg_l", "bow_grip", "bow_string"})
+        EXPECT_GE(m.indexOf(part), 0) << part;
+
+    // Flames glow; bones don't.
+    for (const MobPart& p : m.parts)
+        EXPECT_EQ(p.emissive, std::string(p.name) == "flame") << p.name;
+
+    // Idle: the bow hangs upright (grip tipped 90° back). Aiming: the
+    // grip follows the raised arm instead.
+    int grip = m.indexOf("bow_grip");
+    EXPECT_NEAR(s.pose(0.0f).rotation[grip].x, -glm::half_pi<float>(), 1e-5f);
+    s.aiming = true;
+    EXPECT_FLOAT_EQ(s.pose(0.0f).rotation[grip].x, 0.0f);
 }
 
 // --- Sunlight burning -----------------------------------------------------------

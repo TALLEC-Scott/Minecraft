@@ -138,9 +138,10 @@ namespace {
 
 constexpr float PX = 1.0f / 16.0f; // one Minecraft model pixel
 
-const glm::vec3 BONE(0.80f, 0.80f, 0.77f);
-const glm::vec3 BONE_DARK(0.55f, 0.55f, 0.52f);
-const glm::vec3 SOCKET(0.12f, 0.12f, 0.12f);
+const glm::vec3 BONE(0.84f, 0.84f, 0.81f);
+const glm::vec3 BONE_JOINT(0.68f, 0.68f, 0.65f);
+const glm::vec3 CAVITY(0.24f, 0.24f, 0.23f); // shadowed inside of the ribcage
+const glm::vec3 SOCKET(0.10f, 0.10f, 0.10f);
 const glm::vec3 BOW(0.48f, 0.32f, 0.16f);
 const glm::vec3 BOW_GRIP(0.30f, 0.20f, 0.10f);
 const glm::vec3 STRING(0.88f, 0.88f, 0.86f);
@@ -149,7 +150,7 @@ constexpr float STRING_PULL = 2.0f * PX; // how far a full draw pulls the string
 
 struct SkeletonModel {
     MobModel model;
-    int head, rightArm, leftArm, rightLeg, leftLeg, bowString;
+    int head, rightArm, leftArm, rightLeg, leftLeg, bowGrip, bowString;
     UndeadMob::FlameParts flames{};
 };
 
@@ -162,25 +163,41 @@ const SkeletonModel& skeletonModel() {
         SkeletonModel s;
         MobModel& m = s.model;
 
-        // Torso: dark spine with bone shoulder bar, three ribs and pelvis
-        // over it — the gaps read as the see-through ribcage.
-        int body = m.add({"body", -1, {0, 24 * PX, 0}, {0, -6 * PX, -0.9f * PX}, {1 * PX, 6 * PX, 1 * PX}, BONE_DARK});
-        m.add({"shoulders", body, {0, 0, 0}, {0, -0.5f * PX, 0}, {4 * PX, 0.5f * PX, 2 * PX}, BONE});
+        // Torso (8×12×4 px, neck pivot at y 24): a shadowed rib cavity
+        // wrapped by four full-depth ribs, with a sternum in front and the
+        // spine behind. Below the ribs only the spine bridges the open
+        // waist down to the pelvis, so the silhouette pinches like
+        // Minecraft's skeleton from every side.
+        int body = m.add({"body", -1, {0, 24 * PX, 0}, {0, -4.5f * PX, 0}, {3.4f * PX, 3.5f * PX, 1.5f * PX}, CAVITY});
+        m.add({"spine", body, {0, 0, 0}, {0, -6 * PX, -1.4f * PX}, {0.75f * PX, 6 * PX, 0.6f * PX}, BONE});
+        m.add({"sternum", body, {0, 0, 0}, {0, -4.25f * PX, 1.55f * PX}, {0.75f * PX, 3.25f * PX, 0.5f * PX}, BONE});
+        m.add({"collarbone", body, {0, 0, 0}, {0, -0.5f * PX, 0}, {4 * PX, 0.5f * PX, 2 * PX}, BONE});
         for (float y : {-2.5f, -4.5f, -6.5f})
-            m.add({"rib", body, {0, 0, 0}, {0, y * PX, 0}, {3.5f * PX, 0.5f * PX, 2 * PX}, BONE});
+            m.add({"rib", body, {0, 0, 0}, {0, y * PX, 0}, {4 * PX, 0.5f * PX, 2 * PX}, BONE});
+        m.add({"rib_low", body, {0, 0, 0}, {0, -8.5f * PX, 0}, {3 * PX, 0.5f * PX, 1.8f * PX}, BONE});
         m.add({"pelvis", body, {0, 0, 0}, {0, -11 * PX, 0}, {4 * PX, 1 * PX, 2 * PX}, BONE});
 
+        // Skull: 8³ head with Minecraft's face layout (head-local px, face
+        // plane at z = +4) — 2×2 eye sockets in the middle rows, a 2×1
+        // nose hole, and a dark mouth band broken up by three teeth.
         s.head = m.add({"head", -1, {0, 24 * PX, 0}, {0, 4 * PX, 0}, {4 * PX, 4 * PX, 4 * PX}, BONE});
-        auto face = [&](const char* name, float x, float y, float hw, float hh) {
-            m.add({name, s.head, {x * PX, y * PX, 4.05f * PX}, {0, 0, 0}, {hw * PX, hh * PX, 0.05f * PX}, SOCKET});
+        auto face = [&](const char* name, float x, float y, float hw, float hh, glm::vec3 color, float z = 4.05f) {
+            m.add({name, s.head, {x * PX, (4 + y) * PX, z * PX}, {0, 0, 0}, {hw * PX, hh * PX, 0.05f * PX}, color});
         };
-        face("eye_r", -2, 3.75f, 1.0f, 0.75f);
-        face("eye_l", 2, 3.75f, 1.0f, 0.75f);
-        face("nose", 0, 2.25f, 0.5f, 0.5f);
-        face("teeth", 0, 1.0f, 2.5f, 0.25f);
+        face("eye_r", -2, 0.5f, 1.0f, 1.0f, SOCKET);
+        face("eye_l", 2, 0.5f, 1.0f, 1.0f, SOCKET);
+        face("nose", 0, -1.5f, 1.0f, 0.5f, SOCKET);
+        face("mouth", 0, -2.5f, 3.0f, 0.5f, SOCKET);
+        for (float x : {-2.0f, 0.0f, 2.0f})
+            face("tooth", x, -2.5f, 0.5f, 0.5f, BONE, 4.1f);
 
+        // 2×12×2 px limbs with a slightly darker joint band at the elbow /
+        // knee so they read as bones rather than plain sticks.
         auto limb = [&](const char* name, float x, float y, float centerY) {
-            return m.add({name, -1, {x * PX, y * PX, 0}, {0, centerY * PX, 0}, {1 * PX, 6 * PX, 1 * PX}, BONE});
+            int i = m.add({name, -1, {x * PX, y * PX, 0}, {0, centerY * PX, 0}, {1 * PX, 6 * PX, 1 * PX}, BONE});
+            m.add({"joint", i, {0, 0, 0}, {0, (centerY - 0.5f) * PX, 0}, {1.12f * PX, 0.6f * PX, 1.12f * PX},
+                   BONE_JOINT});
+            return i;
         };
         s.rightArm = limb("arm_r", -5, 22, -4);
         s.leftArm = limb("arm_l", 5, 22, -4);
@@ -193,6 +210,7 @@ const SkeletonModel& skeletonModel() {
         // toward the shooter (local +Y); the string spans the tips.
         int grip = m.add({"bow_grip", s.rightArm, {0, -10 * PX, 0}, {0, -1.2f * PX, 0},
                           {0.6f * PX, 0.6f * PX, 1.5f * PX}, BOW_GRIP});
+        s.bowGrip = grip;
         for (float zs : {1.0f, -1.0f}) {
             m.add({"bow_limb", grip, {0, 0, 0}, {0, -0.9f * PX, zs * 2.8f * PX}, {0.5f * PX, 0.5f * PX, 1.4f * PX},
                    BOW});
@@ -260,8 +278,11 @@ MobPose Skeleton::pose(float partialTick) const {
         }
     } else {
         poseBipedArms(p, sm.leftArm, sm.rightArm, anim.x, anim.y);
-        // ArmPose.ITEM: the bow hand rides a little forward.
+        // ArmPose.ITEM: the bow hand rides a little forward, and the bow
+        // hangs upright at the side (its length runs along the arm's local
+        // Z, so tip it back by 90° about X) instead of poking forward.
         p.rotation[sm.rightArm].x = p.rotation[sm.rightArm].x * 0.5f - PI / 10.0f;
+        p.rotation[sm.bowGrip].x = -PI / 2.0f;
     }
 
     poseFlames(p, sm.flames, partialTick);

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <string>
 
 #include "mob_spawn.h"
 #include "mob_test_support.h"
@@ -71,6 +72,17 @@ TEST(CreeperSpiderTest, RegistryRows) {
     EXPECT_FLOAT_EQ(spider->health, 16.0f);
     EXPECT_LE(creeper->model().size(), MAX_MOB_PARTS);
     EXPECT_LE(spider->model().size(), MAX_MOB_PARTS);
+
+    // Spider eyes glow in the dark (fullbright layer); nothing else does.
+    int eyes = 0;
+    for (const MobPart& p : spider->model().parts) {
+        bool isEye = std::string(p.name) == "eye";
+        EXPECT_EQ(p.emissive, isEye) << p.name;
+        eyes += isEye ? 1 : 0;
+    }
+    EXPECT_EQ(eyes, 8);
+    for (const MobPart& p : creeper->model().parts)
+        EXPECT_FALSE(p.emissive) << p.name;
 
     std::vector<MobType> hostile = mobspawn::eligibleTypes(MobCategory::Hostile, BIOME_DESERT);
     EXPECT_NE(std::find(hostile.begin(), hostile.end(), MobType::Creeper), hostile.end());

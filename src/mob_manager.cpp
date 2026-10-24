@@ -356,7 +356,14 @@ void MobManager::render(const Shader& shader, const glm::mat4& viewProjection, g
         // Generous box: models can overhang the hitbox (heads, death tip-over).
         float r = std::max(m->halfWidth, m->height) + 0.5f;
         if (!aabbInFrustum(planes, p - glm::vec3(r, 0.5f, r), p + glm::vec3(r, m->height + 0.5f, r))) continue;
-        renderer.drawMob(shader, *m, pt, lightAt(m->eyePos()));
+        // Sample at the body center and the eyes and keep the brighter of
+        // each channel: a single sample goes black whenever that block is
+        // solid (a mob pressed into a wall, a low eye level on a ledge).
+        float center = lightAt(p + glm::vec3(0.0f, m->height * 0.5f, 0.0f));
+        float eye = lightAt(m->eyePos());
+        float sky = std::max(std::floor(center / 16.0f), std::floor(eye / 16.0f));
+        float block = std::max(std::fmod(center, 16.0f), std::fmod(eye, 16.0f));
+        renderer.drawMob(shader, *m, pt, sky * 16.0f + block);
     }
 
     for (const auto& pr : projectileList) {

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -117,6 +118,10 @@ void MobRenderer::drawModel(const Shader& shader, const MobModel& model, const M
     shader.setFloat("entityTint", 1.0f + std::clamp(pose.whiteFlash, 0.0f, 1.0f));
     glBindVertexArray(vao);
     glVertexAttrib1f(LOC_PACKED_LIGHT, packedLight);
+    // Emissive parts keep the mob's sky light (so they still follow the
+    // day/night tint) but force block light to 15.
+    float emissiveLight = std::floor(packedLight / 16.0f) * 16.0f + 15.0f;
+    bool lastEmissive = false;
 
     for (int i = 0; i < n; ++i) {
         const MobPart& p = model.parts[i];
@@ -135,6 +140,10 @@ void MobRenderer::drawModel(const Shader& shader, const MobModel& model, const M
         shader.setMat4("model", box);
         shader.setVec3("entityColor", p.color * tint);
         glVertexAttrib1f(LOC_TEX_LAYER, layerFor(p.textureLayer));
+        if (p.emissive != lastEmissive) {
+            glVertexAttrib1f(LOC_PACKED_LIGHT, p.emissive ? emissiveLight : packedLight);
+            lastEmissive = p.emissive;
+        }
         glDrawElements(GL_TRIANGLES, NUM_INDICES, GL_UNSIGNED_INT, nullptr);
     }
 
