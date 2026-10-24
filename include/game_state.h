@@ -24,7 +24,7 @@ struct GameSettings {
     float fov = 70.0f;
     bool vsync = false;
     float mouseSensitivity = 1.0f;
-    bool greedyMeshing = false;
+    bool greedyMeshing = true; // light/AO-aware merging (PR #4) — safe to default on
     bool fancyLeaves = true;
     bool caveCulling = true;
     float musicVolume = 1.0f;

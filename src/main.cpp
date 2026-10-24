@@ -1,3 +1,4 @@
+#include <climits>
 #include <iostream>
 #include "gl_header.h"
 #include <GLFW/glfw3.h>
@@ -233,14 +234,17 @@ static void applySettings() {
     glfwSwapInterval(gameSettings.vsync ? 1 : 0);
     player.setMouseSensitivity(gameSettings.mouseSensitivity);
     if (g_menu) g_menu->setMusicVolume(gameSettings.musicVolume);
+    // Mesher flags apply even before a world exists (startup calls this with
+    // w == nullptr) — otherwise the saved greedy/fancy-leaves choice was
+    // ignored until the Settings screen was opened, and benchmarks never
+    // used it. Existing chunk meshes are rebuilt when a flag changes.
+    bool meshFlagsChanged = g_greedyMeshing != gameSettings.greedyMeshing || g_fancyLeaves != gameSettings.fancyLeaves;
+    g_greedyMeshing = gameSettings.greedyMeshing;
+    g_fancyLeaves = gameSettings.fancyLeaves;
     if (w) {
         w->chunkManager->setRenderDistance(gameSettings.renderDistance);
-        // Rebuild all chunk meshes if greedy meshing toggle changed
-        if (g_greedyMeshing != gameSettings.greedyMeshing || g_fancyLeaves != gameSettings.fancyLeaves) {
-            g_greedyMeshing = gameSettings.greedyMeshing;
-            g_fancyLeaves = gameSettings.fancyLeaves;
+        if (meshFlagsChanged)
             for (auto& [pos, chunk] : w->chunkManager->chunks) chunk.markDirty();
-        }
     }
     g_caveCulling = gameSettings.caveCulling;
     // Only apply resolution while windowed - fullscreen keeps its
@@ -525,8 +529,35 @@ int main(int argc, char* argv[]) {
     bool stressWater = false;
     bool benchMobs = false; // --bench-mobs: spawn pigs along the measured path
     unsigned int worldSeed = 0;
+    int benchMeasureFrames = 600; // --bench-frames N: longer samples at high fps
+    // Benchmarks pin the mesher options instead of reading settings.txt, so
+    // runs are reproducible; defaults match a fresh install.
+    bool benchGreedy = GameSettings{}.greedyMeshing;
+    bool benchFancyLeaves = GameSettings{}.fancyLeaves;
+    std::string benchLabel = "benchmark"; // first non-flag argument
+    bool benchLabelSet = false;
+    std::string benchConfig; // recorded in the results so runs are self-describing
+    // Parse the integer value following option argv[i]; false (with a
+    // message) when it's missing, malformed or outside [lo, hi].
+    auto intArg = [&](int& i, long long lo, long long hi, long long& out) {
+        std::string name = argv[i];
+        if (i + 1 >= argc) {
+            std::cerr << name << " needs a value\n";
+            return false;
+        }
+        std::string val = argv[++i];
+        try {
+            size_t used = 0;
+            out = std::stoll(val, &used);
+            if (used == val.size() && out >= lo && out <= hi) return true;
+        } catch (const std::exception&) {
+        }
+        std::cerr << name << ": expected an integer in [" << lo << ", " << hi << "], got '" << val << "'\n";
+        return false;
+    };
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
+        long long v = 0;
         if (arg == "--benchmark")
             benchmarkMode = true;
         else if (arg == "--headless")
@@ -535,8 +566,22 @@ int main(int argc, char* argv[]) {
             stressWater = true;
         else if (arg == "--bench-mobs")
             benchMobs = true;
-        else if (arg == "--seed" && i + 1 < argc)
-            worldSeed = std::stoul(argv[++i]);
+        else if (arg == "--seed") {
+            if (!intArg(i, 0, UINT_MAX, v)) return 1;
+            worldSeed = static_cast<unsigned int>(v);
+        } else if (arg == "--bench-frames") {
+            if (!intArg(i, 1, 10'000'000, v)) return 1;
+            benchMeasureFrames = static_cast<int>(v);
+        } else if (arg == "--greedy") {
+            if (!intArg(i, 0, 1, v)) return 1;
+            benchGreedy = v != 0;
+        } else if (arg == "--fancy-leaves") {
+            if (!intArg(i, 0, 1, v)) return 1;
+            benchFancyLeaves = v != 0;
+        } else if (!arg.empty() && arg[0] != '-' && !benchLabelSet) {
+            benchLabel = arg;
+            benchLabelSet = true;
+        }
     }
 #endif
     if (!glfwInit()) {
@@ -903,10 +948,20 @@ int main(int argc, char* argv[]) {
             std::error_code ec;
             std::filesystem::remove_all("saves/_benchmark", ec);
             unsigned int benchSeed = (worldSeed != 0) ? worldSeed : BENCHMARK_DEFAULT_SEED;
+            // Pin mesher options (--greedy / --fancy-leaves) before any
+            // chunk meshes, overriding what applySettings read from the
+            // user's settings.txt.
+            g_greedyMeshing = benchGreedy;
+            g_fancyLeaves = benchFancyLeaves;
             switchToWorld("_benchmark", benchSeed, "_benchmark");
             // Keep runs comparable: no natural spawning (--bench-mobs adds a
             // fixed set instead).
             w->mobManager->setSpawningEnabled(false);
+            benchConfig = "seed=" + std::to_string(benchSeed) + " greedy=" + (benchGreedy ? "1" : "0") +
+                          " fancyLeaves=" + (benchFancyLeaves ? "1" : "0") +
+                          " caveCulling=" + (gameSettings.caveCulling ? "1" : "0") +
+                          " renderDistance=" + std::to_string(gameSettings.renderDistance) +
+                          " benchMobs=" + (benchMobs ? "1" : "0");
         }
 #endif
 
@@ -1359,25 +1414,22 @@ int main(int argc, char* argv[]) {
         // Benchmark mode: fixed camera, warm-up + measured frames, write results to file
         if (benchmarkMode) {
             constexpr int WARMUP_FRAMES = 600;
-            constexpr int MEASURE_FRAMES = 600;
-
-            // Find label: first arg that isn't a flag
-            std::string label = "benchmark";
-            for (int i = 1; i < argc; i++) {
-                std::string a = argv[i];
-                if (a[0] != '-') {
-                    label = a;
-                    break;
-                }
-            }
+            const int MEASURE_FRAMES = benchMeasureFrames;
+            const std::string& label = benchLabel;
 
             Profiler profiler;
             profiler.init();
+            profiler.config = benchConfig;
 
             glm::mat4 projection = glm::perspective(glm::radians(gameSettings.fov),
                                                     (float)windowWidth / (float)windowHeight, 0.1f, 5000.0f);
             glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
             int frame = 0;
+            constexpr int SETTLE_FRAMES = 30;
+            constexpr double MAX_WARMUP_SECONDS = 60.0;
+            int idleFrames = 0;
+            int holdFrames = 0; // frames spent holding at the end of warmup
+            const double warmupStart = glfwGetTime();
 
             while (!glfwWindowShouldClose(window) && frame < WARMUP_FRAMES + MEASURE_FRAMES) {
                 bool measuring = (frame >= WARMUP_FRAMES);
@@ -1427,7 +1479,7 @@ int main(int argc, char* argv[]) {
 
                 if (frame < WARMUP_FRAMES) {
                     // Phase 1 (warmup): spin 360° in place so surrounding chunks load
-                    float angle = glm::radians((float)frame / WARMUP_FRAMES * 360.0f);
+                    float angle = glm::radians((float)(frame + holdFrames) / WARMUP_FRAMES * 360.0f);
                     player.getCamera().changeDirection(glm::vec3(std::cos(angle), 0.0f, std::sin(angle)));
                 } else if (stressWater) {
                     // Stay put looking down at the flood
@@ -1464,7 +1516,15 @@ int main(int argc, char* argv[]) {
                 if (measuring) profiler.beginUpdate();
                 // Benchmark runs at a fixed step so frame-rate measurements
                 // aren't perturbed by real dt; entities don't exist here.
-                w->update(player.getPosition(), 1.0f / 60.0f, glfwGetTime());
+                // The settle hold only streams chunks: running the
+                // simulation there would advance the world by however long
+                // streaming took, so the measured phase would start from a
+                // different state on faster or slower machines.
+                bool holding = frame == WARMUP_FRAMES - 1 && holdFrames > 0;
+                if (holding)
+                    w->chunkManager->update(player.getPosition());
+                else
+                    w->update(player.getPosition(), 1.0f / 60.0f, glfwGetTime());
                 if (measuring) profiler.endUpdate();
 
                 glm::mat4 vp = projection * player.getViewMatrix();
@@ -1490,6 +1550,27 @@ int main(int argc, char* argv[]) {
 
                 glfwPollEvents();
                 FrameMark;
+
+                // Warmup = the 600-frame spin, then hold on its last frame
+                // until chunk streaming has settled (SETTLE_FRAMES idle
+                // frames in a row, capped at MAX_WARMUP_SECONDS). At ~1000
+                // fps the spin alone finishes before the spawn area has even
+                // meshed, and the measured phase ran on a half-loaded world.
+                // While holding, the camera keeps spinning so dirty chunks
+                // come into view for the render-path rebuild, and off-screen
+                // ones are queued async (settleDirtyMeshes).
+                if (frame == WARMUP_FRAMES - 1) {
+                    w->chunkManager->settleDirtyMeshes();
+                    idleFrames = w->chunkManager->streamingIdle() ? idleFrames + 1 : 0;
+                    double waited = glfwGetTime() - warmupStart;
+                    if (idleFrames < SETTLE_FRAMES && waited < MAX_WARMUP_SECONDS) {
+                        ++holdFrames;
+                        continue;
+                    }
+                    std::cout << "[benchmark] warmup " << waited << " s, " << w->chunkManager->chunks.size()
+                              << " chunks loaded" << (idleFrames < SETTLE_FRAMES ? " (timed out)" : "")
+                              << std::endl;
+                }
                 frame++;
             }
 
