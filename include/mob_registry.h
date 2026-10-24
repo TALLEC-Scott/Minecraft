@@ -42,12 +42,16 @@
 class Mob;
 
 enum class MobType : uint8_t {
+    // Passive
     Pig,
-    Chicken,
-    Creeper,
-    Spider,
     Cow,
     Sheep,
+    Chicken,
+    // Hostile
+    Zombie,
+    Skeleton,
+    Creeper,
+    Spider,
     Count // keep last
 };
 
