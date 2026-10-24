@@ -1,4 +1,6 @@
 #include "player.h"
+#include "collision.h"
+#include "mob_manager.h"
 #include "net/net_session.h"
 #include "particle_system.h"
 #include "world.h"
@@ -178,7 +180,9 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     if (leftDown && !leftClickHeld && world) {
         isPunching = true;
         punchStartTime = glfwGetTime();
-        if (hasHighlight) {
+        // Mobs are tested before blocks: a punch that lands on a mob never
+        // also breaks the block behind it.
+        if (!tryAttackMob(world) && hasHighlight) {
             Cube* block = world->getBlock(targeted.x, targeted.y, targeted.z);
             if (block) playBreakSound(block->getType());
             // Optimistic local apply — the host's DestroyApply echo will
@@ -227,6 +231,65 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     rightClickHeld = rightDown;
 }
 
+bool Player::tryAttackMob(World* world) {
+    if (!world->mobManager) return false;
+    glm::vec3 eye = camera.getPosition();
+    glm::vec3 dir = camera.getFront();
+    float mobDist = 0.0f;
+    Mob* mob = world->mobManager->raycast(eye, dir, ATTACK_REACH, mobDist);
+    if (!mob) return false;
+    // A targeted block nearer than the mob shields it.
+    if (hasHighlight) {
+        float blockDist = 0.0f;
+        glm::vec3 b(targeted);
+        if (rayIntersectsAABB(eye, dir, b - glm::vec3(0.5f), b + glm::vec3(0.5f), REACH, blockDist) &&
+            blockDist < mobDist)
+            return false;
+    }
+    double now = glfwGetTime();
+    if (now - lastAttackTime < ATTACK_COOLDOWN) return true; // swing only, still no block break
+    lastAttackTime = now;
+    float dmg = FIST_DAMAGE;
+    // Minecraft-style critical: hitting while falling.
+    if (camera.isWalkMode() && !camera.isOnGround() && !camera.isInWater() && camera.getVelocityY() < 0.0f)
+        dmg *= 1.5f;
+    if (world->mobManager->attackMob(*mob, dmg, eye)) playHitSound();
+    return true;
+}
+
+void Player::playHitSound() {
+    // No dedicated hit samples in assets — the cloth dig sound reads as a
+    // soft thump. Silent if audio isn't loaded.
+    if (!stepSoundsLoaded) return;
+    auto& set = breakSounds[STEP_CLOTH - 1];
+    if (set.sounds.empty()) return;
+    static std::mt19937 rng(77);
+    int idx = std::uniform_int_distribution<int>(0, (int)set.sounds.size() - 1)(rng);
+    ma_sound_seek_to_pcm_frame(&set.sounds[idx], 0);
+    ma_sound_start(&set.sounds[idx]);
+}
+
+void Player::hurt(float amount, glm::vec3 fromPos, bool knockback) {
+    if (!health.hurt(amount, glfwGetTime())) return;
+    if (knockback) {
+        glm::vec3 p = camera.getPosition();
+        glm::vec2 away(p.x - fromPos.x, p.z - fromPos.z);
+        float len = glm::length(away);
+        if (len > 0.001f) camera.applyKnockback(away / len * HURT_KNOCKBACK, 0.12f);
+    }
+    playHitSound();
+}
+
+void Player::respawn(glm::vec3 eyePos) {
+    health.respawn(glfwGetTime());
+    camera.setPosition(eyePos);
+    camera.resetMotion();
+}
+
+float Player::getHurtFlash() const {
+    return health.hurtFlash(glfwGetTime());
+}
+
 void Player::updateMouseLook(double xPos, double yPos, int /*windowWidth*/, int /*windowHeight*/) {
     static double lastX = 0, lastY = 0;
     static bool initialized = false;
@@ -262,6 +325,12 @@ void Player::update(World* world) {
 
     // Physics
     findGroundAndUpdate(world);
+
+    // Health: fall damage on landing (walk mode only — Camera doesn't track
+    // falls while flying or in water), then slow regeneration.
+    float fallDmg = PlayerHealth::fallDamage(camera.takeLandingFall());
+    if (fallDmg > 0.0f) hurt(fallDmg, camera.getPosition(), false);
+    health.update(glfwGetTime());
 
     // Movement sounds: swim sounds when any body part in water, footsteps on land
     bool inWater = camera.isInWater();

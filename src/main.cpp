@@ -53,6 +53,8 @@
 #include "world_directory.h"
 #include "entity_cube_renderer.h"
 #include "entity_manager.h"
+#include "mob_manager.h"
+#include "mob_registry.h"
 #include "particle_system.h"
 #include "player_renderer.h"
 #include "net/chat_overlay.h"
@@ -115,6 +117,77 @@ static void syncToPersistentStorage() {
 
 Player player;
 World* w = nullptr;
+
+// Short HUD message (debug mob spawner feedback).
+static std::string g_toastText;
+static double g_toastTime = -100.0;
+#ifndef __EMSCRIPTEN__
+static void showToast(const std::string& text) {
+    g_toastText = text;
+    g_toastTime = glfwGetTime();
+}
+
+// Desktop debug spawner state (F7 cycles, F6 spawns).
+static int g_debugMobType = 0;
+#endif
+
+static bool isSolidAt(int x, int y, int z) {
+    if (!w) return false;
+    Cube* c = w->getBlock(x, y, z);
+    return c && hasFlag(c->getType(), BF_SOLID);
+}
+
+// Respawn point: top of the column at the world spawn (15, 15). Falls back
+// to a high fly-mode spawn when that chunk isn't loaded (player died far
+// away) so the player can't drop through an unloaded column.
+static glm::vec3 worldSpawnEye(bool& loaded) {
+    constexpr int SPAWN_X = 15, SPAWN_Z = 15;
+    loaded = w && w->chunkManager->getChunk(worldToChunk(SPAWN_X), worldToChunk(SPAWN_Z)) != nullptr;
+    if (loaded) {
+        for (int y = CHUNK_HEIGHT - 1; y >= 0; --y) {
+            if (isSolidAt(SPAWN_X, y, SPAWN_Z))
+                return glm::vec3(SPAWN_X, static_cast<float>(y) + 0.5f + PLAYER_HEIGHT + 0.01f, SPAWN_Z);
+        }
+    }
+    return glm::vec3(SPAWN_X, 90.0f, SPAWN_Z);
+}
+
+// Minecraft-style pixel heart (9x9). X = outline, R = fill, W = highlight.
+static const char* const HEART_PIXELS[9] = {
+    ".XX...XX.", "XRRX.XRRX", "XRWRXRRRX", "XRRRRRRRX", "XRRRRRRRX",
+    ".XRRRRRX.", "..XRRRX..", "...XRX...", "....X....",
+};
+
+// Ten hearts (20 half-hearts) left-aligned at (x, y). Outlines blink white
+// while `flash` > 0; at <= 4 HP the hearts jitter like Minecraft's.
+static void drawHearts(UIRenderer& ui, float x, float y, float health, float flash, double now) {
+    constexpr float PX = 2.0f;
+    constexpr float HEART_STEP = 9 * PX + 2.0f;
+    const glm::vec4 RED(0.86f, 0.08f, 0.10f, 1.0f);
+    const glm::vec4 SHINE(1.0f, 0.62f, 0.62f, 1.0f);
+    const glm::vec4 EMPTY(0.18f, 0.04f, 0.05f, 0.85f);
+    bool blink = flash > 0.0f && (static_cast<int>(now * 10.0) % 2 == 0);
+    const glm::vec4 OUTLINE = blink ? glm::vec4(1.0f) : glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    int hp = static_cast<int>(std::ceil(health));
+    for (int i = 0; i < 10; ++i) {
+        float hx = x + i * HEART_STEP;
+        float hy = y;
+        if (hp <= 4) hy += std::round(std::sin(now * 25.0 + i * 1.7) * 1.5);
+        int value = hp - i * 2; // >= 2 full, 1 half, <= 0 empty
+        for (int r = 0; r < 9; ++r) {
+            for (int c = 0; c < 9; ++c) {
+                char p = HEART_PIXELS[r][c];
+                if (p == '.') continue;
+                glm::vec4 col = OUTLINE;
+                if (p != 'X') {
+                    bool filled = value >= 2 || (value == 1 && c <= 4);
+                    col = filled ? (p == 'W' ? SHINE : RED) : EMPTY;
+                }
+                ui.drawRect(hx + c * PX, hy + r * PX, PX, PX, col);
+            }
+        }
+    }
+}
 
 // Loading-state tracking: the chunk the player will spawn in, plus a start
 // time used to render progress (and enforce a safety timeout).
@@ -206,7 +279,7 @@ void framebuffer_size_callback(GLFWwindow* /*window*/, int width, int height) {
 }
 
 void cursorPositionCallback(GLFWwindow* /*window*/, double xPos, double yPos) {
-    if (currentState == GameState::Playing && !inventory.isOpen())
+    if (currentState == GameState::Playing && !inventory.isOpen() && !player.isDead())
         player.updateMouseLook(xPos, yPos, windowWidth, windowHeight);
 }
 
@@ -395,6 +468,37 @@ void processInput(GLFWwindow* window) {
     player.handleInput(window, w);
 
 #ifndef __EMSCRIPTEN__
+    // Debug mob spawner (desktop only): F7 cycles the mob type, F6 spawns
+    // one ~3 blocks in front of the player, facing them. Debug spawns are
+    // persistent (never natural-despawn).
+    static bool f6Held = false, f7Held = false;
+    bool f7Down = glfwGetKey(window, GLFW_KEY_F7) == GLFW_PRESS;
+    if (f7Down && !f7Held) {
+        g_debugMobType = (g_debugMobType + 1) % MOB_TYPE_COUNT;
+        showToast(std::string("Debug spawn: ") + mobName(static_cast<MobType>(g_debugMobType)) + " (F6)");
+    }
+    f7Held = f7Down;
+    bool f6Down = glfwGetKey(window, GLFW_KEY_F6) == GLFW_PRESS;
+    if (f6Down && !f6Held && w && w->mobManager) {
+        glm::vec3 f = player.getFront();
+        glm::vec2 flat(f.x, f.z);
+        flat = glm::dot(flat, flat) > 1e-6f ? glm::normalize(flat) : glm::vec2(1.0f, 0.0f);
+        glm::vec3 feet = player.getFeetPosition();
+        int bx = static_cast<int>(std::floor(feet.x + flat.x * 3.0f + 0.5f));
+        int bz = static_cast<int>(std::floor(feet.z + flat.y * 3.0f + 0.5f));
+        int by = static_cast<int>(std::floor(feet.y + 0.5f));
+        // Climb out of terrain: first cell with two free blocks above.
+        for (int i = 0; i < 16 && (isSolidAt(bx, by, bz) || isSolidAt(bx, by + 1, bz)); ++i) ++by;
+        auto type = static_cast<MobType>(g_debugMobType);
+        if (Mob* m = w->mobManager->spawnMob(type, glm::vec3(bx, by - 0.5f, bz), true)) {
+            m->yaw = m->prevYaw = m->headYaw = m->prevHeadYaw = yawFromDirection(-flat.x, -flat.y);
+            showToast(std::string("Spawned ") + mobName(type));
+        }
+    }
+    f6Held = f6Down;
+#endif
+
+#ifndef __EMSCRIPTEN__
     // Enable/Disable fullscreen mode
     bool f12KeyDown = glfwGetKey(window, GLFW_KEY_F12) == GLFW_PRESS;
     if (f12KeyDown && !f12KeyPressed) {
@@ -419,6 +523,7 @@ int main(int argc, char* argv[]) {
     bool benchmarkMode = false;
     bool headlessMode = false;
     bool stressWater = false;
+    bool benchMobs = false; // --bench-mobs: spawn pigs along the measured path
     unsigned int worldSeed = 0;
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -428,6 +533,8 @@ int main(int argc, char* argv[]) {
             headlessMode = true;
         else if (arg == "--stress-water")
             stressWater = true;
+        else if (arg == "--bench-mobs")
+            benchMobs = true;
         else if (arg == "--seed" && i + 1 < argc)
             worldSeed = std::stoul(argv[++i]);
     }
@@ -584,7 +691,9 @@ int main(int argc, char* argv[]) {
 #endif
         Menu menuObj;
     menuObj.init();
+#ifndef __EMSCRIPTEN__
     if (benchmarkMode) menuObj.muteAll();
+#endif
     g_menu = &menuObj;
 
 #ifdef __EMSCRIPTEN__
@@ -754,6 +863,9 @@ int main(int argc, char* argv[]) {
             world->chunkManager->setWorldSave(&*worldSave);
             world->waterSimulator->initAudio(menuObj.getAudioEngine());
             world->entityManager->initAudio(menuObj.getAudioEngine());
+            world->mobManager->initAudio(menuObj.getAudioEngine());
+            world->mobManager->setDamagePlayerCallback(
+                [](float amount, glm::vec3 from) { player.hurt(amount, from); });
             world->chunkManager->setRenderDistance(gameSettings.renderDistance);
             w = &*world;
 
@@ -768,6 +880,8 @@ int main(int argc, char* argv[]) {
                 player.setYawPitch(-90.0f, 0.0f);
                 player.getCamera().setWalkMode(false);
             }
+            // Fresh health + motion for every world entered (health isn't saved).
+            player.respawn(player.getPosition());
 
             // Persist so the new world shows up in listWorlds() immediately.
             // The player position has been restored to the saved (x, y, z,
@@ -790,6 +904,9 @@ int main(int argc, char* argv[]) {
             std::filesystem::remove_all("saves/_benchmark", ec);
             unsigned int benchSeed = (worldSeed != 0) ? worldSeed : BENCHMARK_DEFAULT_SEED;
             switchToWorld("_benchmark", benchSeed, "_benchmark");
+            // Keep runs comparable: no natural spawning (--bench-mobs adds a
+            // fixed set instead).
+            w->mobManager->setSpawningEnabled(false);
         }
 #endif
 
@@ -1289,6 +1406,25 @@ int main(int argc, char* argv[]) {
                     std::cout << "[stress-water] placed " << placed << " sources at y=" << oy << std::endl;
                 }
 
+                // Mob path exercise: a line of pigs dropped onto the terrain
+                // ahead of the sprint direction (+X).
+                if (benchMobs && frame == WARMUP_FRAMES) {
+                    glm::vec3 pp = player.getPosition();
+                    int spawned = 0;
+                    for (int i = 0; i < 24; ++i) {
+                        int bx = (int)std::floor(pp.x) + 4 + i * 3;
+                        int bz = (int)std::floor(pp.z) + (i % 5) - 2;
+                        for (int y = CHUNK_HEIGHT - 2; y > 0; --y) {
+                            if (!isSolidAt(bx, y, bz)) continue;
+                            if (w->mobManager->spawnMob(static_cast<MobType>(i % MOB_TYPE_COUNT),
+                                                        glm::vec3(bx, y + 0.5f, bz)))
+                                spawned++;
+                            break;
+                        }
+                    }
+                    std::cout << "[bench-mobs] spawned " << spawned << " mobs" << std::endl;
+                }
+
                 if (frame < WARMUP_FRAMES) {
                     // Phase 1 (warmup): spin 360° in place so surrounding chunks load
                     float angle = glm::radians((float)frame / WARMUP_FRAMES * 360.0f);
@@ -1336,6 +1472,7 @@ int main(int argc, char* argv[]) {
                 double t0 = glfwGetTime();
                 if (measuring) profiler.beginRender();
                 w->render(shaderProgram, vp, player.getPosition());
+                w->mobManager->render(shaderProgram, vp, player.getPosition());
                 if (measuring) profiler.endRender();
 
                 if (measuring) profiler.beginSwap();
@@ -1632,7 +1769,9 @@ int main(int argc, char* argv[]) {
             double frameTime = dt * 1000.0;
             lastFrameTime = currentTime;
 
-            if (currentState == GameState::Playing) {
+            // Dead players are frozen behind the death screen while the
+            // world keeps running.
+            if (currentState == GameState::Playing && !player.isDead()) {
                 player.update(w);
             }
             nbFrames++;
@@ -1647,7 +1786,7 @@ int main(int argc, char* argv[]) {
                 lastTime += 1.0;
             }
 
-            if (currentState == GameState::Playing) {
+            if (currentState == GameState::Playing && !player.isDead()) {
                 processInput(window);
             }
             shaderProgram.use();
@@ -1699,6 +1838,13 @@ int main(int argc, char* argv[]) {
 
             TextureArray::bind();
             if (currentState == GameState::Playing) {
+                // Mobs read the player + time of day during this update.
+                MobManager::PlayerState mobView;
+                mobView.feet = player.getFeetPosition();
+                mobView.eye = player.getPosition();
+                mobView.targetable = !player.isDead();
+                w->mobManager->setPlayer(mobView);
+                w->mobManager->setSunHeight(std::sin(timeValue));
                 w->update(player.getPosition(), dt, glfwGetTime());
                 double netNow = glfwGetTime();
                 netSession.poll(netNow);
@@ -1931,6 +2077,8 @@ int main(int argc, char* argv[]) {
                 shaderProgram.setMat4("model", glm::mat4(1.0f));
                 shaderProgram.setFloat("entityTint", 1.0f);
             }
+            // Mobs + projectiles (MobRenderer restores model/tint/color).
+            if (w->mobManager) w->mobManager->render(shaderProgram, viewProjection, player.getPosition());
 
             // Remote players (multiplayer MVP) — rendered as a Steve-shaped
             // humanoid built from 6 cube parts, tinted via entityColor.
@@ -2198,8 +2346,19 @@ int main(int argc, char* argv[]) {
                 glEnable(GL_CULL_FACE);
             }
 
-            // Crosshair (Minecraft-style: inverted colors, centered cross)
+            // Damage flash: brief red full-screen tint after the player is hurt.
             if (currentState == GameState::Playing) {
+                float flash = player.getHurtFlash();
+                if (flash > 0.0f) {
+                    uiRenderer.begin(windowWidth, windowHeight);
+                    uiRenderer.drawRect(0, 0, (float)windowWidth, (float)windowHeight,
+                                        glm::vec4(0.75f, 0.0f, 0.0f, 0.35f * flash));
+                    uiRenderer.end();
+                }
+            }
+
+            // Crosshair (Minecraft-style: inverted colors, centered cross)
+            if (currentState == GameState::Playing && !player.isDead()) {
                 float cx = std::floor(windowWidth / 2.0f);
                 float cy = std::floor(windowHeight / 2.0f);
                 constexpr float arm = 8.0f; // arm length
@@ -2249,13 +2408,49 @@ int main(int argc, char* argv[]) {
                     std::string num = std::to_string((i + 1) % 10);
                     uiRenderer.drawTextShadow(num, sx + 2, sy + 2, 1.0f);
                 }
+                // Health: 10 hearts just above the hotbar's left edge.
+                drawHearts(uiRenderer, barX, barY - 22.0f, player.getHealth().health, player.getHurtFlash(),
+                           glfwGetTime());
+                // Debug-spawner toast, fading out over 2 s.
+                double toastAge = glfwGetTime() - g_toastTime;
+                if (toastAge < 2.0) {
+                    float a = (float)std::min(1.0, (2.0 - toastAge) * 2.0);
+                    float tw = uiRenderer.textWidth(g_toastText, 2.0f);
+                    uiRenderer.drawTextShadow(g_toastText, (windowWidth - tw) / 2.0f, barY - 60.0f, 2.0f,
+                                              glm::vec4(1.0f, 1.0f, 1.0f, a));
+                }
                 if (g_chat) g_chat->draw(uiRenderer, windowWidth, windowHeight, glfwGetTime());
                 uiRenderer.end();
             }
 
             // Inventory overlay (rendered over hotbar)
-            if (currentState == GameState::Playing && inventory.isOpen()) {
+            if (currentState == GameState::Playing && inventory.isOpen() && !player.isDead()) {
                 inventory.draw(uiRenderer, windowWidth, windowHeight, window, player);
+            }
+
+            // Death screen: free the cursor on the frame the player dies;
+            // Respawn puts them back at the world spawn with full health.
+            static bool wasDead = false;
+            static double deathTime = 0.0;
+            bool deadNow = currentState == GameState::Playing && player.isDead();
+            if (deadNow && !wasDead) {
+                if (inventory.isOpen()) inventory.close();
+                glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
+                deathTime = glfwGetTime();
+            }
+            wasDead = deadNow;
+            // The 1 s grace stops a held attack click (the cursor is recentred
+            // over the button) from respawning instantly.
+            if (deadNow && menu.drawDeathScreen(uiRenderer, windowWidth, windowHeight, window) &&
+                glfwGetTime() - deathTime > 1.0) {
+                bool spawnLoaded = false;
+                glm::vec3 spawnEye = worldSpawnEye(spawnLoaded);
+                if (!spawnLoaded) player.getCamera().setWalkMode(false);
+                player.respawn(spawnEye);
+                glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
+                player.resetMouseState();
+                player.consumeMouseButtons();
+                wasDead = false;
             }
 
             // Pause menu overlay (rendered after the world)

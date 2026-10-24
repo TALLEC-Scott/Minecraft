@@ -2,6 +2,7 @@
 
 #include "camera.h"
 #include "cube.h"
+#include "player_health.h"
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -59,6 +60,22 @@ class Player {
     glm::ivec3 getLastPlacedPos() const { return lastPlacedPos; }
 
     Camera& getCamera() { return camera; }
+
+    // --- Health & combat ---
+    static constexpr float ATTACK_REACH = 3.5f;     // mob melee reach (blocks from the eye)
+    static constexpr double ATTACK_COOLDOWN = 0.25; // seconds between damaging hits
+    static constexpr float FIST_DAMAGE = 1.0f;      // no tools yet; ×1.5 crit while falling
+    static constexpr float HURT_KNOCKBACK = 8.0f;   // blocks / second, decays in Camera
+
+    const PlayerHealth& getHealth() const { return health; }
+    bool isDead() const { return health.isDead(); }
+    glm::vec3 getFeetPosition() const { return camera.getPosition() - glm::vec3(0.0f, PLAYER_HEIGHT, 0.0f); }
+    // Damage from a world position (mob, explosion). Knockback pushes away
+    // from `fromPos` horizontally. Respects the invulnerability window.
+    void hurt(float amount, glm::vec3 fromPos, bool knockback = true);
+    // Full health, zero motion, camera (eye) at `eyePos`.
+    void respawn(glm::vec3 eyePos);
+    float getHurtFlash() const;
 
     // Multiplayer glue. When `net` is non-null, handleInput sends
     // intents through the session and skips the local world write iff
@@ -127,6 +144,13 @@ class Player {
 
     void findGroundAndUpdate(World* world);
     void updateTargetedBlock(World* world);
+    // Left-click melee: true if a mob was in reach (and in front of any
+    // targeted block) — the click is then consumed and no block breaks.
+    bool tryAttackMob(World* world);
+    void playHitSound();
+
+    PlayerHealth health;
+    double lastAttackTime = -1.0;
 
     // Footstep audio
     ma_engine* audioEngine = nullptr;
