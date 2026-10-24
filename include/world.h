@@ -11,6 +11,7 @@
 using WorldResolver = WorldResolverT<ChunkManager, Chunk>;
 
 class EntityManager;
+class MobManager;
 class ParticleSystem;
 
 class World {
@@ -30,14 +31,16 @@ class World {
     void igniteTnt(glm::ivec3 pos, double now) const;
 
     // Destroys a sphere of blocks, chain-primes TNT in radius with short
-    // random fuses, spawns a smoke plume, and raises the camera-shake
-    // magnitude based on distance to the player (accessed via ChunkManager).
+    // random fuses, damages + knocks back mobs and the player (via
+    // MobManager::applyExplosion), spawns a smoke plume, and raises the
+    // camera-shake magnitude based on distance to the player.
     void explode(glm::vec3 center, float power, double now) const;
 
     TerrainGenerator* terrainGenerator;
     ChunkManager* chunkManager;
     WaterSimulator* waterSimulator;
     EntityManager* entityManager;
+    MobManager* mobManager; // living mobs + projectiles, 20 TPS (see mob_manager.h)
     ParticleSystem* particles;
 
     // Camera-shake magnitude set by explode(); main.cpp decays it per-frame

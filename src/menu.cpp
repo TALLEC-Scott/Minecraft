@@ -248,6 +248,24 @@ GameState Menu::drawPauseMenu(UIRenderer& ui, int windowW, int windowH, GLFWwind
     return next;
 }
 
+bool Menu::drawDeathScreen(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window) {
+    widgets.beginFrame(window);
+    ui.begin(windowW, windowH);
+    ui.drawRect(0, 0, (float)windowW, (float)windowH, glm::vec4(0.45f, 0.0f, 0.0f, 0.55f));
+
+    float cx = (float)windowW / 2.0f;
+    float titleScale = 4.0f;
+    std::string title = "You died!";
+    ui.drawTextShadow(title, cx - ui.textWidth(title, titleScale) / 2.0f, windowH * 0.28f, titleScale);
+
+    float btnW = 400.0f, btnH = 44.0f;
+    bool respawn = widgets.button(ui, "Respawn", cx - btnW / 2.0f, windowH * 0.48f, btnW, btnH);
+
+    widgets.endFrame(ui);
+    ui.end();
+    return respawn;
+}
+
 // --- World list screen ---
 
 void Menu::refreshWorldList() {

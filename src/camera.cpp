@@ -107,6 +107,8 @@ void Camera::update(BlockCheck isSolid, void* ctx, WaterCheck isWater, WaterFlow
 
     if (!walkMode) {
         pendingMove = glm::vec3(0);
+        knockback = glm::vec2(0.0f);
+        fallDistance = 0.0f;
         return;
     }
 
@@ -170,6 +172,16 @@ void Camera::update(BlockCheck isSolid, void* ctx, WaterCheck isWater, WaterFlow
         }
     }
 
+    // Knockback impulse (mob hits, explosions): decays exponentially so a
+    // hit shoves the player ~1-2 blocks.
+    if (glm::dot(knockback, knockback) > 0.0001f) {
+        move.x += knockback.x * deltaTime;
+        move.z += knockback.y * deltaTime;
+        knockback *= std::exp(-6.0f * deltaTime);
+    } else {
+        knockback = glm::vec2(0.0f);
+    }
+
     // Resolve horizontal movement with wall sliding
     if (glm::dot(move, move) > 0.000001f) {
         feetPos = resolveMovement(feetPos, glm::vec3(move.x, 0, move.z), solidCheck);
@@ -198,7 +210,18 @@ void Camera::update(BlockCheck isSolid, void* ctx, WaterCheck isWater, WaterFlow
     // Resolve vertical movement with AABB (ground + ceiling)
     feetPos = {cameraPosition.x, cameraPosition.y - PLAYER_HEIGHT, cameraPosition.z};
     auto vResult = resolveVertical(feetPos, moveY, solidCheck);
+    float movedY = vResult.newFeetY - feetPos.y;
     cameraPosition.y = vResult.newFeetY + PLAYER_HEIGHT;
+
+    // Fall tracking for fall damage: water cancels the fall entirely.
+    if (inWater) {
+        fallDistance = 0.0f;
+    } else if (vResult.hitGround) {
+        if (fallDistance > 0.0f) landedFall = fallDistance + std::max(0.0f, -movedY);
+        fallDistance = 0.0f;
+    } else if (movedY < 0.0f) {
+        fallDistance -= movedY;
+    }
 
     if (vResult.hitGround) {
         velocityY = 0;
@@ -209,6 +232,23 @@ void Camera::update(BlockCheck isSolid, void* ctx, WaterCheck isWater, WaterFlow
     if (vResult.hitCeiling) {
         velocityY = 0;
     }
+}
+
+void Camera::applyKnockback(glm::vec2 horizontal, float upward) {
+    knockback += horizontal;
+    if (walkMode && onGround && upward > 0.0f) {
+        velocityY = std::max(velocityY, upward);
+        onGround = false;
+    }
+}
+
+void Camera::resetMotion() {
+    velocityY = 0.0f;
+    pendingMove = glm::vec3(0);
+    knockback = glm::vec2(0.0f);
+    fallDistance = 0.0f;
+    landedFall = 0.0f;
+    onGround = false;
 }
 
 void Camera::changeDirection(glm::vec3 direction) {

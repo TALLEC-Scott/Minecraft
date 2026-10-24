@@ -2,6 +2,7 @@
 
 #include <glm/glm.hpp>
 #include <cmath>
+#include <utility>
 
 static constexpr float PLAYER_HALF_WIDTH = 0.3f;
 static constexpr float PLAYER_TOTAL_HEIGHT = 1.8f;
@@ -160,4 +161,28 @@ template <typename SolidCheck> glm::vec3 resolveMovement(glm::vec3 feetPos, glm:
     if (!collides(tryZ, isSolid)) result.z = tryZ.z;
 
     return result;
+}
+
+// Slab-method ray vs. axis-aligned box. `dir` need not be normalized; `outT`
+// is the entry parameter along `dir` (0 when the origin is inside the box).
+// Returns false when the box is missed or the hit lies beyond `maxT`.
+inline bool rayIntersectsAABB(glm::vec3 origin, glm::vec3 dir, glm::vec3 boxMin, glm::vec3 boxMax, float maxT,
+                              float& outT) {
+    float tNear = 0.0f;
+    float tFar = maxT;
+    for (int i = 0; i < 3; i++) {
+        if (std::abs(dir[i]) < 1e-8f) {
+            if (origin[i] < boxMin[i] || origin[i] > boxMax[i]) return false;
+            continue;
+        }
+        float inv = 1.0f / dir[i];
+        float t0 = (boxMin[i] - origin[i]) * inv;
+        float t1 = (boxMax[i] - origin[i]) * inv;
+        if (t0 > t1) std::swap(t0, t1);
+        if (t0 > tNear) tNear = t0;
+        if (t1 < tFar) tFar = t1;
+        if (tNear > tFar) return false;
+    }
+    outT = tNear;
+    return true;
 }

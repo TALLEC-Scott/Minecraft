@@ -32,6 +32,7 @@ class Camera {
     glm::vec3 getTargetPosition();
 
     void toggleWalkMode();
+    float getVelocityY() const { return velocityY; }
     bool isWalkMode() const { return walkMode; }
     bool isOnGround() const { return onGround; }
     // isSolid: callback to check if block at (x,y,z) is solid
@@ -61,7 +62,25 @@ class Camera {
         shakeTime = now;
     }
 
+    // Fall distance (blocks) of the landing that happened during the last
+    // update(), then 0 until the next landing. Accumulates only in walk mode
+    // out of water; flying or touching water resets it.
+    float takeLandingFall() {
+        float f = landedFall;
+        landedFall = 0.0f;
+        return f;
+    }
+    // Push the player (mob hit / explosion). `horizontal` is in blocks per
+    // second (decays quickly); `upward` is a per-frame vertical velocity
+    // applied only when standing in walk mode.
+    void applyKnockback(glm::vec2 horizontal, float upward);
+    // Clear velocity, knockback and fall tracking (respawn / teleport).
+    void resetMotion();
+
   private:
+    float fallDistance = 0.0f;
+    float landedFall = 0.0f;
+    glm::vec2 knockback = glm::vec2(0.0f); // blocks / second, decays in update()
     bool walkMode = false;
     bool onGround = false;
     bool inWater = false;

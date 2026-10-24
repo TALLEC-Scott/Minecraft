@@ -1,7 +1,9 @@
 #include "world.h"
 #include "entity_manager.h"
+#include "frustum.h"
 #include "light_data.h"
 #include "light_propagation.h"
+#include "mob_manager.h"
 #include "particle_system.h"
 #include "profiler.h"
 #include "tnt_entity.h"
@@ -11,36 +13,13 @@
 #include <cmath>
 #include <random>
 
-// Extract 6 frustum planes from a combined projection*view matrix (Gribb-Hartmann).
-// Each plane is vec4(normal.xyz, distance). A point p is inside if dot(plane.xyz, p) + plane.w >= 0.
-static std::array<glm::vec4, 6> extractFrustumPlanes(const glm::mat4& m) {
-    return {{
-        // Left, Right, Bottom, Top, Near, Far
-        glm::vec4(m[0][3] + m[0][0], m[1][3] + m[1][0], m[2][3] + m[2][0], m[3][3] + m[3][0]),
-        glm::vec4(m[0][3] - m[0][0], m[1][3] - m[1][0], m[2][3] - m[2][0], m[3][3] - m[3][0]),
-        glm::vec4(m[0][3] + m[0][1], m[1][3] + m[1][1], m[2][3] + m[2][1], m[3][3] + m[3][1]),
-        glm::vec4(m[0][3] - m[0][1], m[1][3] - m[1][1], m[2][3] - m[2][1], m[3][3] - m[3][1]),
-        glm::vec4(m[0][3] + m[0][2], m[1][3] + m[1][2], m[2][3] + m[2][2], m[3][3] + m[3][2]),
-        glm::vec4(m[0][3] - m[0][2], m[1][3] - m[1][2], m[2][3] - m[2][2], m[3][3] - m[3][2]),
-    }};
-}
-
-// Test an AABB against the frustum. Returns false if the box is completely outside any plane.
-static bool aabbInFrustum(const std::array<glm::vec4, 6>& planes, glm::vec3 minP, glm::vec3 maxP) {
-    for (auto& p : planes) {
-        // Pick the positive vertex (corner most in the direction of the plane normal)
-        glm::vec3 pv(p.x >= 0 ? maxP.x : minP.x, p.y >= 0 ? maxP.y : minP.y, p.z >= 0 ? maxP.z : minP.z);
-        if (p.x * pv.x + p.y * pv.y + p.z * pv.z + p.w < 0) return false;
-    }
-    return true;
-}
-
 World::World(unsigned int seed) : seed(seed) {
     this->terrainGenerator = new TerrainGenerator(seed, 0.1, 0, CHUNK_HEIGHT);
     this->chunkManager = new ChunkManager(RENDER_DISTANCE, CHUNK_SIZE, *terrainGenerator);
     this->waterSimulator = new WaterSimulator(this);
     this->entityManager = new EntityManager();
     this->particles = new ParticleSystem();
+    this->mobManager = new MobManager(this, seed);
 }
 
 static void markBorderNeighborsDirty(ChunkManager* cm, int chunkX, int chunkZ, int lx, int y, int lz) {
@@ -160,6 +139,7 @@ void World::placeBlock(glm::ivec3 position, block_type type) const {
 }
 
 World::~World() {
+    delete this->mobManager;
     delete this->particles;
     delete this->entityManager;
     delete this->waterSimulator;
@@ -330,6 +310,10 @@ void World::update(glm::vec3 cameraPosition, float dt, double now) const {
         this->entityManager->tick(const_cast<World*>(this), dt, now);
     }
     {
+        ZoneScopedN("Mobs::tick");
+        this->mobManager->update(dt, now);
+    }
+    {
         ZoneScopedN("Particles::update");
         this->particles->update(dt);
     }
@@ -391,6 +375,9 @@ void World::explode(glm::vec3 center, float power, double now) const {
             }
         }
     }
+
+    // Entity damage + knockback (mobs and, via its hook, the player).
+    mobManager->applyExplosion(center, power);
 
     // Smoke plume + audio
     particles->spawnSmokePlume(center);
