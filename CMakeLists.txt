@@ -55,6 +55,24 @@ set(COMMON_SOURCES
     src/entity_cube_renderer.cpp
     src/particle_system.cpp
     src/player_renderer.cpp
+    src/mob.cpp
+    src/mob_ai.cpp
+    src/mob_model.cpp
+    src/mob_registry.cpp
+    src/mob_spawn.cpp
+    src/mob_manager.cpp
+    src/mob_renderer.cpp
+    src/mob_sounds.cpp
+    src/projectile.cpp
+    src/mobs/pig.cpp
+    src/mobs/cow.cpp
+    src/mobs/sheep.cpp
+    src/mobs/chicken.cpp
+    src/mobs/undead.cpp
+    src/mobs/zombie.cpp
+    src/mobs/skeleton.cpp
+    src/mobs/creeper.cpp
+    src/mobs/spider.cpp
     src/net/net_protocol.cpp
     src/net/net_session.cpp
     src/net/multiplayer_menu.cpp
@@ -222,6 +240,14 @@ else()
         tests/test_lighting_boundary.cpp
         tests/test_net_protocol.cpp
         tests/test_section_visibility.cpp
+        tests/test_mob_physics.cpp
+        tests/test_mob_combat.cpp
+        tests/test_mob_spawn.cpp
+        tests/test_mob_cow_sheep.cpp
+        tests/test_mob_chicken.cpp
+        tests/test_mob_undead.cpp
+        tests/test_mob_creeper_spider.cpp
+        tests/test_player_health.cpp
         tests/test_worldgen.cpp
         src/TerrainGenerator.cpp
         src/terrain_fill.cpp
@@ -235,6 +261,21 @@ else()
         src/light_propagation.cpp
         src/world_directory.cpp
         src/net/net_protocol.cpp
+        src/mob.cpp
+        src/mob_ai.cpp
+        src/mob_model.cpp
+        src/mob_registry.cpp
+        src/mob_spawn.cpp
+        src/projectile.cpp
+        src/mobs/pig.cpp
+        src/mobs/cow.cpp
+        src/mobs/sheep.cpp
+        src/mobs/chicken.cpp
+        src/mobs/undead.cpp
+        src/mobs/zombie.cpp
+        src/mobs/skeleton.cpp
+        src/mobs/creeper.cpp
+        src/mobs/spider.cpp
     )
     # tests/stubs is searched before include/ so the water-sim tests can
     # compile src/WaterSimulator.cpp against minimal stubs of chunk.h /

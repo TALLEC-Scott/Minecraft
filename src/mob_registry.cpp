@@ -1,0 +1,61 @@
+#include "mob_registry.h"
+
+#include <cassert>
+
+#include "mob.h"
+#include "mobs/chicken.h"
+#include "mobs/cow.h"
+#include "mobs/creeper.h"
+#include "mobs/pig.h"
+#include "mobs/sheep.h"
+#include "mobs/skeleton.h"
+#include "mobs/spider.h"
+#include "mobs/zombie.h"
+
+namespace {
+
+template <typename T> std::unique_ptr<Mob> makeMob() {
+    return std::make_unique<T>();
+}
+
+constexpr uint32_t PASTURE = biomeBit(BIOME_PLAINS) | biomeBit(BIOME_FOREST);
+constexpr uint32_t TUNDRA_BIT = biomeBit(BIOME_TUNDRA);
+
+// One row per MobType, in enum order. Sizes are Minecraft's (width / 2,
+// height); health in half-hearts. See mob_registry.h for the recipe.
+// clang-format off
+constexpr MobInfo MOB_TABLE[] = {
+    // type             name        factory              category              halfW  height  hp     spawn biomes          group  weight
+    {MobType::Pig,      "pig",      &makeMob<Pig>,       MobCategory::Passive, 0.45f, 0.9f,   10.0f, PASTURE,              2, 4,  10},
+    {MobType::Cow,      "cow",      &makeMob<Cow>,       MobCategory::Passive, 0.45f, 1.4f,   10.0f, PASTURE | TUNDRA_BIT, 2, 4,  8},
+    {MobType::Sheep,    "sheep",    &makeMob<Sheep>,     MobCategory::Passive, 0.45f, 1.3f,   8.0f,  PASTURE | TUNDRA_BIT, 2, 4,  12},
+    {MobType::Chicken,  "chicken",  &makeMob<Chicken>,   MobCategory::Passive, 0.2f,  0.7f,   4.0f,  PASTURE,              2, 4,  10},
+    {MobType::Zombie,   "zombie",   &makeMob<Zombie>,    MobCategory::Hostile, 0.3f,  1.95f,  20.0f, ALL_LAND_BIOMES,      1, 4,  100},
+    {MobType::Skeleton, "skeleton", &makeMob<Skeleton>,  MobCategory::Hostile, 0.3f,  1.99f,  20.0f, ALL_LAND_BIOMES,      1, 4,  100},
+    {MobType::Creeper,  "creeper",  &makeMob<Creeper>,   MobCategory::Hostile, 0.3f,  1.7f,   20.0f, ALL_LAND_BIOMES,      1, 4,  100},
+    {MobType::Spider,   "spider",   &makeMob<Spider>,    MobCategory::Hostile, 0.7f,  0.9f,   16.0f, ALL_LAND_BIOMES,      1, 4,  100},
+};
+// clang-format on
+
+static_assert(sizeof(MOB_TABLE) / sizeof(MOB_TABLE[0]) == MOB_TYPE_COUNT,
+              "MOB_TABLE needs exactly one row per MobType (in enum order)");
+
+} // namespace
+
+const MobInfo& mobInfo(MobType type) {
+    int idx = static_cast<int>(type);
+    assert(idx >= 0 && idx < MOB_TYPE_COUNT);
+    return MOB_TABLE[idx];
+}
+
+const MobInfo* mobRegistry() {
+    return MOB_TABLE;
+}
+
+std::unique_ptr<Mob> createMob(MobType type) {
+    return mobInfo(type).create();
+}
+
+const char* mobName(MobType type) {
+    return mobInfo(type).name;
+}
