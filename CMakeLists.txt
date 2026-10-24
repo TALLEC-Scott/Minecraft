@@ -67,6 +67,8 @@ set(COMMON_SOURCES
     src/mobs/chicken.cpp
     src/mobs/creeper.cpp
     src/mobs/spider.cpp
+    src/mobs/cow.cpp
+    src/mobs/sheep.cpp
     src/net/net_protocol.cpp
     src/net/net_session.cpp
     src/net/multiplayer_menu.cpp
@@ -239,6 +241,7 @@ else()
         tests/test_mob_spawn.cpp
         tests/test_mob_chicken.cpp
         tests/test_mob_creeper_spider.cpp
+        tests/test_mob_cow_sheep.cpp
         tests/test_player_health.cpp
         src/TerrainGenerator.cpp
         src/section_visibility.cpp
@@ -261,6 +264,8 @@ else()
         src/mobs/chicken.cpp
         src/mobs/creeper.cpp
         src/mobs/spider.cpp
+        src/mobs/cow.cpp
+        src/mobs/sheep.cpp
     )
     # tests/stubs is searched before include/ so the water-sim tests can
     # compile src/WaterSimulator.cpp against minimal stubs of chunk.h /
