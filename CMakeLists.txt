@@ -35,6 +35,7 @@ set(COMMON_SOURCES
     src/texture.cpp
     src/world.cpp
     src/TerrainGenerator.cpp
+    src/terrain_fill.cpp
     src/perlin_noise.cpp
     src/ChunkManager.cpp
     src/texture_array.cpp
@@ -221,7 +222,9 @@ else()
         tests/test_lighting_boundary.cpp
         tests/test_net_protocol.cpp
         tests/test_section_visibility.cpp
+        tests/test_worldgen.cpp
         src/TerrainGenerator.cpp
+        src/terrain_fill.cpp
         src/section_visibility.cpp
         src/perlin_noise.cpp
         src/game_state.cpp
