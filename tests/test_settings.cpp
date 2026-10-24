@@ -21,18 +21,18 @@ TEST_F(SettingsTest, DefaultValues) {
     EXPECT_FLOAT_EQ(s.fov, 70.0f);
     EXPECT_FALSE(s.vsync);
     EXPECT_FLOAT_EQ(s.mouseSensitivity, 1.0f);
-    EXPECT_FALSE(s.greedyMeshing);
+    EXPECT_TRUE(s.greedyMeshing);
 }
 
 TEST_F(SettingsTest, LoadFromFile) {
-    writeFile("renderDistance=12\nfov=90\nvsync=1\nmouseSensitivity=2.5\ngreedyMeshing=1\n");
+    writeFile("renderDistance=12\nfov=90\nvsync=1\nmouseSensitivity=2.5\ngreedyMeshing=0\n");
     GameSettings s;
     s.load(tmpFile);
     EXPECT_EQ(s.renderDistance, 12);
     EXPECT_FLOAT_EQ(s.fov, 90.0f);
     EXPECT_TRUE(s.vsync);
     EXPECT_FLOAT_EQ(s.mouseSensitivity, 2.5f);
-    EXPECT_TRUE(s.greedyMeshing);
+    EXPECT_FALSE(s.greedyMeshing); // non-default value proves the key is parsed
 }
 
 TEST_F(SettingsTest, ClampRenderDistance) {
@@ -77,7 +77,7 @@ TEST_F(SettingsTest, SaveAndReload) {
     s.fov = 85.0f;
     s.vsync = true;
     s.mouseSensitivity = 1.5f;
-    s.greedyMeshing = true;
+    s.greedyMeshing = false; // non-default, so the round trip is meaningful
     s.save(tmpFile);
 
     GameSettings loaded;
@@ -86,7 +86,7 @@ TEST_F(SettingsTest, SaveAndReload) {
     EXPECT_FLOAT_EQ(loaded.fov, 85.0f);
     EXPECT_TRUE(loaded.vsync);
     EXPECT_FLOAT_EQ(loaded.mouseSensitivity, 1.5f);
-    EXPECT_TRUE(loaded.greedyMeshing);
+    EXPECT_FALSE(loaded.greedyMeshing);
 }
 
 TEST_F(SettingsTest, MissingFileKeepsDefaults) {
