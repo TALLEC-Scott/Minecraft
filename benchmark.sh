@@ -4,15 +4,35 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+usage() {
+    echo "usage: $0 [label] [--headless] [--seed N] [--bench-frames N] [--greedy 0|1] [--fancy-leaves 0|1]" >&2
+    exit 1
+}
+
+# Options taking a value accept both "--opt N" and "--opt=N"; they are
+# passed through to the binary, which validates them.
 LABEL=""
 HEADLESS=""
-SEED=""
-for arg in "$@"; do
-    case "$arg" in
+GAME_ARGS=()
+MEASURE_FRAMES=600
+while [ $# -gt 0 ]; do
+    case "$1" in
         --headless) HEADLESS="--headless" ;;
-        --seed=*) SEED="--seed ${arg#--seed=}" ;;
-        *) [ -z "$LABEL" ] && LABEL="$arg" ;;
+        --seed=* | --bench-frames=* | --greedy=* | --fancy-leaves=*)
+            opt="${1%%=*}" val="${1#*=}"
+            GAME_ARGS+=("$opt" "$val")
+            [ "$opt" = "--bench-frames" ] && MEASURE_FRAMES="$val"
+            ;;
+        --seed | --bench-frames | --greedy | --fancy-leaves)
+            [ $# -ge 2 ] || usage
+            GAME_ARGS+=("$1" "$2")
+            [ "$1" = "--bench-frames" ] && MEASURE_FRAMES="$2"
+            shift
+            ;;
+        -*) echo "unknown option: $1" >&2; usage ;;
+        *) [ -z "$LABEL" ] && LABEL="$1" ;;
     esac
+    shift
 done
 [ -z "$LABEL" ] && LABEL="unlabeled"
 
@@ -26,8 +46,8 @@ echo "Build done."
 
 MODE="benchmark"
 [ -n "$HEADLESS" ] && MODE="headless benchmark"
-echo "Running $MODE (600 warmup + 600 measured frames)..."
-./build/minecraft --benchmark $HEADLESS $SEED "$LABEL"
+echo "Running $MODE (600-frame warmup spin + hold until streaming settles, then $MEASURE_FRAMES measured frames)..."
+./build/minecraft --benchmark $HEADLESS "${GAME_ARGS[@]}" "$LABEL"
 
 # Display legacy results (backward compat)
 echo ""
@@ -62,6 +82,13 @@ if [ -n "$PREV" ]; then
     echo ""
     echo "=== Comparison with previous run ==="
     echo "Previous: $(basename $PREV)"
+    prev_cfg=$(grep "^config:" "$PREV" | head -1 | cut -d: -f2- | xargs)
+    curr_cfg=$(grep "^config:" benchmark_results.txt | head -1 | cut -d: -f2- | xargs)
+    if [ "$prev_cfg" != "$curr_cfg" ]; then
+        echo "WARNING: run configs differ — not a like-for-like comparison"
+        echo "  previous: ${prev_cfg:-unknown (older run)}"
+        echo "  current:  ${curr_cfg:-unknown}"
+    fi
     prev_avg=$(grep "^avg:" "$PREV"     | head -1 | awk '{print $2}')
     curr_avg=$(grep "^avg:" benchmark_results.txt | head -1 | awk '{print $2}')
     prev_fps=$(grep "^avg:" "$PREV"     | head -1 | grep -oP '\d+ fps' | grep -oP '\d+')

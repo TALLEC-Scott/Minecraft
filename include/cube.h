@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -22,9 +23,11 @@ inline constexpr int DIRS_6[6][3] = {
 #define CHUNK_SIZE 16
 #define CHUNK_HEIGHT 128
 
-// Runtime greedy meshing toggle (default off due to AO interpolation artifacts)
-inline bool g_greedyMeshing = false;
-inline bool g_fancyLeaves = true;
+// Mesher options (Settings screen). Atomic because mesh worker threads read
+// them while the main thread applies settings; each mesh build snapshots
+// them once at its start so a single build never mixes modes.
+inline std::atomic<bool> g_greedyMeshing{true};
+inline std::atomic<bool> g_fancyLeaves{true};
 // Cave culling: per-section visibility BFS skips underground geometry
 // the camera can't see. Toggleable for A/B benchmarking.
 inline bool g_caveCulling = true;
