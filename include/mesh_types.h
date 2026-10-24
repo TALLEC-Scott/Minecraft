@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <vector>
 #include "cube.h"
+#include "section_visibility.h"
 
 #pragma pack(push, 1)
 struct PackedVertex {
@@ -65,6 +66,16 @@ struct NeighborBorders {
     DiagonalCorner dNN, dNP, dPN, dPP;
 };
 
+// Per-section index subranges within the chunk's concatenated buffers,
+// recorded at stitch time so cave culling can draw a subset of sections.
+// Starts are in index units relative to each region's own base (opaque
+// region, cross region, water EBO respectively).
+struct SectionDrawRanges {
+    uint32_t opaqueStart = 0, opaqueCount = 0;
+    uint32_t crossStart = 0, crossCount = 0;
+    uint32_t waterStart = 0, waterCount = 0;
+};
+
 // Pre-built CPU-side mesh data (can be built on any thread).
 struct MeshData {
     std::vector<uint8_t> verts;      // opaque vertices (PackedVertex)
@@ -75,5 +86,11 @@ struct MeshData {
     // only 6 indices (no reverse-winding duplicate).
     std::vector<unsigned int> crossIdx;
     std::vector<unsigned int> waterIdx;
+    // Cave-culling metadata, filled alongside the geometry so it always
+    // matches the mesh it ships with.
+    SectionDrawRanges ranges[secvis::NUM_SECTIONS];
+    uint16_t sectionConn[secvis::NUM_SECTIONS] = {secvis::CONN_ALL, secvis::CONN_ALL, secvis::CONN_ALL,
+                                                  secvis::CONN_ALL, secvis::CONN_ALL, secvis::CONN_ALL,
+                                                  secvis::CONN_ALL, secvis::CONN_ALL};
     bool ready = false;
 };

@@ -191,18 +191,19 @@ GameState Menu::drawSettings(UIRenderer& ui, int windowW, int windowH, GLFWwindo
     widgets.toggle(ui, "VSync", ctrlX, startY + gap * 3, ctrlW, ctrlH, settings.vsync);
     widgets.toggle(ui, "Greedy Meshing", ctrlX, startY + gap * 4, ctrlW, ctrlH, settings.greedyMeshing);
     widgets.toggle(ui, "Fancy Leaves", ctrlX, startY + gap * 5, ctrlW, ctrlH, settings.fancyLeaves);
-    widgets.slider(ui, "Music", 3, ctrlX, startY + gap * 6, ctrlW, ctrlH, settings.musicVolume, 0.0f, 1.0f);
+    widgets.toggle(ui, "Cave Culling", ctrlX, startY + gap * 6, ctrlW, ctrlH, settings.caveCulling);
+    widgets.slider(ui, "Music", 3, ctrlX, startY + gap * 7, ctrlW, ctrlH, settings.musicVolume, 0.0f, 1.0f);
 
     // Resolution cycler — a button that advances the preset index on click.
     {
         std::string label = std::string("Resolution: ") + RESOLUTION_PRESETS[settings.resolutionIndex].label;
-        if (widgets.button(ui, label, ctrlX, startY + gap * 7, ctrlW, ctrlH))
+        if (widgets.button(ui, label, ctrlX, startY + gap * 8, ctrlW, ctrlH))
             settings.resolutionIndex = (settings.resolutionIndex + 1) % NUM_RESOLUTION_PRESETS;
     }
 
     float btnW = 400.0f, btnH = 44.0f;
     float btnX = cx - btnW / 2.0f;
-    if (widgets.button(ui, "Done", btnX, startY + gap * 8.5f, btnW, btnH)) next = settingsReturnState;
+    if (widgets.button(ui, "Done", btnX, startY + gap * 9.5f, btnW, btnH)) next = settingsReturnState;
     if (widgets.escPressed(window)) next = settingsReturnState;
 
     widgets.endFrame(ui);

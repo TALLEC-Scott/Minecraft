@@ -140,6 +140,13 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
 
             int limit_stone = std::max(1, (int)(0.7 * height));
 
+            // Cave carve ceiling: on land caves carve through the surface
+            // block itself, so tunnels that climb breach as entrance holes;
+            // under water a thick roof keeps the ocean from draining in.
+            constexpr int CAVE_FLOOR = 5;
+            constexpr int OCEAN_ROOF = 6;
+            int caveCeil = (height <= WATER_LEVEL + 1) ? height - OCEAN_ROOF : height;
+
             for (int j = 0; j < CHUNK_HEIGHT; j++) {
                 Cube* block = &flatBlocks[i * CHUNK_HEIGHT * CHUNK_SIZE + j * CHUNK_SIZE + k];
                 double detailNoise = terrain.getNoise(globalX, globalZ, j);
@@ -148,6 +155,8 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
                     block->setType(j <= WATER_LEVEL ? WATER : AIR);
                 } else if (j == 0) {
                     block->setType(BEDROCK);
+                } else if (j >= CAVE_FLOOR && j <= caveCeil && terrain.isCave(globalX, j, globalZ)) {
+                    block->setType(AIR);
                 } else if (j < limit_stone) {
                     block->setType((detailNoise > 0.45 && detailNoise < 0.5) ? COAL_ORE : STONE);
                 } else if (j == height) {
@@ -1230,6 +1239,12 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
         unsigned int opaqueVertOff = 0, waterVertOff = 0;
         for (int s = 0; s < NUM_SECTIONS; s++) {
             auto& sm = sectionMeshes[s];
+            // Record each section's index subrange (per region) so cave
+            // culling can draw a subset of sections later.
+            auto& r = pendingMesh.ranges[s];
+            r.opaqueStart = (uint32_t)pendingMesh.opaqueIdx.size();
+            r.crossStart = (uint32_t)pendingMesh.crossIdx.size();
+            r.waterStart = (uint32_t)pendingMesh.waterIdx.size();
             // Opaque + cross plants share the same VBO, so both use opaqueVertOff.
             pendingMesh.verts.insert(pendingMesh.verts.end(), sm.verts.begin(), sm.verts.end());
             for (auto idx_val : sm.opaqueIdx) pendingMesh.opaqueIdx.push_back(idx_val + opaqueVertOff);
@@ -1239,6 +1254,16 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
             pendingMesh.waterVerts.insert(pendingMesh.waterVerts.end(), sm.waterVerts.begin(), sm.waterVerts.end());
             for (auto idx_val : sm.waterIdx) pendingMesh.waterIdx.push_back(idx_val + waterVertOff);
             waterVertOff += (unsigned int)(sm.waterVerts.size() / WATER_BYTES_PER_VERT);
+            r.opaqueCount = (uint32_t)pendingMesh.opaqueIdx.size() - r.opaqueStart;
+            r.crossCount = (uint32_t)pendingMesh.crossIdx.size() - r.crossStart;
+            r.waterCount = (uint32_t)pendingMesh.waterIdx.size() - r.waterStart;
+        }
+        // Section connectivity: recompute only sections rebuilt this pass;
+        // clean sections keep their previously computed mask.
+        for (int s = 0; s < NUM_SECTIONS; s++) {
+            pendingMesh.sectionConn[s] = (sectionDirty & (1u << s))
+                                             ? secvis::computeSectionConnectivity(sections[s].get())
+                                             : sectionConn[s];
         }
         pendingMesh.ready = true;
     }
@@ -1372,6 +1397,13 @@ void Chunk::uploadMesh() {
     opaqueIndexCount = (int)pendingMesh.opaqueIdx.size();
     crossIndexCount = (int)pendingMesh.crossIdx.size();
     waterIndexCount = (int)pendingMesh.waterIdx.size();
+    // Cave-culling metadata travels with the mesh so ranges always match
+    // the buffers uploaded just above. Sections dirtied after this mesh
+    // was built keep CONN_ALL via markSectionDirty (never wrongly cull).
+    for (int s = 0; s < NUM_SECTIONS; s++) {
+        sectionRanges[s] = pendingMesh.ranges[s];
+        if (!(dirtyDuringBuild & (1u << s))) sectionConn[s] = pendingMesh.sectionConn[s];
+    }
     // Clear the bits that the uploaded mesh was built from, then restore
     // any bits that were re-set during the build (e.g., by the water sim
     // creating new cells in the same section). Without the restore, rapid
@@ -1400,24 +1432,79 @@ std::vector<Cube*> Chunk::render(const Shader& /*shaderProgram*/, const Neighbor
         g_frame.meshBuildBudget--;
     }
 
-    if (opaqueIndexCount > 0 || crossIndexCount > 0) {
+    // Cave culling: draw only BFS-visible sections. Contiguous visible
+    // sections merge into one glDrawElements to keep draw calls low; the
+    // all-visible mask takes the same single-draw path as before culling.
+    // `emit(startIdx, count, regionBaseIdx)` issues one ranged draw.
+    auto drawRuns = [this](auto&& rangeOf, auto&& emit) {
+        int runStart = -1;
+        uint32_t runFirst = 0, runCount = 0;
+        for (int s = 0; s <= NUM_SECTIONS; s++) {
+            bool vis = s < NUM_SECTIONS && (visibleSections & (1u << s));
+            uint32_t cnt = vis ? rangeOf(s).second : 0;
+            if (vis && cnt > 0) {
+                if (runStart < 0) {
+                    runStart = s;
+                    runFirst = rangeOf(s).first;
+                    runCount = 0;
+                }
+                runCount += cnt;
+            } else if (runStart >= 0) {
+                emit(runFirst, runCount);
+                runStart = -1;
+            }
+        }
+    };
+
+    if ((opaqueIndexCount > 0 || crossIndexCount > 0) && visibleSections != 0) {
         glBindVertexArray(chunkVAO);
         if (opaqueIndexCount > 0) {
-            glDrawElements(GL_TRIANGLES, opaqueIndexCount, GL_UNSIGNED_INT, nullptr);
-            g_frame.opaqueTriangles += opaqueIndexCount / 3;
-            g_frame.vertexCount += opaqueIndexCount / 6 * 4;
-            g_frame.opaqueDrawCalls++;
+            if (visibleSections == 0xFF) {
+                glDrawElements(GL_TRIANGLES, opaqueIndexCount, GL_UNSIGNED_INT, nullptr);
+                g_frame.opaqueTriangles += opaqueIndexCount / 3;
+                g_frame.vertexCount += opaqueIndexCount / 6 * 4;
+                g_frame.opaqueDrawCalls++;
+            } else {
+                drawRuns(
+                    [this](int s) {
+                        return std::pair<uint32_t, uint32_t>{sectionRanges[s].opaqueStart,
+                                                             sectionRanges[s].opaqueCount};
+                    },
+                    [](uint32_t first, uint32_t count) {
+                        glDrawElements(GL_TRIANGLES, (GLsizei)count, GL_UNSIGNED_INT,
+                                       (const void*)(static_cast<size_t>(first) * sizeof(unsigned int)));
+                        g_frame.opaqueTriangles += (int)count / 3;
+                        g_frame.vertexCount += (int)count / 6 * 4;
+                        g_frame.opaqueDrawCalls++;
+                    });
+            }
         }
         if (crossIndexCount > 0) {
             // Cross-plant pass: disable cull so each quad is visible from
             // both sides without duplicating reverse-winding indices.
+            // Cross region sits after the opaque region in the same EBO.
             glDisable(GL_CULL_FACE);
-            const void* crossOffset = (const void*)(static_cast<size_t>(opaqueIndexCount) * sizeof(unsigned int));
-            glDrawElements(GL_TRIANGLES, crossIndexCount, GL_UNSIGNED_INT, crossOffset);
+            const size_t crossBase = static_cast<size_t>(opaqueIndexCount);
+            if (visibleSections == 0xFF) {
+                glDrawElements(GL_TRIANGLES, crossIndexCount, GL_UNSIGNED_INT,
+                               (const void*)(crossBase * sizeof(unsigned int)));
+                g_frame.opaqueTriangles += crossIndexCount / 3;
+                g_frame.vertexCount += crossIndexCount / 6 * 4;
+                g_frame.opaqueDrawCalls++;
+            } else {
+                drawRuns(
+                    [this](int s) {
+                        return std::pair<uint32_t, uint32_t>{sectionRanges[s].crossStart, sectionRanges[s].crossCount};
+                    },
+                    [crossBase](uint32_t first, uint32_t count) {
+                        glDrawElements(GL_TRIANGLES, (GLsizei)count, GL_UNSIGNED_INT,
+                                       (const void*)((crossBase + first) * sizeof(unsigned int)));
+                        g_frame.opaqueTriangles += (int)count / 3;
+                        g_frame.vertexCount += (int)count / 6 * 4;
+                        g_frame.opaqueDrawCalls++;
+                    });
+            }
             glEnable(GL_CULL_FACE);
-            g_frame.opaqueTriangles += crossIndexCount / 3;
-            g_frame.vertexCount += crossIndexCount / 6 * 4;
-            g_frame.opaqueDrawCalls++;
         }
     }
     return {};
@@ -1425,11 +1512,33 @@ std::vector<Cube*> Chunk::render(const Shader& /*shaderProgram*/, const Neighbor
 
 void Chunk::renderWater(const Shader& /*shaderProgram*/, Chunk* /*nx_neg*/, Chunk* /*nx_pos*/, Chunk* /*nz_neg*/,
                         Chunk* /*nz_pos*/) {
-    if (waterIndexCount > 0) {
-        glBindVertexArray(waterVAO);
+    if (waterIndexCount <= 0 || visibleSections == 0) return;
+    glBindVertexArray(waterVAO);
+    if (visibleSections == 0xFF) {
         glDrawElements(GL_TRIANGLES, waterIndexCount, GL_UNSIGNED_INT, nullptr);
         g_frame.waterTriangles += waterIndexCount / 3;
         g_frame.waterDrawCalls++;
+        return;
+    }
+    int runStart = -1;
+    uint32_t runFirst = 0, runCount = 0;
+    for (int s = 0; s <= NUM_SECTIONS; s++) {
+        bool vis = s < NUM_SECTIONS && (visibleSections & (1u << s));
+        uint32_t cnt = vis ? sectionRanges[s].waterCount : 0;
+        if (vis && cnt > 0) {
+            if (runStart < 0) {
+                runStart = s;
+                runFirst = sectionRanges[s].waterStart;
+                runCount = 0;
+            }
+            runCount += cnt;
+        } else if (runStart >= 0) {
+            glDrawElements(GL_TRIANGLES, (GLsizei)runCount, GL_UNSIGNED_INT,
+                           (const void*)(static_cast<size_t>(runFirst) * sizeof(unsigned int)));
+            g_frame.waterTriangles += (int)runCount / 3;
+            g_frame.waterDrawCalls++;
+            runStart = -1;
+        }
     }
 }
 
