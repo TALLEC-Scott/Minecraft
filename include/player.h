@@ -147,6 +147,9 @@ class Player {
     // Left-click melee: true if a mob was in reach (and in front of any
     // targeted block) — the click is then consumed and no block breaks.
     bool tryAttackMob(World* world);
+    // Right-click mob interaction (shearing a woolly sheep): true if it
+    // happened — the click is then consumed and no block is placed.
+    bool tryInteractMob(World* world);
     void playHitSound();
 
     PlayerHealth health;
