@@ -122,6 +122,8 @@ struct FrameProfile {
 class Profiler {
   public:
     bool gpuTimerSupported = false;
+    // Run configuration (seed, mesher flags, …) echoed into both result files.
+    std::string config;
 
     void init() {
 #ifndef __EMSCRIPTEN__
@@ -266,6 +268,7 @@ class Profiler {
         out << "\n=== Profile: " << label << " ===\n";
         out << renderer << " (" << vendor << ")\n";
         out << version << "\n";
+        if (!config.empty()) out << "config: " << config << "\n";
         out << n << " measured frames\n\n";
 
         out << "Frame Time Breakdown (avg):\n";
@@ -356,6 +359,7 @@ class Profiler {
         std::ofstream out("benchmark_results.txt");
         out << std::fixed << std::setprecision(2);
         out << "frames:  " << measureFrames << "\n";
+        if (!config.empty()) out << "config:  " << config << "\n";
         out << "avg:     " << avgT << " ms  (" << (int)(1000.0 / avgT) << " fps)\n";
         out << "min:     " << minT << " ms  (" << (int)(1000.0 / minT) << " fps)\n";
         out << "max:     " << maxT << " ms  (" << (int)(1000.0 / maxT) << " fps)\n";
