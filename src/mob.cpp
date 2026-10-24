@@ -314,7 +314,12 @@ void Mob::moveWithCollision(MobContext& ctx, glm::vec3 delta) {
     if (onGround) {
         velocity.y = 0.0f;
         if (!wasOnGround || fallDistance > 0.0f) {
-            float dmg = std::ceil(fallDistance - SAFE_FALL) * fallDamageMultiplier();
+            // Count the landing tick's own drop so fallDistance is the true
+            // height fallen (same as the player's Camera::landedFall).
+            if (dy < 0.0f && !inWater) fallDistance -= dy;
+            // minecraft.wiki: floor((distance - safe_fall_distance) * multiplier);
+            // epsilon as in PlayerHealth::fallDamage.
+            float dmg = std::floor((fallDistance - SAFE_FALL) * fallDamageMultiplier() + 1e-3f);
             if (dmg > 0.0f && !inWater) damage(dmg, pos, 0.0f);
         }
         fallDistance = 0.0f;
