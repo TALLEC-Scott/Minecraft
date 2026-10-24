@@ -111,17 +111,14 @@ constexpr double ESCARPMENT_HEIGHT = 9.0;
 constexpr double ESCARPMENT_EDGE = 0.012;
 
 // Rivers: distance-from-zero of the river noise below which the channel
-// (core) and its banks are carved. The bed sits between RIVER_DEPTH_MIN
-// and RIVER_DEPTH_MAX below sea level, wandering gently along the river;
-// heights truncate to whole blocks, so this gives 2-4 blocks of water.
+// (core) and its banks are carved. Bed sits RIVER_DEPTH below sea level.
 constexpr double RIVER_CORE = 0.005;
 constexpr double RIVER_BANK = 0.016;
-constexpr double RIVER_DEPTH_MIN = 1.5;
-constexpr double RIVER_DEPTH_MAX = 3.5;
 
 // Shifts continentalness toward land: unbiased, about half the world was
 // one featureless ocean.
 constexpr double LAND_BIAS = 0.08;
+constexpr double RIVER_DEPTH = 3.0;
 
 // Peaks are soft-capped so the tallest trees (≤ 13 blocks) still fit
 // under the world ceiling.
@@ -234,12 +231,8 @@ TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y) {
         double bank = (1.0 - smoothstep(RIVER_CORE, RIVER_BANK, rd)) * landMask;
         if (bank > 0.0) {
             double core = 1.0 - smoothstep(RIVER_CORE * 0.4, RIVER_CORE * 1.4, rd);
-            // Depth wanders gently along the river (~100-250 block wavelength).
-            double depthVar = 0.5 + 0.5 * octaveNoise(nx * 0.04 + 5500.0, ny * 0.04 + 5500.0, 2, 0.5, 2.0) * 3.0;
-            double depth = RIVER_DEPTH_MIN + (RIVER_DEPTH_MAX - RIVER_DEPTH_MIN) * std::clamp(depthVar, 0.0, 1.0);
-            double bed = seaLevel + 1.0 - (depth + 1.0) * core;
+            double bed = seaLevel + 1.0 - (RIVER_DEPTH + 1.0) * core;
             height += (std::min(height, bed) - height) * bank;
-            s.river = core * bank;
         }
     }
 
@@ -284,11 +277,6 @@ const BiomeParams& TerrainGenerator::getBiomeParams(Biome b) {
 
 int TerrainGenerator::getHeight(int x, int y) {
     return sampleColumn(x, y).height;
-}
-
-TerrainGenerator::ColumnInfo TerrainGenerator::getColumn(int x, int y) {
-    ColumnSample s = sampleColumn(x, y);
-    return {s.height, s.biome, s.river};
 }
 
 int TerrainGenerator::getHeightAndBiome(int x, int y, Biome& outBiome) {
@@ -377,14 +365,6 @@ bool TerrainGenerator::isCoalOre(int wx, int wy, int wz) {
 int TerrainGenerator::soilDepth(int x, int z) {
     double n = perlinNoise.noise(x * 0.07 + 8300.0, z * 0.07 + 8300.0); // ~ -0.7..0.7
     return 3 + std::clamp(static_cast<int>((n + 0.7) / 1.4 * 3.0), 0, 2);
-}
-
-block_type TerrainGenerator::waterbedBlock(int x, int z) {
-    // Patches several blocks across: ~60% gravel, ~25% sand, ~15% dirt.
-    double n = perlinNoise.noise(x * 0.12 + 8800.0, z * 0.12 + 8800.0);
-    if (n < 0.08) return GRAVEL;
-    if (n < 0.24) return SAND;
-    return DIRT;
 }
 
 double TerrainGenerator::getNoise(int x, int y) {
