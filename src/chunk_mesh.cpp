@@ -4,6 +4,9 @@
 // exercise it without needing an OpenGL context.
 
 #include "chunk_mesh.h"
+
+#include <cmath>
+
 #include "block_layers.h"
 #include "cube.h"
 #include "light_data.h"
@@ -149,9 +152,22 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
 
     // Greedy merge key for a visible face (see mergeKey in chunk.cpp for
     // the rationale): block type + the face's light + its AO, and only when
-    // all four AO corners agree. -1 = emit this face on its own.
+    // all four AO corners agree. -1 = emit this face on its own. Water: only
+    // flat source-water tops merge, keyed by their flat height.
     auto mergeKey = [&](const FaceDef& fd, const int c[3], block_type bt) -> int {
-        if (hasFlag(bt, BF_LIQUID)) return -1; // water tops/flow are per block
+        int waterBits = 0;
+        if (hasFlag(bt, BF_LIQUID)) {
+            if (fd.d != 1 || fd.d_sign != 1) return -1; // top faces only
+            size_t wi = static_cast<size_t>(c[0]) * CHUNK_HEIGHT * CHUNK_SIZE +
+                        static_cast<size_t>(c[1]) * CHUNK_SIZE + c[2];
+            uint8_t raw = waterLevels ? waterLevels[wi] : 0;
+            if (!waterIsSource(raw)) return -1;
+            float corners[4];
+            computeWaterTopCornersBorder(blocks, waterLevels, c[0], c[1], c[2], fd.u_sign, fd.v_sign, corners, nb);
+            for (int i = 1; i < 4; i++)
+                if (corners[i] != corners[0]) return -1;
+            waterBits = (17 + static_cast<int>(std::lround((corners[0] - c[1]) * 32.0f))) << 18;
+        }
         int p[3] = {c[0], c[1], c[2]};
         p[fd.d] += fd.d_sign;
         int aoFirst = -1;
@@ -174,7 +190,7 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
         }
         int sky = slDirect(p[0], p[1], p[2]);
         int blk = blDirect(p[0], p[1], p[2]);
-        return static_cast<int>(bt) | (aoFirst << 8) | (sky << 10) | (blk << 14);
+        return static_cast<int>(bt) | (aoFirst << 8) | (sky << 10) | (blk << 14) | waterBits;
     };
 
     int mask[MAX_DIM][MAX_DIM]; // block type of each visible face, -1 = none
