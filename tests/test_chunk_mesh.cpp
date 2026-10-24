@@ -79,6 +79,16 @@ std::array<int, 6> countFacesByNormal(const MeshData& m) {
     return counts;
 }
 
+// Pins greedy meshing on/off for one test and restores the global after.
+// Tests that count faces per block must pin it off — greedy is the default.
+struct GreedyGuard {
+    bool prev = g_greedyMeshing;
+    explicit GreedyGuard(bool on) { g_greedyMeshing = on; }
+    ~GreedyGuard() { g_greedyMeshing = prev; }
+    GreedyGuard(const GreedyGuard&) = delete;
+    GreedyGuard& operator=(const GreedyGuard&) = delete;
+};
+
 } // namespace
 
 TEST(ChunkMesh, EmptyChunkProducesNoGeometry) {
@@ -107,7 +117,9 @@ TEST(ChunkMesh, SingleIsolatedBlockEmitsSixFaces) {
 
 TEST(ChunkMesh, TwoAdjacentBlocksShareInternalFaces) {
     // Two stones stacked on the +X axis → the touching faces (block A's +X
-    // and block B's -X) are hidden. Total visible = 2*6 - 2 = 10.
+    // and block B's -X) are hidden. Total visible = 2*6 - 2 = 10 (per-block
+    // faces, so greedy merging is pinned off).
+    GreedyGuard g(false);
     MeshInputs in;
     in.setBlock(5, 8, 8, STONE);
     in.setBlock(6, 8, 8, STONE);
@@ -407,14 +419,6 @@ TEST(ChunkMesh, GlowstoneOnPosZEdgeFaceUsesNeighborBorderLight) {
 // correct when every covered unit face has the same, uniform AO and light.
 
 namespace {
-
-struct GreedyGuard {
-    bool prev = g_greedyMeshing;
-    explicit GreedyGuard(bool on) { g_greedyMeshing = on; }
-    ~GreedyGuard() { g_greedyMeshing = prev; }
-    GreedyGuard(const GreedyGuard&) = delete;
-    GreedyGuard& operator=(const GreedyGuard&) = delete;
-};
 
 // Axis (0=x, 1=y, 2=z) a face's normal points along.
 int normalAxis(int normalIdx) {
