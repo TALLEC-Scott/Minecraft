@@ -15,15 +15,6 @@ class TerrainGenerator {
   public:
     TerrainGenerator(unsigned int seed, float scale, int minHeight, int maxHeight);
 
-    // One column's shape: surface height, biome, and how far inside a river
-    // channel it lies (0 = not a river, 1 = channel centre line).
-    struct ColumnInfo {
-        int height;
-        Biome biome;
-        double river;
-    };
-    ColumnInfo getColumn(int x, int y);
-
     int getHeight(int x, int y);
     Biome getBiome(int x, int y);
     // Combined: avoids recomputing the shared climate noises
@@ -50,9 +41,6 @@ class TerrainGenerator {
     bool isCoalOre(int wx, int wy, int wz);
     // Soil depth (dirt / sand) under the surface block, 3..5 blocks.
     int soilDepth(int x, int z);
-    // River and ocean floor material in patches, like Minecraft's: mostly
-    // gravel, with sand and dirt (there is no clay block).
-    block_type waterbedBlock(int x, int z);
 
   private:
     // Everything derived from one column sample. Height and biome both
@@ -62,7 +50,6 @@ class TerrainGenerator {
         double erosion;         // -1..1, high = flat terrain
         double ridge;           // 0..1, ridged noise: 1 on mountain crest lines
         double relief;          // blocks of mountain relief added at this column
-        double river;           // 0..1 position inside a river channel (see ColumnInfo)
         int height;
         Biome biome;
     };
