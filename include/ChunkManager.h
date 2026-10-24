@@ -44,17 +44,15 @@ class ChunkManager {
     int getRenderDistance() const { return renderDistance; }
     void setWorldSave(WorldSave* ws) { worldSave = ws; }
 
-    // True when no chunk generation or mesh build is queued, running, or
-    // waiting to be drained — i.e. the world around the last update()
-    // position has finished streaming. Used by the benchmark warmup. Web
-    // builds generate synchronously, so they're always idle.
-    bool streamingIdle() const {
-#ifndef __EMSCRIPTEN__
-        return pendingChunks.empty() && meshesOutstanding == 0;
-#else
-        return true;
-#endif
-    }
+    // True once the world around the last update() position has finished
+    // streaming: no chunk generation pending, and no loaded chunk with a
+    // mesh build in flight, dirty sections awaiting a rebuild, or a built
+    // mesh not yet uploaded. Derived from chunk state (no counters to
+    // drift). Used by the benchmark warmup; walks all loaded chunks.
+    bool streamingIdle() const;
+    // Queue async rebuilds for dirty chunks the render path won't reach
+    // (off-screen). Benchmark warmup only; normal play rebuilds lazily.
+    void settleDirtyMeshes();
     void saveAllModifiedChunks();
     // Sum of Chunk::memoryUsage across all loaded chunks, in bytes.
     size_t totalChunkMemory() const;
@@ -103,12 +101,14 @@ class ChunkManager {
     struct MeshResult {
         glm::ivec2 pos;
         Chunk::MeshData mesh;
+        bool failed = false; // worker threw: clear in-flight state, keep dirty bits for a retry
     };
 
     std::queue<MeshRequest> meshRequestQueue;
     std::queue<MeshResult> meshResultQueue; // guarded by resultMutex
-    // Mesh builds queued but not yet drained (main thread only).
-    int meshesOutstanding = 0;
+    // Chunk generations whose worker threw (guarded by resultMutex); drained
+    // so the position leaves pendingChunks and is re-requested.
+    std::vector<glm::ivec2> failedChunkGens;
 
     // Worker threads
     std::vector<std::thread> workers;

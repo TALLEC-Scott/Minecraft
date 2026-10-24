@@ -1276,6 +1276,7 @@ int main(int argc, char* argv[]) {
             constexpr int SETTLE_FRAMES = 30;
             constexpr double MAX_WARMUP_SECONDS = 60.0;
             int idleFrames = 0;
+            int holdFrames = 0; // frames spent holding at the end of warmup
             const double warmupStart = glfwGetTime();
 
             while (!glfwWindowShouldClose(window) && frame < WARMUP_FRAMES + MEASURE_FRAMES) {
@@ -1307,7 +1308,7 @@ int main(int argc, char* argv[]) {
 
                 if (frame < WARMUP_FRAMES) {
                     // Phase 1 (warmup): spin 360° in place so surrounding chunks load
-                    float angle = glm::radians((float)frame / WARMUP_FRAMES * 360.0f);
+                    float angle = glm::radians((float)(frame + holdFrames) / WARMUP_FRAMES * 360.0f);
                     player.getCamera().changeDirection(glm::vec3(std::cos(angle), 0.0f, std::sin(angle)));
                 } else if (stressWater) {
                     // Stay put looking down at the flood
@@ -1375,10 +1376,17 @@ int main(int argc, char* argv[]) {
                 // frames in a row, capped at MAX_WARMUP_SECONDS). At ~1000
                 // fps the spin alone finishes before the spawn area has even
                 // meshed, and the measured phase ran on a half-loaded world.
+                // While holding, the camera keeps spinning so dirty chunks
+                // come into view for the render-path rebuild, and off-screen
+                // ones are queued async (settleDirtyMeshes).
                 if (frame == WARMUP_FRAMES - 1) {
+                    w->chunkManager->settleDirtyMeshes();
                     idleFrames = w->chunkManager->streamingIdle() ? idleFrames + 1 : 0;
                     double waited = glfwGetTime() - warmupStart;
-                    if (idleFrames < SETTLE_FRAMES && waited < MAX_WARMUP_SECONDS) continue;
+                    if (idleFrames < SETTLE_FRAMES && waited < MAX_WARMUP_SECONDS) {
+                        ++holdFrames;
+                        continue;
+                    }
                     std::cout << "[benchmark] warmup " << waited << " s, " << w->chunkManager->chunks.size()
                               << " chunks loaded" << (idleFrames < SETTLE_FRAMES ? " (timed out)" : "")
                               << std::endl;
