@@ -26,7 +26,7 @@
 
 #include <glm/glm.hpp>
 
-inline constexpr int MAX_MOB_PARTS = 32;
+inline constexpr int MAX_MOB_PARTS = 48;
 
 struct MobPart {
     const char* name;
@@ -37,6 +37,7 @@ struct MobPart {
     glm::vec3 color{1.0f};       // tint (multiplies the texture layer)
     int textureLayer = -1;       // texture-array layer; -1 = plain white skin layer
     glm::vec3 restRotation{0.0f}; // baked rotation (e.g. a horizontal quadruped body)
+    bool emissive = false;        // glows at full block light (spider eyes, flames)
 };
 
 class MobModel {

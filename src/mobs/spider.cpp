@@ -52,7 +52,11 @@ const SpiderModel& spiderModel() {
         // Eight eyes on the head's front face (z = +8 px from the pivot):
         // two big 2×2 ones in the middle, six 1×1 around them.
         auto eye = [&](float x, float y, float half, glm::vec3 color) {
-            m.add({"eye", s.head, {x * PX, y * PX, 8.05f * PX}, {0, 0, 0}, {half * PX, half * PX, 0.05f * PX}, color});
+            // Minecraft draws spider eyes as a fullbright layer — they glow
+            // red in the dark.
+            int e = m.add({"eye", s.head, {x * PX, y * PX, 8.05f * PX}, {0, 0, 0},
+                           {half * PX, half * PX, 0.05f * PX}, color});
+            m.parts[e].emissive = true;
         };
         eye(-1.5f, 0.0f, 1.0f, EYE_RED);
         eye(1.5f, 0.0f, 1.0f, EYE_RED);

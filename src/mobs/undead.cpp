@@ -59,6 +59,7 @@ UndeadMob::FlameParts UndeadMob::addFlameParts(MobModel& m) {
         const float* a = FLAME_ANCHORS[i];
         idx[i] = m.add({"flame", -1, {a[0], a[1], a[2]}, {0, 0, 0}, {0.09f, 0.14f, 0.09f},
                         (i % 2 == 0) ? FLAME_ORANGE : FLAME_YELLOW});
+        m.parts[idx[i]].emissive = true;
     }
     return idx;
 }
