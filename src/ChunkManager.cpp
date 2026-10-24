@@ -295,6 +295,17 @@ void ChunkManager::workerLoop() {
             }
         }
 
+        // Always hand something back, even when the job throws: otherwise
+        // the chunk stays pending / mesh-in-flight forever and the main
+        // thread never retries it (and streamingIdle() never settles).
+        auto reportFailure = [&] {
+            std::lock_guard<std::mutex> lock(resultMutex);
+            if (isChunkGen)
+                failedChunkGens.push_back(pos);
+            else if (isMeshBuild)
+                meshResultQueue.push({meshReq.pos, {}, true});
+        };
+
         try {
             if (isChunkGen) {
                 ChunkData data;
@@ -316,8 +327,10 @@ void ChunkManager::workerLoop() {
             }
         } catch (const std::exception& e) {
             printf("Worker exception: %s\n", e.what());
+            reportFailure();
         } catch (...) {
             printf("Worker unknown exception\n");
+            reportFailure();
         }
     }
 }
@@ -360,7 +373,6 @@ void ChunkManager::queueMeshBuild(glm::ivec2 pos) {
         std::lock_guard<std::mutex> lock(requestMutex);
         meshRequestQueue.push(std::move(req));
     }
-    ++meshesOutstanding;
     requestCV.notify_one();
 }
 
@@ -384,6 +396,13 @@ void ChunkManager::queueDirtyMeshBuilds() {
 }
 
 void ChunkManager::drainResults() {
+    // Failed generations leave pendingChunks so loadChunks re-requests them.
+    {
+        std::lock_guard<std::mutex> lock(resultMutex);
+        for (const glm::ivec2& p : failedChunkGens) pendingChunks.erase(p);
+        failedChunkGens.clear();
+    }
+
     // Drain completed chunk generations
     int integrated = 0;
     while (integrated < MAX_INTEGRATE_PER_FRAME) {
@@ -442,10 +461,15 @@ void ChunkManager::drainResults() {
             res = std::move(meshResultQueue.front());
             meshResultQueue.pop();
         }
-        --meshesOutstanding;
 
         auto it = chunks.find(res.pos);
         if (it == chunks.end()) continue; // chunk was unloaded
+        if (res.failed) {
+            // Keep the dirty bits so the chunk is rebuilt again later.
+            it->second.meshBuildInFlight = false;
+            it->second.builtDirtyMask = 0;
+            continue;
+        }
 
         it->second.setPendingMesh(std::move(res.mesh));
         chunksWithPendingMesh.insert(res.pos);
@@ -453,3 +477,19 @@ void ChunkManager::drainResults() {
     }
 }
 #endif
+
+bool ChunkManager::streamingIdle() const {
+#ifndef __EMSCRIPTEN__
+    if (!pendingChunks.empty()) return false;
+#endif
+    if (!chunksWithPendingMesh.empty()) return false;
+    for (const auto& [pos, chunk] : chunks)
+        if (chunk.meshBuildInFlight || chunk.isMeshDirty()) return false;
+    return true;
+}
+
+void ChunkManager::settleDirtyMeshes() {
+#ifndef __EMSCRIPTEN__
+    queueDirtyMeshBuilds();
+#endif
+}
