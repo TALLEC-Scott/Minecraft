@@ -25,6 +25,8 @@ void GameSettings::load(const std::string& path) {
             greedyMeshing = (val == "1");
         else if (key == "fancyLeaves")
             fancyLeaves = (val == "1");
+        else if (key == "caveCulling")
+            caveCulling = (val == "1");
         else if (key == "musicVolume")
             musicVolume = std::clamp(std::stof(val), 0.0f, 1.0f);
         else if (key == "resolutionIndex")
@@ -41,6 +43,7 @@ void GameSettings::save(const std::string& path) const {
     file << "mouseSensitivity=" << mouseSensitivity << "\n";
     file << "greedyMeshing=" << (greedyMeshing ? 1 : 0) << "\n";
     file << "fancyLeaves=" << (fancyLeaves ? 1 : 0) << "\n";
+    file << "caveCulling=" << (caveCulling ? 1 : 0) << "\n";
     file << "musicVolume=" << musicVolume << "\n";
     file << "resolutionIndex=" << resolutionIndex << "\n";
 }

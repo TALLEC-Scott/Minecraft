@@ -26,6 +26,7 @@ struct GameSettings {
     float mouseSensitivity = 1.0f;
     bool greedyMeshing = false;
     bool fancyLeaves = true;
+    bool caveCulling = true;
     float musicVolume = 1.0f;
     // Default to 1280 x 720 (index 1). Users on a small laptop panel
     // would be overwhelmed by Auto (full monitor) on first launch; they

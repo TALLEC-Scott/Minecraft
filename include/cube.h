@@ -25,6 +25,9 @@ inline constexpr int DIRS_6[6][3] = {
 // Runtime greedy meshing toggle (default off due to AO interpolation artifacts)
 inline bool g_greedyMeshing = false;
 inline bool g_fancyLeaves = true;
+// Cave culling: per-section visibility BFS skips underground geometry
+// the camera can't see. Toggleable for A/B benchmarking.
+inline bool g_caveCulling = true;
 
 enum block_type : uint8_t {
     AIR,

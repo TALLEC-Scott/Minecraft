@@ -216,6 +216,67 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
     std::sort(visible.begin(), visible.end(),
               [](const VisibleChunk& a, const VisibleChunk& b) { return a.distSq < b.distSq; });
 
+    // Cave culling: BFS from the camera's section through the per-section
+    // air-connectivity graph; only reached sections emit draws. Runs over
+    // loaded chunks (not just frustum survivors) because sight lines can
+    // re-enter the frustum through chunks behind the camera.
+    if (g_caveCulling) {
+        int camCx = worldToChunk((int)std::floor(cameraPos.x + 0.5f));
+        int camCz = worldToChunk((int)std::floor(cameraPos.z + 0.5f));
+        int camSy = std::clamp((int)std::floor(cameraPos.y) >> 4, 0, secvis::NUM_SECTIONS - 1);
+        if (chunkManager->getChunk(camCx, camCz) == nullptr) {
+            // Camera chunk not loaded (teleport/startup): degrade to no culling.
+            for (auto& vc : visible) vc.chunk->visibleSections = 0xFF;
+        } else {
+            // Only frustum survivors are drawn, so only their masks need
+            // clearing — chunks outside the frustum can keep stale bits.
+            for (auto& vc : visible) vc.chunk->visibleSections = 0;
+            // Flat chunk-pointer grid: one hash pass over the chunk map up
+            // front, then the BFS's per-section lookups are array reads
+            // (it would otherwise do two map lookups per visited section).
+            const int radius = chunkManager->getRenderDistance() + 1;
+            const int side = 2 * radius + 1;
+            static std::vector<Chunk*> grid;
+            grid.assign(static_cast<size_t>(side) * side, nullptr);
+            for (auto& [pos, chunk] : chunkManager->chunks) {
+                int dx = pos.x - camCx, dz = pos.y - camCz;
+                if (dx < -radius || dx > radius || dz < -radius || dz > radius) continue;
+                grid[static_cast<size_t>(dx + radius) * side + (dz + radius)] = const_cast<Chunk*>(&chunk);
+            }
+            auto cellAt = [&](int cx, int cz) -> Chunk* {
+                int dx = cx - camCx, dz = cz - camCz;
+                if (dx < -radius || dx > radius || dz < -radius || dz > radius) return nullptr;
+                return grid[static_cast<size_t>(dx + radius) * side + (dz + radius)];
+            };
+            secvis::caveCullBFS(
+                camCx, camCz, camSy, radius,
+                [&](int cx, int cz, int sy, bool& loaded) -> uint16_t {
+                    Chunk* c = cellAt(cx, cz);
+                    if (!c) {
+                        loaded = false;
+                        return 0;
+                    }
+                    g_frame.caveBfsVisited++;
+                    return c->sectionConn[sy];
+                },
+                [&](int cx, int cz, int sy) {
+                    Chunk* c = cellAt(cx, cz);
+                    if (c) c->visibleSections |= (uint8_t)(1u << sy);
+                });
+        }
+    } else {
+        for (auto& vc : visible) vc.chunk->visibleSections = 0xFF;
+    }
+    for (auto& vc : visible) {
+        uint8_t vs = vc.chunk->visibleSections;
+        for (int s = 0; s < secvis::NUM_SECTIONS; s++) {
+            if (vs & (1u << s))
+                g_frame.sectionsRendered++;
+            else
+                g_frame.sectionsCulled++;
+        }
+    }
+
     // Pass 1: opaque geometry (front-to-back)
     shaderProgram.setInt("materialType", 0);
     int rendered = 0;
