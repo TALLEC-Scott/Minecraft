@@ -160,14 +160,17 @@ static void applySettings() {
     glfwSwapInterval(gameSettings.vsync ? 1 : 0);
     player.setMouseSensitivity(gameSettings.mouseSensitivity);
     if (g_menu) g_menu->setMusicVolume(gameSettings.musicVolume);
+    // Mesher flags apply even before a world exists (startup calls this with
+    // w == nullptr) — otherwise the saved greedy/fancy-leaves choice was
+    // ignored until the Settings screen was opened, and benchmarks never
+    // used it. Existing chunk meshes are rebuilt when a flag changes.
+    bool meshFlagsChanged = g_greedyMeshing != gameSettings.greedyMeshing || g_fancyLeaves != gameSettings.fancyLeaves;
+    g_greedyMeshing = gameSettings.greedyMeshing;
+    g_fancyLeaves = gameSettings.fancyLeaves;
     if (w) {
         w->chunkManager->setRenderDistance(gameSettings.renderDistance);
-        // Rebuild all chunk meshes if greedy meshing toggle changed
-        if (g_greedyMeshing != gameSettings.greedyMeshing || g_fancyLeaves != gameSettings.fancyLeaves) {
-            g_greedyMeshing = gameSettings.greedyMeshing;
-            g_fancyLeaves = gameSettings.fancyLeaves;
+        if (meshFlagsChanged)
             for (auto& [pos, chunk] : w->chunkManager->chunks) chunk.markDirty();
-        }
     }
     g_caveCulling = gameSettings.caveCulling;
     // Only apply resolution while windowed - fullscreen keeps its
