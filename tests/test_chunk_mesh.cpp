@@ -12,10 +12,14 @@
 // Each visible face emits 4 vertices and 6 indices.
 
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <array>
+#include <climits>
 #include <cstdint>
 #include <cstring>
+#include <map>
 #include <memory>
+#include <vector>
 #include "chunk_mesh.h"
 #include "cube.h"
 #include "light_data.h"
@@ -395,6 +399,165 @@ TEST(ChunkMesh, GlowstoneOnPosZEdgeFaceUsesNeighborBorderLight) {
     }
     EXPECT_EQ(foundFaces, 1);
     EXPECT_EQ(zeroBlockLightVerts, 0);
+}
+
+// --- Greedy meshing ------------------------------------------------------------
+//
+// Merged quads only sample AO + light at their 4 corners, so a merge is only
+// correct when every covered unit face has the same, uniform AO and light.
+
+namespace {
+
+struct GreedyGuard {
+    bool prev = g_greedyMeshing;
+    explicit GreedyGuard(bool on) { g_greedyMeshing = on; }
+    ~GreedyGuard() { g_greedyMeshing = prev; }
+    GreedyGuard(const GreedyGuard&) = delete;
+    GreedyGuard& operator=(const GreedyGuard&) = delete;
+};
+
+// Axis (0=x, 1=y, 2=z) a face's normal points along.
+int normalAxis(int normalIdx) {
+    return normalIdx <= 1 ? 2 : (normalIdx <= 3 ? 0 : 1);
+}
+
+struct QuadInfo {
+    int normal;
+    std::array<int, 3> lo, hi; // ×2-encoded position bounds
+    std::array<uint8_t, 4> ao, light;
+};
+
+std::vector<QuadInfo> opaqueQuads(const MeshData& m) {
+    std::vector<QuadInfo> out;
+    size_t verts = m.verts.size() / sizeof(PackedVertex);
+    for (size_t i = 0; i + 3 < verts; i += 4) {
+        QuadInfo q{};
+        q.normal = opaqueVert(m, i).normalIdx;
+        q.lo = {INT32_MAX, INT32_MAX, INT32_MAX};
+        q.hi = {INT32_MIN, INT32_MIN, INT32_MIN};
+        for (int k = 0; k < 4; k++) {
+            const PackedVertex& pv = opaqueVert(m, i + k);
+            int p[3] = {pv.px, pv.py, pv.pz};
+            for (int a = 0; a < 3; a++) {
+                q.lo[a] = std::min(q.lo[a], p[a]);
+                q.hi[a] = std::max(q.hi[a], p[a]);
+            }
+            q.ao[k] = pv.ao;
+            q.light[k] = pv.packedLight;
+        }
+        out.push_back(q);
+    }
+    return out;
+}
+
+// Every greedy quad must cover only unit faces whose non-greedy shading it
+// reproduces exactly: 1×1 quads match vertex-for-vertex, merged quads cover
+// faces that are all uniform and equal to the quad's (uniform) values.
+void expectGreedyPreservesShading(MeshInputs& in) {
+    MeshData plain, greedy;
+    {
+        GreedyGuard g(false);
+        plain = in.build();
+    }
+    {
+        GreedyGuard g(true);
+        greedy = in.build();
+    }
+    std::map<std::array<int, 4>, QuadInfo> unit; // (normal, lo) → face
+    for (const QuadInfo& q : opaqueQuads(plain)) unit[{q.normal, q.lo[0], q.lo[1], q.lo[2]}] = q;
+
+    size_t covered = 0;
+    for (const QuadInfo& q : opaqueQuads(greedy)) {
+        int na = normalAxis(q.normal);
+        int ta = (na + 1) % 3, tb = (na + 2) % 3;
+        bool merged = (q.hi[ta] - q.lo[ta]) > 2 || (q.hi[tb] - q.lo[tb]) > 2;
+        for (int a = q.lo[ta]; a < q.hi[ta]; a += 2) {
+            for (int b = q.lo[tb]; b < q.hi[tb]; b += 2) {
+                std::array<int, 3> lo = q.lo;
+                lo[ta] = a;
+                lo[tb] = b;
+                auto it = unit.find({q.normal, lo[0], lo[1], lo[2]});
+                ASSERT_NE(it, unit.end()) << "greedy quad covers a face the plain mesher didn't emit";
+                ++covered;
+                const QuadInfo& u = it->second;
+                if (!merged) {
+                    EXPECT_EQ(u.ao, q.ao);
+                    EXPECT_EQ(u.light, q.light);
+                    continue;
+                }
+                for (int k = 0; k < 4; k++) {
+                    EXPECT_EQ(u.ao[k], q.ao[0]) << "merged over non-uniform / different AO";
+                    EXPECT_EQ(u.light[k], q.light[0]) << "merged over different light";
+                    EXPECT_EQ(q.ao[k], q.ao[0]);
+                    EXPECT_EQ(q.light[k], q.light[0]);
+                }
+            }
+        }
+    }
+    EXPECT_EQ(covered, unit.size()) << "greedy output must cover exactly the plain faces";
+}
+
+// 6×6 stone floor at y = 10 in the middle of the chunk.
+void stoneFloor(MeshInputs& in) {
+    for (int x = 5; x <= 10; x++)
+        for (int z = 5; z <= 10; z++) in.setBlock(x, 10, z, STONE);
+}
+
+size_t topFaces(const MeshData& m) {
+    return static_cast<size_t>(countFacesByNormal(m)[4]);
+}
+
+} // namespace
+
+TEST(ChunkMesh, GreedyMergesUniformFloorIntoOneQuad) {
+    MeshInputs in;
+    stoneFloor(in);
+    GreedyGuard g(true);
+    EXPECT_EQ(topFaces(in.build()), 1u);
+}
+
+TEST(ChunkMesh, GreedyDoesNotMergeAcrossLightChange) {
+    MeshInputs in;
+    stoneFloor(in);
+    // Block light pooling above the middle of the floor (e.g. glowstone).
+    in.light[lightIdx(7, 11, 7)] = packLight(15, 14);
+    GreedyGuard g(true);
+    MeshData m = in.build();
+    EXPECT_GT(topFaces(m), 1u);
+    // The lit face survives as its own 1×1 quad with its light intact.
+    int litQuads = 0;
+    for (const QuadInfo& q : opaqueQuads(m)) {
+        if (q.normal != 4 || unpackBlock(q.light[0]) != 14) continue;
+        ++litQuads;
+        EXPECT_EQ(q.hi[0] - q.lo[0], 2);
+        EXPECT_EQ(q.hi[2] - q.lo[2], 2);
+    }
+    EXPECT_EQ(litQuads, 1);
+}
+
+TEST(ChunkMesh, GreedyDoesNotStretchAOCrease) {
+    MeshInputs in;
+    stoneFloor(in);
+    in.setBlock(7, 11, 7, STONE); // pillar stub → AO darkening on the floor around it
+    GreedyGuard g(true);
+    MeshData m = in.build();
+    bool sawOccludedTop = false;
+    for (const QuadInfo& q : opaqueQuads(m))
+        if (q.normal == 4)
+            for (uint8_t a : q.ao) sawOccludedTop |= (a & 3) < 3;
+    EXPECT_TRUE(sawOccludedTop) << "AO next to the stub must survive greedy merging";
+}
+
+TEST(ChunkMesh, GreedyPreservesShadingOnMixedScene) {
+    MeshInputs in;
+    stoneFloor(in);
+    for (int x = 5; x <= 10; x++) in.setBlock(x, 11, 10, DIRT); // step along one edge
+    in.setBlock(8, 11, 6, STONE);                               // pillar
+    in.setBlock(8, 12, 6, STONE);
+    in.light[lightIdx(6, 11, 8)] = packLight(15, 12); // block-lit patch
+    in.light[lightIdx(7, 11, 8)] = packLight(15, 9);
+    for (int z = 5; z <= 9; z++) in.light[lightIdx(9, 11, z)] = packLight(4, 0); // shadow strip
+    expectGreedyPreservesShading(in);
 }
 
 TEST(ChunkMesh, GlowstoneOnNegZEdgeFaceUsesNeighborBorderLight) {
