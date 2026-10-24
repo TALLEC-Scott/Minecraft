@@ -423,6 +423,7 @@ int main(int argc, char* argv[]) {
     bool headlessMode = false;
     bool stressWater = false;
     unsigned int worldSeed = 0;
+    int benchMeasureFrames = 600; // --bench-frames N: longer samples at high fps
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         if (arg == "--benchmark")
@@ -433,6 +434,8 @@ int main(int argc, char* argv[]) {
             stressWater = true;
         else if (arg == "--seed" && i + 1 < argc)
             worldSeed = std::stoul(argv[++i]);
+        else if (arg == "--bench-frames" && i + 1 < argc)
+            benchMeasureFrames = std::max(1, std::stoi(argv[++i]));
     }
 #endif
     if (!glfwInit()) {
@@ -1247,12 +1250,16 @@ int main(int argc, char* argv[]) {
         // Benchmark mode: fixed camera, warm-up + measured frames, write results to file
         if (benchmarkMode) {
             constexpr int WARMUP_FRAMES = 600;
-            constexpr int MEASURE_FRAMES = 600;
+            const int MEASURE_FRAMES = benchMeasureFrames;
 
-            // Find label: first arg that isn't a flag
+            // Find label: first arg that isn't a flag or a flag's value
             std::string label = "benchmark";
             for (int i = 1; i < argc; i++) {
                 std::string a = argv[i];
+                if (a == "--seed" || a == "--bench-frames") {
+                    ++i;
+                    continue;
+                }
                 if (a[0] != '-') {
                     label = a;
                     break;
