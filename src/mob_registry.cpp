@@ -3,6 +3,7 @@
 #include <cassert>
 
 #include "mob.h"
+#include "mobs/chicken.h"
 #include "mobs/pig.h"
 
 namespace {
@@ -17,6 +18,7 @@ template <typename T> std::unique_ptr<Mob> makeMob() {
 constexpr MobInfo MOB_TABLE[] = {
     // type        name   factory        category              halfW  height  hp     spawn biomes                                     group  weight
     {MobType::Pig, "pig", &makeMob<Pig>, MobCategory::Passive, 0.45f, 0.9f,   10.0f, biomeBit(BIOME_PLAINS) | biomeBit(BIOME_FOREST), 2, 4,  10},
+    {MobType::Chicken, "chicken", &makeMob<Chicken>, MobCategory::Passive, 0.2f, 0.7f, 4.0f, biomeBit(BIOME_PLAINS) | biomeBit(BIOME_FOREST), 2, 4, 10},
 };
 // clang-format on
 

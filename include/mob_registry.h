@@ -43,6 +43,7 @@ class Mob;
 
 enum class MobType : uint8_t {
     Pig,
+    Chicken,
     Count // keep last
 };
 
