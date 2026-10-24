@@ -38,10 +38,17 @@ constexpr uint64_t SALT_TREE = 1, SALT_CACTUS = 2, SALT_PLANT = 3;
 struct Column {
     int height;
     Biome biome;
-    int slope; // largest height step to a 4-neighbor
+    double river; // 0..1 inside a river channel (TerrainGenerator::ColumnInfo)
+    int slope;    // largest height step to a 4-neighbor
     block_type surface;
     block_type subsurface;
 };
+
+// Under water, river channels (this far inside) and anything deeper than
+// SANDY_SHALLOWS get Minecraft's patchy gravel / sand / dirt bed; the
+// shallows next to beaches stay sand.
+constexpr double RIVERBED_MIN = 0.02;
+constexpr int SANDY_SHALLOWS = 3;
 
 // Surface rules: water floor, snow line, cliffs and high rock override the
 // biome's own surface block.
@@ -51,7 +58,7 @@ void classify(Column& c, int sea, const BiomeParams& bp) {
     // below the snow line.
     bool rock = c.slope >= CLIFF_SLOPE || (above >= ROCK_LINE && above < SNOW_LINE && c.slope >= 2);
     if (c.height < sea) {
-        c.surface = c.height < sea - 10 ? GRAVEL : SAND; // deep ocean floor is gravel
+        c.surface = SAND; // shallows; deeper beds get waterbed patches in fillChunkTerrain
     } else if (rock) {
         c.surface = STONE;
     } else if (above >= SNOW_LINE) {
@@ -89,7 +96,10 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
     for (int i = -MARGIN; i < CHUNK_SIZE + MARGIN; i++)
         for (int k = -MARGIN; k < CHUNK_SIZE + MARGIN; k++) {
             Column& c = col(i, k);
-            c.height = terrain.getHeightAndBiome(ox + i, oz + k, c.biome);
+            TerrainGenerator::ColumnInfo info = terrain.getColumn(ox + i, oz + k);
+            c.height = info.height;
+            c.biome = info.biome;
+            c.river = info.river;
         }
     for (int i = -MARGIN; i < CHUNK_SIZE + MARGIN; i++)
         for (int k = -MARGIN; k < CHUNK_SIZE + MARGIN; k++) {
@@ -102,6 +112,9 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
                 c.slope = std::max(c.slope, std::abs(col(ni, nk).height - c.height));
             }
             classify(c, sea, terrain.getBiomeParams(c.biome));
+            // River and ocean beds: mostly gravel, like Minecraft's.
+            if (c.height < sea && (c.river > RIVERBED_MIN || sea - c.height > SANDY_SHALLOWS))
+                c.surface = c.subsurface = terrain.waterbedBlock(ox + i, oz + k);
         }
 
     // --- Terrain columns ---
@@ -146,7 +159,10 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
     for (int i = 0; i < CHUNK_SIZE; i++) {
         for (int k = 0; k < CHUNK_SIZE; k++) {
             block_type shore = (biomes[i][k] == BIOME_TUNDRA) ? GRAVEL : SAND;
-            for (int j = 1; j <= sea + 1 && j < CHUNK_HEIGHT; j++) {
+            // Underwater beds keep their gravel / sand / dirt patches; only
+            // land at the waterline and above becomes shore.
+            const int bedTop = heights[i][k] < sea ? heights[i][k] : 0;
+            for (int j = bedTop + 1; j <= sea + 1 && j < CHUNK_HEIGHT; j++) {
                 Cube& b = blocks[blockIndex(i, j, k)];
                 block_type bt = b.getType();
                 if (bt != DIRT && bt != GRASS && bt != STONE && bt != SNOW) continue;
