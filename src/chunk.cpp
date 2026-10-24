@@ -822,6 +822,10 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
         return unpackBlock(sampleLightNeighbors(lightPtr, nx_neg, nx_pos, nz_neg, nz_pos, x, y, z));
     };
 
+    // Snapshot mesher options once — Settings may flip them mid-build.
+    const bool useGreedy = g_greedyMeshing.load();
+    const bool useFancyLeaves = g_fancyLeaves.load();
+
     // Greedy merge key for a visible face. AO and light are sampled only at
     // the four corners of a merged quad, so merging on block type alone
     // stretched corner values over the whole quad and erased interior AO and
@@ -930,11 +934,11 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                         } else {
                             show = (nbType == AIR) || hasFlag(nbType, BF_CROSS) ||
                                    (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
-                                   (g_fancyLeaves && (hasFlag(bt, BF_TRANSLUCENT) || hasFlag(nbType, BF_TRANSLUCENT)));
+                                   (useFancyLeaves && (hasFlag(bt, BF_TRANSLUCENT) || hasFlag(nbType, BF_TRANSLUCENT)));
                         }
                         int val = show ? (int)bt : -1;
                         mask[u][v] = val;
-                        mkey[u][v] = (show && g_greedyMeshing) ? mergeKey(fd, c, bt) : -1;
+                        mkey[u][v] = (show && useGreedy) ? mergeKey(fd, c, bt) : -1;
                         if (val != -1) anyFace = true;
                     }
                 }
@@ -955,7 +959,7 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                         // filled for this slice.
                         int h = 1, w = 1;
                         const int key = mkey[u][v];
-                        if (g_greedyMeshing && key != -1) {
+                        if (useGreedy && key != -1) {
                             while (v + h < v_end && mkey[u][v + h] == key) h++;
                             w = 1;
                             while (u + w < u_dim) {
@@ -1202,7 +1206,7 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                         }
                         base += 4;
 
-                        if (g_greedyMeshing) {
+                        if (useGreedy) {
                             for (int du = 0; du < w; du++)
                                 for (int dv = 0; dv < h; dv++) mask[u + du][v + dv] = mkey[u + du][v + dv] = -1;
                         }
