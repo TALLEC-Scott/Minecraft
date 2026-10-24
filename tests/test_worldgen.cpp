@@ -147,7 +147,8 @@ TEST_F(WorldgenTest, TerrainHasMountainsCliffsAndRivers) {
 }
 
 TEST_F(WorldgenTest, RiverDepthVariesAlongTheChannel) {
-    // Channel centre lines (river ≈ 1) should range from shallows to pools.
+    // Channel centre lines (river ≈ 1) should range from shallows to the
+    // deeper stretches (2-4 blocks, Minecraft-like lowland rivers).
     int minDepth = 99, maxDepth = 0, centre = 0;
     for (int x = -1500; x < 1500; x += 3)
         for (int z = -1500; z < 1500; z += 3) {
@@ -158,8 +159,9 @@ TEST_F(WorldgenTest, RiverDepthVariesAlongTheChannel) {
             maxDepth = std::max(maxDepth, SEA - c.height);
         }
     ASSERT_GT(centre, 50) << "no river centre lines found";
-    EXPECT_LE(minDepth, 3) << "no shallows";
-    EXPECT_GE(maxDepth, 5) << "no deep pools";
+    EXPECT_LE(minDepth, 2) << "no shallows";
+    EXPECT_GE(maxDepth, 3) << "no deeper stretches";
+    EXPECT_LE(maxDepth, 5) << "rivers should not be canyons";
 }
 
 TEST_F(WorldgenTest, RiverbedIsMostlyGravel) {
