@@ -166,3 +166,22 @@ TEST_F(BlockLightDestroyRelightTest, LavaHardeningToObsidianGoesDark) {
     EXPECT_EQ(blockLightAt(cm, 5, 5, 5), 0);
     EXPECT_EQ(blockLightAt(cm, 7, 5, 5), 0);
 }
+
+TEST_F(BlockLightDestroyRelightTest, BlockPlacedIntoLavaClearsItsLight) {
+    // Aiming passes through liquids, so a placed block often lands in a lava cell.
+    Chunk& c = cm.getOrCreate(0, 0);
+    c.setBlockType(5, 5, 5, LAVA);
+    floodBlockLight(&cm, 5, 5, 5, 15);
+    c.setBlockType(5, 5, 5, COBBLESTONE);
+    relightBlockChange(&cm, 5, 5, 5, LAVA, COBBLESTONE);
+    EXPECT_EQ(blockLightAt(cm, 6, 5, 5), 0);
+    EXPECT_EQ(blockLightAt(cm, 9, 5, 5), 0);
+}
+
+TEST_F(BlockLightDestroyRelightTest, PlacedGlowstoneStillLights) {
+    Chunk& c = cm.getOrCreate(0, 0);
+    c.setBlockType(5, 5, 5, GLOWSTONE);
+    relightBlockChange(&cm, 5, 5, 5, AIR, GLOWSTONE);
+    EXPECT_EQ(blockLightAt(cm, 5, 5, 5), 15);
+    EXPECT_EQ(blockLightAt(cm, 8, 5, 5), 12);
+}

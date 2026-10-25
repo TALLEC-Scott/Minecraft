@@ -125,14 +125,14 @@ void World::placeBlock(glm::ivec3 position, block_type type) const {
 
     auto chunk = this->chunkManager->getChunk(chunkX, chunkZ);
     if (!chunk) return;
+    // Placing goes into air or, since aiming passes through liquids, into
+    // water or lava: whatever was there takes its light with it.
+    block_type oldType = chunk->getBlockType(lx, by, lz);
     chunk->placeBlock(lx, by, lz, type);
     markBorderNeighborsDirty(chunkManager, chunkX, chunkZ, lx, by, lz);
 
-    // Flood block light in world space, crossing chunk boundaries
-    uint8_t emission = getBlockLightEmission(type);
-    if (emission > 0) {
-        floodBlockLight(chunkManager, bx, by, bz, emission);
-    }
+    // Block light in world space, crossing chunk boundaries
+    relightBlockChange(chunkManager, bx, by, bz, oldType, type);
 
     // Wake the water simulator so placed water sources spread, and so that
     // any adjacent water reacts to a newly-placed solid block (it may now
