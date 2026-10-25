@@ -872,6 +872,7 @@ int main(int argc, char* argv[]) {
             pd.walkMode = player.isWalkMode();
             std::memcpy(pd.hotbar, player.getHotbar(), sizeof(pd.hotbar));
             pd.selectedSlot = player.getSelectedSlot();
+            pd.gameMode = player.getGameMode();
             return pd;
         };
 
@@ -967,10 +968,11 @@ int main(int argc, char* argv[]) {
         };
 
         // Load (or create) the world at saves/<folder>. `seedOverride` forces
-        // a specific seed (new-world creation or --seed); otherwise level.dat
-        // wins when present.
+        // a specific seed (new-world creation or --seed) and `modeOverride`
+        // the game mode (new-world creation); otherwise level.dat wins when
+        // present.
         auto switchToWorld = [&](const std::string& folder, std::optional<unsigned int> seedOverride,
-                                 const std::string& displayName) {
+                                 const std::string& displayName, std::optional<GameMode> modeOverride = std::nullopt) {
             saveCurrentWorld();
             world.reset();
             worldSave.reset();
@@ -983,6 +985,7 @@ int main(int argc, char* argv[]) {
             PlayerSaveData loaded;
             bool hadSave = worldSave->loadLevelData(seed, loaded);
             if (seedOverride.has_value()) seed = *seedOverride;  // creation overrides stored seed
+            if (modeOverride.has_value()) loaded.gameMode = *modeOverride;
             if (!displayName.empty()) worldSave->setDisplayName(displayName);
 
             std::cout << "World: " << folder << "  seed: " << seed << std::endl;
@@ -1006,6 +1009,8 @@ int main(int argc, char* argv[]) {
                 player.setYawPitch(-90.0f, 0.0f);
                 player.getCamera().setWalkMode(false);
             }
+            // After the walk-mode restore: Survival forces walking.
+            player.setGameMode(loaded.gameMode);
             // Fresh health + motion for every world entered (health isn't saved).
             player.respawn(player.getPosition());
 
@@ -1144,6 +1149,17 @@ int main(int argc, char* argv[]) {
                 showCoordinates = on;
                 out.emplace_back(std::string("Game rule showcoordinates set to ") + (on ? "true" : "false"));
             });
+
+        chatCommands.add("gamemode", "<survival|creative>", "Switch between survival and creative",
+                         [](const ChatCommands::Args& args, ChatCommands::Reply& out) {
+                             std::optional<GameMode> mode = args.empty() ? std::nullopt : parseGameMode(args[0]);
+                             if (!mode) {
+                                 out.emplace_back("Usage: /gamemode <survival|creative>");
+                                 return;
+                             }
+                             player.setGameMode(*mode);
+                             out.emplace_back(std::string("Set own game mode to ") + gameModeName(*mode));
+                         });
 
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
@@ -1874,7 +1890,7 @@ int main(int argc, char* argv[]) {
                     std::string displayName = sanitizeWorldName(res.name);
                     std::string folder = uniqueFolderName(displayName);
                     unsigned int seed = resolveSeed(res.seed);
-                    switchToWorld(folder, std::optional<unsigned int>(seed), displayName);
+                    switchToWorld(folder, std::optional<unsigned int>(seed), displayName, res.gameMode);
                     glm::vec3 p = player.getPosition();
                     g_loadingSpawnCx = (int)std::floor(p.x / (float)CHUNK_SIZE);
                     g_loadingSpawnCz = (int)std::floor(p.z / (float)CHUNK_SIZE);
@@ -2123,7 +2139,8 @@ int main(int argc, char* argv[]) {
                 MobManager::PlayerState mobView;
                 mobView.feet = player.getFeetPosition();
                 mobView.eye = player.getPosition();
-                mobView.targetable = !player.isDead();
+                // Mobs ignore creative players, as in Minecraft.
+                mobView.targetable = !player.isDead() && player.isSurvival();
                 w->mobManager->setPlayer(mobView);
                 w->mobManager->setSunHeight(std::sin(timeValue));
                 w->update(player.getPosition(), dt, glfwGetTime());
@@ -2741,9 +2758,12 @@ int main(int argc, char* argv[]) {
                         "Position: " + std::to_string(b.x) + ", " + std::to_string(b.y) + ", " + std::to_string(b.z);
                     uiRenderer.drawTextShadow(pos, 8.0f, 8.0f, 2.0f);
                 }
-                // Health: 10 hearts just above the hotbar's left edge.
-                drawHearts(uiRenderer, barX, barY - 22.0f, player.getHealth().health, player.getHurtFlash(),
-                           glfwGetTime());
+                // Health: 10 hearts just above the hotbar's left edge
+                // (Survival only; Creative players can't be hurt).
+                if (player.isSurvival()) {
+                    drawHearts(uiRenderer, barX, barY - 22.0f, player.getHealth().health, player.getHurtFlash(),
+                               glfwGetTime());
+                }
                 // Debug-spawner toast, fading out over 2 s.
                 double toastAge = glfwGetTime() - g_toastTime;
                 if (toastAge < 2.0) {
@@ -2778,6 +2798,8 @@ int main(int argc, char* argv[]) {
                 glfwGetTime() - deathTime > 1.0) {
                 bool spawnLoaded = false;
                 glm::vec3 spawnEye = worldSpawnEye(spawnLoaded);
+                // Hover until the spawn chunk streams in (Player::update
+                // drops a survival player back to walking once it has).
                 if (!spawnLoaded) player.getCamera().setWalkMode(false);
                 player.respawn(spawnEye);
                 glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);

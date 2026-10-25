@@ -144,7 +144,7 @@ void Player::handleInput(GLFWwindow* window, World* world) {
         bool spaceDown = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
         if (spaceDown && !spaceWasPressed) {
             double now = glfwGetTime();
-            if (now - lastSpaceTap < DOUBLE_TAP_TIME) {
+            if (now - lastSpaceTap < DOUBLE_TAP_TIME && !isSurvival()) {
                 camera.toggleWalkMode();
                 lastSpaceTap = 0;
             } else {
@@ -249,13 +249,14 @@ bool Player::tryAttack(World* world, float strength) {
     constexpr float NONE = std::numeric_limits<float>::max();
 
     float mobDist = NONE; // raycast only writes it on a hit
-    Mob* mob = world->mobManager ? world->mobManager->raycast(eye, dir, ATTACK_REACH, mobDist) : nullptr;
+    const float reach = attackReach(gameMode);
+    Mob* mob = world->mobManager ? world->mobManager->raycast(eye, dir, reach, mobDist) : nullptr;
 
     // Other players, hit-tested where we see them.
     double now = glfwGetTime();
     float remoteDist = NONE;
     const RemotePlayer* remote = netSession && netSession->connected()
-                                     ? netSession->raycastRemote(eye, dir, ATTACK_REACH, now, remoteDist)
+                                     ? netSession->raycastRemote(eye, dir, reach, now, remoteDist)
                                      : nullptr;
 
     float targetDist = std::min(mobDist, remoteDist);
@@ -264,7 +265,7 @@ bool Player::tryAttack(World* world, float strength) {
     if (hasHighlight) {
         float blockDist = 0.0f;
         glm::vec3 b(targeted);
-        if (rayIntersectsAABB(eye, dir, b - glm::vec3(0.5f), b + glm::vec3(0.5f), REACH, blockDist) &&
+        if (rayIntersectsAABB(eye, dir, b - glm::vec3(0.5f), b + glm::vec3(0.5f), blockReach(gameMode), blockDist) &&
             blockDist < targetDist)
             return false;
     }
@@ -286,13 +287,13 @@ bool Player::tryInteractMob(World* world) {
     glm::vec3 eye = camera.getPosition();
     glm::vec3 dir = camera.getFront();
     float mobDist = 0.0f;
-    Mob* mob = world->mobManager->raycast(eye, dir, ATTACK_REACH, mobDist);
+    Mob* mob = world->mobManager->raycast(eye, dir, attackReach(gameMode), mobDist);
     if (!mob || mob->type != MobType::Sheep) return false;
     // A targeted block nearer than the mob shields it.
     if (hasHighlight) {
         float blockDist = 0.0f;
         glm::vec3 b(targeted);
-        if (rayIntersectsAABB(eye, dir, b - glm::vec3(0.5f), b + glm::vec3(0.5f), REACH, blockDist) &&
+        if (rayIntersectsAABB(eye, dir, b - glm::vec3(0.5f), b + glm::vec3(0.5f), blockReach(gameMode), blockDist) &&
             blockDist < mobDist)
             return false;
     }
@@ -312,8 +313,13 @@ void Player::playHitSound() {
     ma_sound_start(&set.sounds[idx]);
 }
 
+void Player::setGameMode(GameMode mode) {
+    gameMode = mode;
+    if (isSurvival()) camera.setWalkMode(true);
+}
+
 void Player::hurt(float amount, glm::vec3 fromPos, bool knockback) {
-    if (!health.hurt(amount, glfwGetTime())) return;
+    if (!isSurvival() || !health.hurt(amount, glfwGetTime())) return;
     if (knockback) {
         glm::vec3 p = camera.getPosition();
         glm::vec2 away(p.x - fromPos.x, p.z - fromPos.z);
@@ -365,6 +371,15 @@ void Player::updateMouseLook(double xPos, double yPos, int /*windowWidth*/, int 
 void Player::update(World* world) {
     // Update punch animation
     if (isPunching && (glfwGetTime() - punchStartTime) > PUNCH_DURATION) isPunching = false;
+
+    // Survival never flies: a respawn into an unloaded spawn chunk hovers
+    // (main.cpp) only until the chunk under the player has streamed in.
+    if (isSurvival() && !camera.isWalkMode() && world) {
+        glm::vec3 p = camera.getPosition();
+        int cx = worldToChunk((int)std::floor(p.x + 0.5f));
+        int cz = worldToChunk((int)std::floor(p.z + 0.5f));
+        if (world->chunkManager->getChunk(cx, cz)) camera.setWalkMode(true);
+    }
 
     // Physics
     findGroundAndUpdate(world);
@@ -529,7 +544,7 @@ void Player::findGroundAndUpdate(World* world) {
 void Player::updateTargetedBlock(World* world) {
     glm::vec3 pos = camera.getPosition();
     glm::vec3 front = camera.getFront();
-    hasHighlight = world->raycast(pos, front, REACH, targeted, placementPos);
+    hasHighlight = world->raycast(pos, front, blockReach(gameMode), targeted, placementPos);
 }
 
 float Player::getSwingProgress() const {

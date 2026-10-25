@@ -2,6 +2,7 @@
 
 #include "camera.h"
 #include "cube.h"
+#include "game_mode.h"
 #include "item.h"
 #include "player_health.h"
 #include <GLFW/glfw3.h>
@@ -54,6 +55,12 @@ class Player {
     const ItemId* getHotbar() const { return hotbar; }
 
     bool isWalkMode() const { return camera.isWalkMode(); }
+
+    // Survival walks (no flying), mines/attacks at shorter reach and takes
+    // damage; Creative flies freely and is never hurt.
+    GameMode getGameMode() const { return gameMode; }
+    bool isSurvival() const { return gameMode == GameMode::Survival; }
+    void setGameMode(GameMode mode);
     float getPunchSwingAngle() const;
     // 0..1 progress through the current punch (0 when not punching).
     float getSwingProgress() const;
@@ -67,15 +74,14 @@ class Player {
     Camera& getCamera() { return camera; }
 
     // --- Health & combat ---
-    // Minecraft creative reach: 5 blocks for mobs, same as blocks (REACH).
-    static constexpr float ATTACK_REACH = 5.0f;     // melee reach (blocks from the eye)
-    static constexpr float HURT_KNOCKBACK = 8.0f;   // blocks / second, decays in Camera
+    static constexpr float HURT_KNOCKBACK = 8.0f; // blocks / second, decays in Camera
 
     const PlayerHealth& getHealth() const { return health; }
     bool isDead() const { return health.isDead(); }
     glm::vec3 getFeetPosition() const { return camera.getPosition() - glm::vec3(0.0f, PLAYER_HEIGHT, 0.0f); }
     // Damage from a world position (mob, explosion). Knockback pushes away
-    // from `fromPos` horizontally. Respects the invulnerability window.
+    // from `fromPos` horizontally. Respects the invulnerability window; a
+    // no-op in Creative.
     void hurt(float amount, glm::vec3 fromPos, bool knockback = true);
     // Full health, zero motion, camera (eye) at `eyePos`.
     void respawn(glm::vec3 eyePos);
@@ -107,6 +113,7 @@ class Player {
 
   private:
     Camera camera;
+    GameMode gameMode = GameMode::Creative;
 
     // Block targeting
     glm::ivec3 targeted = glm::ivec3(0);

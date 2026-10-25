@@ -8,7 +8,6 @@
 #define GRAVITY 0.008f
 #define TERMINAL_VELOCITY -0.8f
 #define JUMP_VELOCITY 0.18f
-#define REACH 5.0f // block reach (Minecraft creative); Player::ATTACK_REACH matches
 #define PLAYER_HEIGHT 1.62f
 
 class Camera {
@@ -29,7 +28,6 @@ class Camera {
     void resetSpeed();
     void setSpeed(float speed) { cameraSpeed = speed; }
 
-    glm::vec3 getTargetPosition();
 
     void toggleWalkMode();
     float getVelocityY() const { return velocityY; }

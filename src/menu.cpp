@@ -474,6 +474,7 @@ GameState Menu::drawCreateWorld(UIRenderer& ui, int windowW, int windowH, GLFWwi
         createSeedInput.setText("");
         createSeedInput.active = false;
         createShowAdvanced = false;
+        createGameMode = GameMode::Survival;
         createInitialized = true;
         widgets.clearInputLatches();
     }
@@ -494,6 +495,12 @@ GameState Menu::drawCreateWorld(UIRenderer& ui, int windowW, int windowH, GLFWwi
     y += 28.0f;
     bool nameEnter = widgets.textField(ui, createNameInput, panelX, y, panelW, 40.0f, "My World");
     y += 56.0f;
+
+    std::string modeLabel = std::string("Game Mode: ") + gameModeName(createGameMode);
+    if (widgets.button(ui, modeLabel, panelX, y, panelW, 36.0f)) {
+        createGameMode = createGameMode == GameMode::Survival ? GameMode::Creative : GameMode::Survival;
+    }
+    y += 52.0f;
 
     std::string adv = createShowAdvanced ? "More World Options (hide)" : "More World Options";
     if (widgets.button(ui, adv, panelX, y, panelW, 36.0f)) createShowAdvanced = !createShowAdvanced;
@@ -535,6 +542,7 @@ GameState Menu::drawCreateWorld(UIRenderer& ui, int windowW, int windowH, GLFWwi
         out.create = true;
         out.name = createNameInput.buffer;
         out.seed = createSeedInput.buffer;
+        out.gameMode = createGameMode;
         createInitialized = false;
         createNameInput.active = false;
         createSeedInput.active = false;
