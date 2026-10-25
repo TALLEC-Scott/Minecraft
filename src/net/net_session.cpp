@@ -4,6 +4,8 @@
 #include <cstring>
 #include <random>
 
+#include "collision.h"
+#include "item.h"
 #include "net/net_protocol.h"
 #include "player.h"
 #include "world.h"
@@ -370,6 +372,10 @@ void RemotePlayer::pushSample(glm::vec3 pos, float yaw, float pitch, double now)
     lastSeen = now;
 }
 
+glm::vec3 RemotePlayer::feetAt(double renderTime) const {
+    return sample(renderTime).pos - glm::vec3(0.0f, PLAYER_HEIGHT, 0.0f);
+}
+
 RemotePlayer::Pose RemotePlayer::sample(double renderTime) const {
     Pose p;
     if (currTime <= prevTime) {
@@ -597,6 +603,8 @@ void NetSession::handleMessage(const uint8_t* data, std::size_t len, double now)
         if (!netp::decodePlayerState(data, len, m)) return;
         RemotePlayer& r = upsertRemote(m.peerId, now);
         r.pushSample(m.pos, m.yaw, m.pitch, now);
+        r.heldItem = isValidItem(m.heldItem) ? m.heldItem : ITEM_EMPTY;
+        r.dead = (m.flags & netp::PLAYER_FLAG_DEAD) != 0;
         break;
     }
     case netp::Op::PlaceIntent: {
@@ -653,6 +661,12 @@ void NetSession::handleMessage(const uint8_t* data, std::size_t len, double now)
         if (onChat_) onChat_(m.peerId, m.text);
         break;
     }
+    case netp::Op::Hit: {
+        netp::HitMsg m;
+        if (!netp::decodeHit(data, len, m)) return;
+        if (m.targetId == selfPeerId_ && onHit_) onHit_(m.attackerId, m.damage, m.fromPos);
+        break;
+    }
     }
 }
 
@@ -699,6 +713,8 @@ void NetSession::tickBroadcast(const Player& p, double now) {
     m.pos = p.getPosition();
     m.yaw = p.getYaw();
     m.pitch = p.getPitch();
+    m.heldItem = p.getSelectedItem();
+    m.flags = p.isDead() ? netp::PLAYER_FLAG_DEAD : 0;
     std::vector<uint8_t> buf;
     netp::encodePlayerState(buf, m);
     sendRaw(buf);
@@ -726,6 +742,37 @@ void NetSession::notifyLocalPlace(glm::ivec3 pos, uint8_t blockType) {
         netp::encodePlaceIntent(buf, m);
     }
     sendRaw(buf);
+}
+
+const RemotePlayer* NetSession::raycastRemote(glm::vec3 origin, glm::vec3 dir, float maxDist, double now,
+                                              float& outDist) const {
+    const RemotePlayer* best = nullptr;
+    const glm::vec3 half(PVP_HALF_WIDTH, 0.0f, PVP_HALF_WIDTH);
+    for (const RemotePlayer& r : remotes_) {
+        if (r.dead) continue;
+        glm::vec3 feet = r.feetAt(now - RENDER_DELAY);
+        float t = 0.0f;
+        if (rayIntersectsAABB(origin, dir, feet - half, feet + half + glm::vec3(0.0f, PVP_HEIGHT, 0.0f), maxDist, t) &&
+            (!best || t < outDist)) {
+            best = &r;
+            outDist = t;
+        }
+    }
+    return best;
+}
+
+bool NetSession::sendHit(uint32_t targetPeerId, float damage, glm::vec3 fromPos, double now) {
+    if (!connected()) return false;
+    auto it =
+        std::find_if(remotes_.begin(), remotes_.end(), [&](const RemotePlayer& r) { return r.peerId == targetPeerId; });
+    if (it == remotes_.end() || !pvpHitWouldLand(*it, now)) return false;
+    it->lastHitLanded = now;
+    it->hurtFlashUntil = now + HIT_FLASH_SECONDS;
+    netp::HitMsg m{selfPeerId_, targetPeerId, std::min(damage, netp::HIT_MAX_DAMAGE), fromPos};
+    std::vector<uint8_t> buf;
+    netp::encodeHit(buf, m);
+    sendRaw(buf);
+    return true;
 }
 
 void NetSession::sendChat(const std::string& text) {

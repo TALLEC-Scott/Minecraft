@@ -97,9 +97,23 @@ const BodyPart PARTS[] = {
 };
 constexpr int NUM_PARTS = sizeof(PARTS) / sizeof(PARTS[0]);
 
+// Feet-origin body frame: local +Z faces the look direction.
+glm::mat4 bodyFrame(glm::vec3 feetPos, float yaw) {
+    float bodyYawRad = glm::radians(yaw - 90.0f);
+    return glm::translate(glm::mat4(1.0f), feetPos) * glm::rotate(glm::mat4(1.0f), bodyYawRad, glm::vec3(0, 1, 0));
+}
+
+// The figure faces +Z, so its right arm is the one at -X; the fist is the
+// bottom of that arm (y = 0.75), nudged forward so items clear the sleeve.
+const glm::vec3 RIGHT_FIST(-0.375f, 0.8f, 0.06f);
+
 } // namespace
 
 PlayerRenderer::~PlayerRenderer() { destroy(); }
+
+glm::mat4 PlayerRenderer::rightHandFrame(glm::vec3 feetPos, float yaw) {
+    return glm::translate(bodyFrame(feetPos, yaw), RIGHT_FIST);
+}
 
 void PlayerRenderer::init() {
     if (glReady) return;
@@ -149,13 +163,15 @@ void PlayerRenderer::init() {
     glEnableVertexAttribArray(3);
     glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(7 * sizeof(float)));
     glEnableVertexAttribArray(4);
-    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(8 * sizeof(float)));
-    glEnableVertexAttribArray(5);
+    // loc 5 (packed light) stays a disabled array: draw() sets it with
+    // glVertexAttrib1f so each player is lit by the light where they stand.
+    glDisableVertexAttribArray(5);
     glBindVertexArray(0);
     glReady = true;
 }
 
-void PlayerRenderer::draw(const Shader& shader, glm::vec3 feetPos, float yaw, float pitch) {
+void PlayerRenderer::draw(const Shader& shader, glm::vec3 feetPos, float yaw, float pitch, glm::vec3 tint,
+                          float packedLight) {
     if (!glReady) init();
 
     // The session's yaw comes straight from Player::getYaw(), which uses the
@@ -164,13 +180,12 @@ void PlayerRenderer::draw(const Shader& shader, glm::vec3 feetPos, float yaw, fl
     // rotate by (yaw − 90°) around Y so local +Z lands in the look
     // direction at every yaw (not just 0°, which was accidentally right
     // under the old -yaw-90 formula while every other yaw mirrored).
-    float bodyYawRad = glm::radians(yaw - 90.0f);
-    glm::mat4 base = glm::translate(glm::mat4(1.0f), feetPos) *
-                     glm::rotate(glm::mat4(1.0f), bodyYawRad, glm::vec3(0, 1, 0));
+    glm::mat4 base = bodyFrame(feetPos, yaw);
 
     shader.setInt("materialType", 0);
     shader.setFloat("entityTint", 1.0f);
     glBindVertexArray(vao);
+    glVertexAttrib1f(5, packedLight);
 
     // Pitch is clamped so the head can't spin past the shoulders.
     float pitchRad = glm::radians(-glm::clamp(pitch, -70.0f, 70.0f));
@@ -191,7 +206,7 @@ void PlayerRenderer::draw(const Shader& shader, glm::vec3 feetPos, float yaw, fl
         // Scaling by halfSize*2 lands the cube at exactly ±halfSize.
         m = m * glm::scale(glm::mat4(1.0f), p.halfSize * 2.0f);
         shader.setMat4("model", m);
-        shader.setVec3("entityColor", p.color);
+        shader.setVec3("entityColor", p.color * tint);
         glDrawElements(GL_TRIANGLES, NUM_INDICES, GL_UNSIGNED_INT, nullptr);
     }
 

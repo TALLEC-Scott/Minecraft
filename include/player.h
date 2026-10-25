@@ -68,7 +68,7 @@ class Player {
 
     // --- Health & combat ---
     // Minecraft creative reach: 5 blocks for mobs, same as blocks (REACH).
-    static constexpr float ATTACK_REACH = 5.0f;     // mob melee reach (blocks from the eye)
+    static constexpr float ATTACK_REACH = 5.0f;     // melee reach (blocks from the eye)
     static constexpr float HURT_KNOCKBACK = 8.0f;   // blocks / second, decays in Camera
 
     const PlayerHealth& getHealth() const { return health; }
@@ -148,10 +148,12 @@ class Player {
 
     void findGroundAndUpdate(World* world);
     void updateTargetedBlock(World* world);
-    // Left-click melee: true if a mob was in reach (and in front of any
-    // targeted block) — the click is then consumed and no block breaks.
-    // `strength` is the attack charge (melee.h) at the moment of the swing.
-    bool tryAttackMob(World* world, float strength);
+    // Left-click melee on the nearest mob or remote player in reach (and in
+    // front of any targeted block): true if one was hit — the click is then
+    // consumed and no block breaks. `strength` is the attack charge
+    // (melee.h) at the moment of the swing. Remote players get a network
+    // Hit; their client applies the damage.
+    bool tryAttack(World* world, float strength);
     // Right-click mob interaction (shearing a woolly sheep): true if it
     // happened — the click is then consumed and no block is placed.
     bool tryInteractMob(World* world);

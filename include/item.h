@@ -32,7 +32,7 @@ inline constexpr bool isSword(ItemId id) {
 // Accepts block values in the block_type range and known tools, so a
 // corrupt level.dat can't put garbage in the hotbar.
 inline constexpr bool isValidItem(ItemId id) {
-    return id <= static_cast<ItemId>(POPPY) || (id >= FIRST_TOOL_ITEM && id <= LAST_TOOL_ITEM);
+    return id < static_cast<ItemId>(BLOCK_TYPE_COUNT) || (id >= FIRST_TOOL_ITEM && id <= LAST_TOOL_ITEM);
 }
 
 // Texture-array layer for a block item's icon (its top face); -1 for

@@ -9,6 +9,7 @@
 #include "ChunkManager.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <random>
 
 Player::Player() {}
@@ -188,7 +189,7 @@ void Player::handleInput(GLFWwindow* window, World* world) {
         lastSwingTime = punchStartTime;
         // Mobs are tested before blocks: a punch that lands on a mob never
         // also breaks the block behind it.
-        if (!tryAttackMob(world, strength) && hasHighlight) {
+        if (!tryAttack(world, strength) && hasHighlight) {
             Cube* block = world->getBlock(targeted.x, targeted.y, targeted.z);
             if (block) playBreakSound(block->getType());
             // Optimistic local apply — the host's DestroyApply echo will
@@ -242,25 +243,41 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     rightClickHeld = rightDown;
 }
 
-bool Player::tryAttackMob(World* world, float strength) {
-    if (!world->mobManager) return false;
+bool Player::tryAttack(World* world, float strength) {
     glm::vec3 eye = camera.getPosition();
     glm::vec3 dir = camera.getFront();
-    float mobDist = 0.0f;
-    Mob* mob = world->mobManager->raycast(eye, dir, ATTACK_REACH, mobDist);
-    if (!mob) return false;
-    // A targeted block nearer than the mob shields it.
+    constexpr float NONE = std::numeric_limits<float>::max();
+
+    float mobDist = NONE; // raycast only writes it on a hit
+    Mob* mob = world->mobManager ? world->mobManager->raycast(eye, dir, ATTACK_REACH, mobDist) : nullptr;
+
+    // Other players, hit-tested where we see them.
+    double now = glfwGetTime();
+    float remoteDist = NONE;
+    const RemotePlayer* remote = netSession && netSession->connected()
+                                     ? netSession->raycastRemote(eye, dir, ATTACK_REACH, now, remoteDist)
+                                     : nullptr;
+
+    float targetDist = std::min(mobDist, remoteDist);
+    if (targetDist == NONE) return false;
+    // A targeted block nearer than the target shields it.
     if (hasHighlight) {
         float blockDist = 0.0f;
         glm::vec3 b(targeted);
         if (rayIntersectsAABB(eye, dir, b - glm::vec3(0.5f), b + glm::vec3(0.5f), REACH, blockDist) &&
-            blockDist < mobDist)
+            blockDist < targetDist)
             return false;
     }
     // Minecraft-style critical: a charged hit while falling.
     bool falling = camera.isWalkMode() && !camera.isOnGround() && !camera.isInWater() && camera.getVelocityY() < 0.0f;
     float dmg = melee::damage(meleeStats(getSelectedItem()).damage, strength, falling);
-    if (world->mobManager->attackMob(*mob, dmg, eye)) playHitSound();
+    if (remote && remoteDist < mobDist) {
+        // Swings inside their invulnerability window (or at a dead player)
+        // send nothing and give no feedback — only real hits sound.
+        if (netSession->sendHit(remote->peerId, dmg, eye, now)) playHitSound();
+    } else if (world->mobManager->attackMob(*mob, dmg, eye)) {
+        playHitSound();
+    }
     return true;
 }
 
