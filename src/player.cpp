@@ -1,5 +1,6 @@
 #include "player.h"
 #include "melee.h"
+#include "mining.h"
 #include "collision.h"
 #include "mob_manager.h"
 #include "mobs/sheep.h"
@@ -179,26 +180,25 @@ void Player::handleInput(GLFWwindow* window, World* world) {
         if (glfwGetKey(window, key) == GLFW_PRESS) selectedSlot = i;
     }
 
-    // Left click: punch + break block
+    // Left click: punch a mob, else break the targeted block — instantly in
+    // Creative, by holding the button in Survival (updateMining).
     bool leftDown = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+    double now = glfwGetTime();
     if (leftDown && !leftClickHeld && world) {
         isPunching = true;
-        punchStartTime = glfwGetTime();
+        punchStartTime = now;
         float strength =
             melee::attackStrength(punchStartTime - lastSwingTime, meleeStats(getSelectedItem()).cooldownSeconds);
         lastSwingTime = punchStartTime;
         // Mobs are tested before blocks: a punch that lands on a mob never
         // also breaks the block behind it.
-        if (!tryAttack(world, strength) && hasHighlight) {
+        miningBlocked = tryAttack(world, strength);
+        if (!miningBlocked && hasHighlight && !isSurvival()) {
             Cube* block = world->getBlock(targeted.x, targeted.y, targeted.z);
-            if (block) playBreakSound(block->getType());
-            // Optimistic local apply — the host's DestroyApply echo will
-            // re-run setBlock with the same AIR result (idempotent), so
-            // prediction is "free" until we add host-side rejects.
-            if (netSession) netSession->notifyLocalDestroy(targeted);
-            world->destroyBlock(glm::vec3(targeted));
+            if (block) breakTargeted(world, block->getType(), getSelectedItem());
         }
     }
+    if (isSurvival()) updateMining(world, leftDown && !miningBlocked && hasHighlight, now);
     leftClickHeld = leftDown;
 
     // Right click: interact with a mob (shear) if one is in front, else
@@ -243,6 +243,60 @@ void Player::handleInput(GLFWwindow* window, World* world) {
         }
     }
     rightClickHeld = rightDown;
+}
+
+void Player::breakTargeted(World* world, block_type type, ItemId tool) {
+    playBreakSound(type);
+    // Optimistic local apply — the host's DestroyApply echo will re-run
+    // setBlock with the same AIR result (idempotent), so prediction is
+    // "free" until we add host-side rejects.
+    if (netSession) netSession->notifyLocalDestroy(targeted);
+    world->destroyBlock(glm::vec3(targeted));
+    if (!isSurvival()) return;
+    static std::mt19937 dropRng(std::random_device{}());
+    BlockDrop drop = blockDrop(type, tool, std::uniform_real_distribution<float>(0.0f, 1.0f)(dropRng));
+    // Straight into the inventory; anything that doesn't fit is lost.
+    if (drop.count > 0) inventory.add(drop.id, drop.count);
+}
+
+void Player::updateMining(World* world, bool active, double now) {
+    Cube* block = active && world ? world->getBlock(targeted.x, targeted.y, targeted.z) : nullptr;
+    if (!block || block->getType() == AIR) {
+        mining = false;
+        return;
+    }
+    block_type type = block->getType();
+    ItemId tool = getSelectedItem();
+    // Looking at another block or switching item starts over, as in Minecraft.
+    if (!mining || targeted != miningPos || type != miningType || tool != miningTool) {
+        mining = true;
+        miningPos = targeted;
+        miningType = type;
+        miningTool = tool;
+        miningTicks = breakTicks(type, tool);
+        miningProgress = 0.0;
+        lastMiningTime = now;
+    }
+    if (miningTicks < 0) return; // unbreakable (bedrock)
+    double dt = std::min(now - lastMiningTime, 0.1); // no jump after a stall
+    lastMiningTime = now;
+    if (now < breakCooldownUntil) return;
+
+    // Keep swinging the arm and tapping the block's sound while digging.
+    if (!isPunching) {
+        isPunching = true;
+        punchStartTime = now;
+    }
+    if (now >= nextMiningSound) {
+        playStepSound(type);
+        nextMiningSound = now + 0.2; // every 4 ticks
+    }
+
+    miningProgress += miningTicks == 0 ? 1.0 : dt * 20.0 / miningTicks;
+    if (miningProgress < 1.0) return;
+    breakTargeted(world, type, tool);
+    mining = false;
+    breakCooldownUntil = now + 0.25;
 }
 
 bool Player::tryAttack(World* world, float strength) {
