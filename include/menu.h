@@ -80,6 +80,9 @@ class Menu {
     // Loads click + music. Called once the sound files exist (see
     // loadSoundsWhenReady in main.cpp); music asked for earlier starts then.
     void loadSounds();
+    // Background sound download progress 0..1 for the main-menu bar;
+    // negative hides it (desktop, or once the sounds are loaded).
+    void setSoundsProgress(float p) { soundsProgress = p; }
     void startMusic();
     void stopMusic();
     void startMenuMusic();
@@ -104,6 +107,7 @@ class Menu {
     bool musicWanted = false;
     bool menuMusicWanted = false;
     float musicVolume = 1.0f;
+    float soundsProgress = -1.0f;
     void playClick();
 
     // All widget drawing / mouse / keyboard routing lives in Widgets. See
