@@ -325,6 +325,42 @@ void Player::updateHunger(double now) {
     }
 }
 
+void Player::updateHazards(World* world, double dt) {
+    // Which liquid the feet / chest / eye blocks are in (the blocks
+    // Camera::update tests), read now. The camera's own in-liquid flags
+    // date from its last update and can't tell water from lava, so water
+    // splashes and bubbles go by these instead.
+    auto typeAt = [&](int x, int y, int z) {
+        Cube* c = world ? world->getBlock(x, y, z) : nullptr;
+        return c ? c->getType() : AIR;
+    };
+    glm::vec3 eye = camera.getPosition();
+    int fx = (int)std::floor(eye.x + 0.5f), fz = (int)std::floor(eye.z + 0.5f);
+    int feetY = (int)std::floor(eye.y - PLAYER_HEIGHT + 0.5f);
+    block_type eyeT = typeAt(fx, (int)std::floor(eye.y + 0.5f), fz);
+    block_type feetT = typeAt(fx, feetY, fz), chestT = typeAt(fx, feetY + 1, fz);
+    eyesInLava_ = eyeT == LAVA;
+    bodyInLava = eyesInLava_ || feetT == LAVA || chestT == LAVA;
+    eyesInWater_ = eyeT == WATER;
+    bodyInWater = !bodyInLava && (eyesInWater_ || feetT == WATER || chestT == WATER);
+    if (!isSurvival() || health.isDead()) {
+        fire.extinguish();
+        return;
+    }
+    hazardAccumulator += dt;
+    while (hazardAccumulator >= 0.05) {
+        hazardAccumulator -= 0.05;
+        if (bodyInLava) {
+            hurt(FireState::LAVA_DAMAGE, eye, false); // the 0.5 s invulnerability paces it
+            fire.ignite(FireState::LAVA_FIRE_TICKS);
+        } else if (bodyInWater) {
+            fire.extinguish();
+        } else if (float dmg = fire.tick(); dmg > 0.0f) {
+            hurt(dmg, eye, false);
+        }
+    }
+}
+
 void Player::updateEating(bool rightDown, double now) {
     ItemId held = getSelectedItem();
     bool canStart = rightDown && isFood(held) && hunger.canEat();
@@ -508,6 +544,7 @@ void Player::respawn(glm::vec3 eyePos) {
     health.respawn(glfwGetTime());
     hunger.reset();
     eating = false;
+    fire.extinguish();
     camera.setPosition(eyePos);
     camera.resetMotion();
 }
@@ -568,14 +605,17 @@ void Player::update(World* world) {
     if (fallDmg > 0.0f) hurt(fallDmg, camera.getPosition(), false, false);
     // Survival heals (and starves) through the food bar; Creative can't be
     // hurt, so its timer-based regen never matters there.
+    double hazardDt = lastUpdateTime < 0.0 ? 0.0 : std::min(glfwGetTime() - lastUpdateTime, 0.25);
     if (isSurvival())
         updateHunger(glfwGetTime());
     else
         health.update(glfwGetTime());
+    updateHazards(world, hazardDt);
 
     // Movement sounds: swim sounds when any body part in water, footsteps on land
-    bool inWater = camera.isInWater();
-    bool eyesUnder = camera.areEyesInWater();
+    // Splashes, bubbles and underwater ambience are water's, not lava's.
+    bool inWater = bodyInWater;
+    bool eyesUnder = eyesInWater_;
     bool moving = camera.isWalkMode() && (inWater || camera.isOnGround());
     if (stepSoundsLoaded && moving) {
         glm::vec3 pos = camera.getPosition();
@@ -653,7 +693,8 @@ void Player::findGroundAndUpdate(World* world) {
         int cz = worldToChunk(bz);
         Chunk* chunk = cm->getChunk(cx, cz);
         if (!chunk || by < 0 || by >= CHUNK_HEIGHT) return false;
-        return chunk->getBlockType(worldToLocal(bx, cx), by, worldToLocal(bz, cz)) == WATER;
+        // Lava swims like (thick) water; only water has a flow push.
+        return hasFlag(chunk->getBlockType(worldToLocal(bx, cx), by, worldToLocal(bz, cz)), BF_LIQUID);
     };
 
     // Flow vector at a water block: (fx, fy, fz). Horizontal from level

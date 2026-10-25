@@ -86,6 +86,7 @@ struct MobContext {
     // mobs never fall out of the world at a streaming edge.
     bool isSolid(int x, int y, int z) const;
     bool isWater(int x, int y, int z) const;
+    bool isLava(int x, int y, int z) const;
     // Effective light: max(blockLight, skyLight - skyDarken).
     int lightAt(int x, int y, int z) const;
     // Integer block containing a world point (handles the +0.5 centering).

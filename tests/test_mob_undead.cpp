@@ -24,10 +24,9 @@ template <typename T> void placeMob(T& m, float x, float z) {
     m.onGround = true;
 }
 
+// The renderer draws flames for exactly the mobs that are burning().
 bool flameVisible(const UndeadMob& m) {
-    int flame = m.model().indexOf("flame");
-    EXPECT_GE(flame, 0);
-    return !m.pose(0.0f).hidden[flame];
+    return m.burning();
 }
 
 } // namespace
@@ -100,9 +99,9 @@ TEST(UndeadTest, ZombieBurnsInDaylightUnderOpenSky) {
     EXPECT_TRUE(z.burning());
     EXPECT_FLOAT_EQ(z.health, 19.0f) << "first fire damage lands on ignition";
     EXPECT_TRUE(flameVisible(z));
-    h.run(z, UndeadMob::BURN_INTERVAL);
+    h.run(z, Mob::BURN_INTERVAL);
     EXPECT_FLOAT_EQ(z.health, 18.0f) << "1 damage per second";
-    h.run(z, UndeadMob::BURN_INTERVAL);
+    h.run(z, Mob::BURN_INTERVAL);
     EXPECT_FLOAT_EQ(z.health, 17.0f);
 }
 
@@ -137,7 +136,7 @@ TEST(UndeadTest, WaterPreventsAndExtinguishesBurning) {
     h.blocks.fill(-12, 1, -12, 12, 5, 12, WATER);
     Zombie z;
     z.pos = z.prevPos = glm::vec3(0, 2.0f, 0);
-    z.fireTicks = 50; // already alight when it falls in
+    z.setOnFire(50); // already alight when it falls in
     h.run(z, 60);
     EXPECT_TRUE(z.inWater);
     EXPECT_FALSE(z.burning());
@@ -156,7 +155,7 @@ TEST(UndeadTest, FireLingersAfterLeavingSunlight) {
     EXPECT_TRUE(z.burning());
     h.run(z, 2);
     EXPECT_FALSE(z.burning());
-    EXPECT_FLOAT_EQ(z.health, 20.0f - UndeadMob::SUN_FIRE_TICKS / UndeadMob::BURN_INTERVAL);
+    EXPECT_FLOAT_EQ(z.health, 20.0f - UndeadMob::SUN_FIRE_TICKS / Mob::BURN_INTERVAL);
 }
 
 TEST(UndeadTest, SkeletonBurnsToo) {

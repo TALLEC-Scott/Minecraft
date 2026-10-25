@@ -28,11 +28,12 @@ static bool isBlockFiltering(block_type t);
 #include "terrain_fill.h"
 
 // Sync sampler: reads in-chunk from blocks[]/waterLevels[], cross-chunk
-// via Chunk pointers (including diagonals for 4-chunk corners).
+// via Chunk pointers (including diagonals for 4-chunk corners). Only cells
+// of `fluid` (the liquid being meshed) count as fluid.
 static WaterCellSample sampleSync(const Cube* blocks, const uint8_t* waterLevels, const Chunk::NeighborChunks& nc,
-                                  int bx, int by, int bz) {
-    auto classify = [](block_type t, uint8_t raw) -> WaterCellSample {
-        if (t == WATER) return {CellKind::Water, raw};
+                                  int bx, int by, int bz, block_type fluid) {
+    auto classify = [fluid](block_type t, uint8_t raw) -> WaterCellSample {
+        if (t == fluid) return {CellKind::Water, raw};
         if (t == AIR) return {CellKind::Air, 0};
         return {CellKind::Solid, 0};
     };
@@ -79,9 +80,9 @@ static WaterCellSample sampleSync(const Cube* blocks, const uint8_t* waterLevels
 }
 
 static void computeWaterTopCorners(const Cube* blocks, const uint8_t* waterLevels, int bx, int by, int bz, int uSign,
-                                   int vSign, float out[4], const Chunk::NeighborChunks& nc) {
+                                   int vSign, float out[4], const Chunk::NeighborChunks& nc, block_type fluid) {
     computeWaterTopCornersT(bx, by, bz, uSign, vSign, out,
-                            [&](int x, int y, int z) { return sampleSync(blocks, waterLevels, nc, x, y, z); });
+                            [&](int x, int y, int z) { return sampleSync(blocks, waterLevels, nc, x, y, z, fluid); });
 }
 
 // Water side face corner indices into topCorners[4] (computed with u_sign=1, v_sign=-1).
@@ -592,7 +593,7 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
             uint8_t raw = waterLevels ? waterLevels.get()[wi] : 0;
             if (!waterIsSource(raw)) return -1;
             float corners[4];
-            computeWaterTopCorners(blocks, waterLevels.get(), c[0], c[1], c[2], fd.u_sign, fd.v_sign, corners, nc);
+            computeWaterTopCorners(blocks, waterLevels.get(), c[0], c[1], c[2], fd.u_sign, fd.v_sign, corners, nc, bt);
             for (int i = 1; i < 4; i++)
                 if (corners[i] != corners[0]) return -1;
             waterBits = (17 + static_cast<int>(std::lround((corners[0] - c[1]) * 32.0f))) << 18;
@@ -690,11 +691,17 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
 
                         bool show;
                         if (hasFlag(bt, BF_LIQUID)) {
-                            // Water: top + 4 sides, skip bottom. Render where neighbor is air.
-                            show = (f != 5) && (nbType == AIR);
+                            // Liquids: top + 4 sides, skip bottom. Render against air, or a
+                            // different liquid (lava next to water shows until it hardens).
+                            show = (f != 5) && (nbType == AIR || (hasFlag(nbType, BF_LIQUID) && nbType != bt));
                         } else {
+                            block_type above = AIR;
+                            if (nbType == LAVA && nc[1] + 1 < CHUNK_HEIGHT) {
+                                Cube* a = getBlockCross(this, nc[0], nc[1] + 1, nc[2], nx_neg, nx_pos, nz_neg, nz_pos);
+                                above = a ? a->getType() : AIR;
+                            }
                             show = (nbType == AIR) || hasFlag(nbType, BF_CROSS) ||
-                                   (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
+                                   (hasFlag(nbType, BF_LIQUID) && !lavaCoversFace(nbType, fd.d, fd.d_sign, above)) ||
                                    (useFancyLeaves && (hasFlag(bt, BF_TRANSLUCENT) || hasFlag(nbType, BF_TRANSLUCENT)));
                         }
                         int val = show ? (int)bt : -1;
@@ -743,9 +750,11 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
 
                         // Water top face: per-vertex heights averaged with neighbors for a smooth surface.
                         float waterY[4] = {d_val, d_val, d_val, d_val};
-                        if (bt == (int)WATER && f == 4) {
+                        const block_type fluid = (block_type)bt;
+                        const bool liquid = hasFlag(fluid, BF_LIQUID);
+                        if (liquid && f == 4) {
                             computeWaterTopCorners(blocks, waterLevels.get(), u, d, v, fd.u_sign, fd.v_sign, waterY,
-                                                   nc);
+                                                   nc, fluid);
                         }
 
                         float u_lo = (float)u - 0.5f, u_hi = (float)(u + w) - 0.5f;
@@ -756,7 +765,7 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                         float v1 = fd.v_sign > 0 ? v_hi : v_lo;
 
                         float vp[4][3];
-                        bool isWT = (bt == (int)WATER && f == 4);
+                        bool isWT = (liquid && f == 4);
 
                         // Vertex order: (u0,v0), (u0,v1), (u1,v1), (u1,v0)
                         vp[0][fd.d] = isWT ? waterY[0] : d_val;
@@ -772,7 +781,7 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                         vp[3][fd.u] = u1;
                         vp[3][fd.v] = v0;
 
-                        bool isWaterSide = (bt == (int)WATER && f != 4 && f != 5 && fd.v == 1);
+                        bool isWaterSide = (liquid && f != 4 && f != 5 && fd.v == 1);
                         if (isWaterSide && waterLevels) {
                             int bc[3];
                             bc[fd.d] = d;
@@ -780,7 +789,7 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                             bc[fd.v] = v;
                             float topCorners[4];
                             computeWaterTopCorners(blocks, waterLevels.get(), bc[0], bc[1], bc[2], 1, -1, topCorners,
-                                                   nc);
+                                                   nc, fluid);
                             vp[1][fd.v] = topCorners[SIDE_TOP_IDX[f][0]];
                             vp[2][fd.v] = topCorners[SIDE_TOP_IDX[f][1]];
                         }
@@ -833,9 +842,10 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                             blockLightVals[vi] = blDirect(bc[0] + n[0], bc[1] + n[1], bc[2] + n[2]);
                         }
 
-                        bool isWater = (bt == (int)WATER);
+                        // Both liquids go in the liquid pass (lava draws opaque there).
+                        bool isWater = liquid;
 
-                        // Compute flow direction for water top faces.
+                        // Compute flow direction for liquid top faces.
                         // Packed into the ao byte's upper bits so the
                         // fragment shader can scroll the UV directionally.
                         uint8_t flowBits = 0;
@@ -858,21 +868,21 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                                     uint8_t nraw = 0;
                                     if (nx >= 0 && nx < CHUNK_SIZE) {
                                         nbt = getBlock(nx, d, v)->getType();
-                                        if (nbt == WATER)
+                                        if (nbt == fluid)
                                             nraw =
                                                 waterLevels.get()[static_cast<size_t>(nx) * CHUNK_HEIGHT * CHUNK_SIZE +
                                                                   d * CHUNK_SIZE + v];
                                     } else {
                                         Cube* nb = getBlockCross(this, nx, d, v, nx_neg, nx_pos, nz_neg, nz_pos);
                                         nbt = nb ? nb->getType() : STONE;
-                                        if (nbt == WATER) {
+                                        if (nbt == fluid) {
                                             Chunk* nc = (dx < 0) ? nx_neg : nx_pos;
                                             if (nc) nraw = nc->getWaterLevel(dx < 0 ? CHUNK_SIZE - 1 : 0, d, v);
                                         }
                                     }
                                     if (nbt == AIR) {
                                         fx += dx * 8;
-                                    } else if (nbt == WATER) {
+                                    } else if (nbt == fluid) {
                                         int nLvl = waterIsSource(nraw) ? 0 : waterFlowLevel(nraw);
                                         // Flow points from low level (strong) to high level (weak)
                                         // dx points toward neighbor, so if neighbor has more water
@@ -887,21 +897,21 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                                     uint8_t nraw = 0;
                                     if (nz >= 0 && nz < CHUNK_SIZE) {
                                         nbt = getBlock(u, d, nz)->getType();
-                                        if (nbt == WATER)
+                                        if (nbt == fluid)
                                             nraw =
                                                 waterLevels.get()[static_cast<size_t>(u) * CHUNK_HEIGHT * CHUNK_SIZE +
                                                                   d * CHUNK_SIZE + nz];
                                     } else {
                                         Cube* nb = getBlockCross(this, u, d, nz, nx_neg, nx_pos, nz_neg, nz_pos);
                                         nbt = nb ? nb->getType() : STONE;
-                                        if (nbt == WATER) {
+                                        if (nbt == fluid) {
                                             Chunk* nc = (dz < 0) ? nz_neg : nz_pos;
                                             if (nc) nraw = nc->getWaterLevel(u, d, dz < 0 ? CHUNK_SIZE - 1 : 0);
                                         }
                                     }
                                     if (nbt == AIR) {
                                         fz += dz * 8;
-                                    } else if (nbt == WATER) {
+                                    } else if (nbt == fluid) {
                                         int nLvl = waterIsSource(nraw) ? 0 : waterFlowLevel(nraw);
                                         fz += dz * (nLvl - myLvl);
                                     }
@@ -1060,6 +1070,8 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
             // Water
             pendingMesh.waterVerts.insert(pendingMesh.waterVerts.end(), sm.waterVerts.begin(), sm.waterVerts.end());
             for (auto idx_val : sm.waterIdx) pendingMesh.waterIdx.push_back(idx_val + waterVertOff);
+            lavaTrianglesFirst(pendingMesh.waterIdx, r.waterStart, pendingMesh.waterIdx.size(), sm.waterVerts.data(),
+                               waterVertOff);
             waterVertOff += (unsigned int)(sm.waterVerts.size() / WATER_BYTES_PER_VERT);
             r.opaqueCount = (uint32_t)pendingMesh.opaqueIdx.size() - r.opaqueStart;
             r.crossCount = (uint32_t)pendingMesh.crossIdx.size() - r.crossStart;

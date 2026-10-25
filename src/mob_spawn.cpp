@@ -38,7 +38,7 @@ bool hasRoom(const MobBlockAccess& blocks, const MobInfo& info, int x, int y, in
     if (collidesAABB(feet, info.halfWidth, info.height, solid)) return false;
     int headY = static_cast<int>(std::floor(feet.y + info.height + 0.5f - 0.001f));
     for (int by = y; by <= headY; ++by)
-        if (blocks.blockAt(x, by, z) == WATER) return false;
+        if (hasFlag(blocks.blockAt(x, by, z), BF_LIQUID)) return false;
     return true;
 }
 

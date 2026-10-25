@@ -121,3 +121,84 @@ TEST_F(BlockLightDestroyRelightTest, DimNeighborProducesDimmerPropagation) {
     EXPECT_EQ(blockLightAt(cm, 9, 5, 5), 1);
     EXPECT_EQ(blockLightAt(cm, 10, 5, 5), 0); // runs out
 }
+
+// --- In-place changes (liquids via World::setBlock) -------------------------
+
+TEST_F(BlockLightDestroyRelightTest, DrainedLavaTakesItsLightAway) {
+    Chunk& c = cm.getOrCreate(0, 0);
+    c.setBlockType(5, 5, 5, LAVA);
+    floodBlockLight(&cm, 5, 5, 5, 15);
+    ASSERT_EQ(blockLightAt(cm, 8, 5, 5), 12);
+
+    c.setBlockType(5, 5, 5, AIR);
+    relightBlockChange(&cm, 5, 5, 5, LAVA, AIR);
+    EXPECT_EQ(blockLightAt(cm, 5, 5, 5), 0);
+    EXPECT_EQ(blockLightAt(cm, 8, 5, 5), 0) << "no light left behind once the lava is gone";
+}
+
+TEST_F(BlockLightDestroyRelightTest, DrainingNextToOtherLavaStaysLitFromIt) {
+    Chunk& c = cm.getOrCreate(0, 0);
+    c.setBlockType(5, 5, 5, LAVA);
+    c.setBlockType(6, 5, 5, LAVA);
+    floodBlockLight(&cm, 5, 5, 5, 15);
+    floodBlockLight(&cm, 6, 5, 5, 15);
+
+    c.setBlockType(6, 5, 5, AIR);
+    relightBlockChange(&cm, 6, 5, 5, LAVA, AIR);
+    EXPECT_EQ(blockLightAt(cm, 6, 5, 5), 14) << "lit by the lava still beside it";
+    EXPECT_EQ(blockLightAt(cm, 9, 5, 5), 11);
+}
+
+TEST_F(BlockLightDestroyRelightTest, FlowingLavaLightsUp) {
+    Chunk& c = cm.getOrCreate(0, 0);
+    c.setBlockType(5, 5, 5, LAVA);
+    relightBlockChange(&cm, 5, 5, 5, AIR, LAVA);
+    EXPECT_EQ(blockLightAt(cm, 5, 5, 5), 15);
+    EXPECT_EQ(blockLightAt(cm, 7, 5, 5), 13);
+}
+
+TEST_F(BlockLightDestroyRelightTest, LavaHardeningToObsidianGoesDark) {
+    Chunk& c = cm.getOrCreate(0, 0);
+    c.setBlockType(5, 5, 5, LAVA);
+    floodBlockLight(&cm, 5, 5, 5, 15);
+    c.setBlockType(5, 5, 5, OBSIDIAN);
+    relightBlockChange(&cm, 5, 5, 5, LAVA, OBSIDIAN);
+    EXPECT_EQ(blockLightAt(cm, 5, 5, 5), 0);
+    EXPECT_EQ(blockLightAt(cm, 7, 5, 5), 0);
+}
+
+TEST_F(BlockLightDestroyRelightTest, BlockPlacedIntoLavaClearsItsLight) {
+    // Aiming passes through liquids, so a placed block often lands in a lava cell.
+    Chunk& c = cm.getOrCreate(0, 0);
+    c.setBlockType(5, 5, 5, LAVA);
+    floodBlockLight(&cm, 5, 5, 5, 15);
+    c.setBlockType(5, 5, 5, COBBLESTONE);
+    relightBlockChange(&cm, 5, 5, 5, LAVA, COBBLESTONE);
+    EXPECT_EQ(blockLightAt(cm, 6, 5, 5), 0);
+    EXPECT_EQ(blockLightAt(cm, 9, 5, 5), 0);
+}
+
+TEST_F(BlockLightDestroyRelightTest, PlacedGlowstoneStillLights) {
+    Chunk& c = cm.getOrCreate(0, 0);
+    c.setBlockType(5, 5, 5, GLOWSTONE);
+    relightBlockChange(&cm, 5, 5, 5, AIR, GLOWSTONE);
+    EXPECT_EQ(blockLightAt(cm, 5, 5, 5), 15);
+    EXPECT_EQ(blockLightAt(cm, 8, 5, 5), 12);
+}
+
+TEST_F(BlockLightDestroyRelightTest, BatchedDrainMatchesOneByOne) {
+    // A lava row drains all at once (one liquid tick, one batch).
+    Chunk& c = cm.getOrCreate(0, 0);
+    for (int x = 3; x <= 8; x++) {
+        c.setBlockType(x, 5, 5, LAVA);
+        floodBlockLight(&cm, x, 5, 5, 15);
+    }
+    std::vector<BlockChange> changes;
+    for (int x = 4; x <= 8; x++) {
+        c.setBlockType(x, 5, 5, AIR);
+        changes.push_back({x, 5, 5, LAVA, AIR});
+    }
+    relightBlockChanges(&cm, changes);
+    EXPECT_EQ(blockLightAt(cm, 3, 5, 5), 15) << "the lava left keeps its light";
+    for (int x = 4; x <= 12; x++) EXPECT_EQ(blockLightAt(cm, x, 5, 5), 15 - (x - 3)) << x;
+}

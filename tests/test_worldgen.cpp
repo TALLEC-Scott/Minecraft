@@ -208,3 +208,20 @@ TEST_F(WorldgenTest, ForestsAreDense) {
     ASSERT_GT(forestCols, 256) << "no forest in the sample";
     EXPECT_GT(256.0 * trunks / forestCols, 4.0) << "trees per forest chunk";
 }
+
+TEST_F(WorldgenTest, DeepCavesHoldLavaAndShallowOnesDont) {
+    // Minecraft's lava level: cave space at y <= 10 is lava, never above it.
+    int lava = 0;
+    for (int cx = -6; cx < 6; cx++)
+        for (int cz = -6; cz < 6; cz++) {
+            GenChunk c(terrain, cx, cz);
+            for (int x = 0; x < CHUNK_SIZE; x++)
+                for (int z = 0; z < CHUNK_SIZE; z++)
+                    for (int y = 0; y < CHUNK_HEIGHT; y++) {
+                        if (c.at(x, y, z) != LAVA) continue;
+                        ASSERT_LE(y, 10) << "lava above the lava level at " << cx << "," << cz;
+                        lava++;
+                    }
+        }
+    EXPECT_GT(lava, 0) << "some deep cave should hold lava";
+}

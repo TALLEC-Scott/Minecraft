@@ -151,7 +151,6 @@ constexpr float STRING_PULL = 2.0f * PX; // how far a full draw pulls the string
 struct SkeletonModel {
     MobModel model;
     int head, rightArm, leftArm, rightLeg, leftLeg, bowGrip, bowString;
-    UndeadMob::FlameParts flames{};
 };
 
 // Minecraft SkeletonModel (16 px = 1 block, +Z forward, feet origin):
@@ -220,7 +219,6 @@ const SkeletonModel& skeletonModel() {
         s.bowString = m.add({"bow_string", grip, {0, 0.4f * PX, 0}, {0, 0, 0}, {0.15f * PX, 0.15f * PX, 6.1f * PX},
                              STRING});
 
-        s.flames = UndeadMob::addFlameParts(m);
         return s;
     }();
     return sm;
@@ -285,6 +283,5 @@ MobPose Skeleton::pose(float partialTick) const {
         p.rotation[sm.bowGrip].x = -PI / 2.0f;
     }
 
-    poseFlames(p, sm.flames, partialTick);
     return p;
 }

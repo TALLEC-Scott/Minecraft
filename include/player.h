@@ -2,6 +2,7 @@
 
 #include "camera.h"
 #include "cube.h"
+#include "fire.h"
 #include "game_mode.h"
 #include "inventory_model.h"
 #include "item.h"
@@ -102,6 +103,10 @@ class Player {
     void setVitals(float healthValue, int food, float saturation);
     // 0..1 through eating the held food (< 0 when not eating).
     float getEatProgress() const;
+    // Lava: on fire (Survival) and whether the eyes are in lava (orange fog).
+    bool isOnFire() const { return fire.burning(); }
+    bool eyesInLava() const { return eyesInLava_; }
+    bool eyesInWater() const { return eyesInWater_; }
     bool isDead() const { return health.isDead(); }
     glm::vec3 getFeetPosition() const { return camera.getPosition() - glm::vec3(0.0f, PLAYER_HEIGHT, 0.0f); }
     // Damage from a world position (mob, explosion). Knockback pushes away
@@ -223,6 +228,15 @@ class Player {
     ItemId eatItem = ITEM_EMPTY;
     void updateEating(bool rightDown, double now);
     void updateHunger(double now);
+    // Lava and fire: the rules and numbers are FireState's (fire.h),
+    // shared with mobs. 20 TPS.
+    FireState fire;
+    double hazardAccumulator = 0.0;
+    bool bodyInLava = false;
+    bool eyesInLava_ = false;
+    bool bodyInWater = false;
+    bool eyesInWater_ = false;
+    void updateHazards(World* world, double dt);
     // Every left-click swing restarts the attack charge (Minecraft resets
     // it on misses too); far in the past = fully charged on spawn.
     double lastSwingTime = -100.0;

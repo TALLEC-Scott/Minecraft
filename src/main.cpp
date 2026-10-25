@@ -56,6 +56,7 @@
 #include "world_directory.h"
 #include "entity_cube_renderer.h"
 #include "entity_manager.h"
+#include "lava_effects.h"
 #include "mob_manager.h"
 #include "mob_registry.h"
 #include "particle_system.h"
@@ -283,6 +284,7 @@ static bool g_soundsLoaded = false;
 
 static void loadWorldSounds(World& world, ma_engine* engine) {
     world.waterSimulator->initAudio(engine);
+    world.lavaEffects->initAudio(engine);
     world.entityManager->initAudio(engine);
     world.mobManager->initAudio(engine);
 }
@@ -2087,7 +2089,10 @@ int main(int argc, char* argv[]) {
             float daylight = std::clamp(std::sin(timeValue) * 2.0f, 0.08f, 1.0f);
             glm::vec3 SHALLOW_BLUE = SHALLOW_BLUE_DAY * daylight;
             glm::vec3 DEEP_BLUE = DEEP_BLUE_DAY * daylight;
-            bool underwater = player.getCamera().areEyesInWater();
+            // The camera counts lava as liquid too; its fog is orange, not blue.
+            bool inLavaView = player.eyesInLava();
+            bool underwater = player.eyesInWater();
+            const glm::vec3 LAVA_FOG(0.75f, 0.22f, 0.02f);
             float waterDepthFactor = 0.0f;
             if (underwater) {
                 float depth = std::max(0.0f, WATER_SURFACE - player.getPosition().y);
@@ -2109,6 +2114,7 @@ int main(int argc, char* argv[]) {
                 }
             }
             glm::vec3 clearColor = underwater ? glm::mix(SHALLOW_BLUE, DEEP_BLUE, waterDepthFactor) : skyColor;
+            if (inLavaView) clearColor = LAVA_FOG;
             glClearColor(clearColor.r, clearColor.g, clearColor.b, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -2209,6 +2215,11 @@ int main(int argc, char* argv[]) {
                 fogEnd = 80.0f - 64.0f * waterDepthFactor;
                 fogStart = fogEnd * 0.3f;
                 fogColor = glm::mix(SHALLOW_BLUE, DEEP_BLUE, waterDepthFactor);
+            }
+            if (inLavaView) { // Minecraft: you can barely see in lava
+                fogStart = 0.0f;
+                fogEnd = 2.0f;
+                fogColor = LAVA_FOG;
             }
             shaderProgram.setVec3("cameraPos", cameraPos);
             shaderProgram.setFloat("fogStart", fogStart);
@@ -2871,6 +2882,24 @@ int main(int argc, char* argv[]) {
                 }
                 glBindVertexArray(0);
                 glEnable(GL_CULL_FACE);
+            }
+
+            // On fire: flickering flame tongues rising from the bottom edge.
+            if (currentState == GameState::Playing && player.isOnFire() && !player.isDead()) {
+                uiRenderer.begin(windowWidth, windowHeight);
+                constexpr int TONGUES = 24;
+                float tw = (float)windowWidth / TONGUES;
+                float t = (float)glfwGetTime();
+                for (int i = 0; i < TONGUES; i++) {
+                    float flick = 0.5f + 0.5f * std::sin(t * 9.0f + (float)i * 2.17f) * std::sin(t * 5.3f + (float)i);
+                    float h = (float)windowHeight * (0.12f + 0.16f * flick);
+                    float x = (float)i * tw;
+                    uiRenderer.drawRect(x, (float)windowHeight - h, tw + 1.0f, h,
+                                        glm::vec4(1.0f, 0.45f, 0.05f, 0.35f));
+                    uiRenderer.drawRect(x + tw * 0.2f, (float)windowHeight - h * 0.6f, tw * 0.6f, h * 0.6f,
+                                        glm::vec4(1.0f, 0.85f, 0.25f, 0.35f));
+                }
+                uiRenderer.end();
             }
 
             // Damage flash: brief red full-screen tint after the player is hurt.

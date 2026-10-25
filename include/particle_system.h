@@ -21,6 +21,7 @@ struct Particle {
     float growth = 0.5f; // added to size per second
     bool alive = false;
     bool buoyant = true; // smoke/bubbles rise; underwater motes should not
+    float gravity = 0.0f; // world units / s² pulled down (lava embers)
 };
 
 class ParticleSystem {
@@ -54,6 +55,14 @@ class ParticleSystem {
     // 0..1 scene-brightness scalar (daylight × depth attenuation) baked into
     // the tint at spawn time.
     void spawnUnderwaterDrift(glm::vec3 cameraPos, glm::vec3 cameraFront, int count, float lightFactor);
+
+    // Lava pop: a glowing ember tossed up out of the lava surface that
+    // arcs back down, with a wisp of smoke (Minecraft's LavaParticle).
+    void spawnLavaEmber(glm::vec3 surfacePos);
+
+    // Lava meeting water: grey smoke puffs rising off the hardened block
+    // (Minecraft's LARGE_SMOKE ×8 on the extinguish hiss).
+    void spawnFizzSmoke(glm::vec3 blockTop);
 
     size_t aliveCount() const;
 

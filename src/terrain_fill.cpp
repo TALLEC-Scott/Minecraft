@@ -13,6 +13,9 @@ namespace {
 constexpr int MARGIN = 5;
 constexpr int EXT = CHUNK_SIZE + 2 * MARGIN;
 constexpr int CAVE_FLOOR = 5; // never carve into the bottom layers
+// Cave space at or below this height fills with lava instead of air
+// (Minecraft's old "lava level"): deep caves glow and are dangerous.
+constexpr int LAVA_LEVEL = 10;
 
 inline size_t blockIndex(int x, int y, int z) {
     return static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z;
@@ -130,7 +133,7 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
                 } else if (j == 0) {
                     b.setType(BEDROCK);
                 } else if (j >= CAVE_FLOOR && j <= caveCeil && terrain.isCave(gx, j, gz)) {
-                    b.setType(AIR);
+                    b.setType(j <= LAVA_LEVEL ? LAVA : AIR);
                 } else if (j == h) {
                     b.setType(c.surface);
                 } else if (j > h - soil) {
