@@ -126,6 +126,55 @@ inline bool isValidItem(ItemId id) {
     return id < static_cast<ItemId>(BLOCK_TYPE_COUNT) || itemInfo(id) != nullptr;
 }
 
+// Display name (inventory tooltips, the item wiki).
+inline const char* itemName(ItemId id) {
+    if (const ItemInfo* info = itemInfo(id)) return info->name;
+    switch (itemBlock(id)) {
+    case GRASS:
+        return "Grass Block";
+    case DIRT:
+        return "Dirt";
+    case STONE:
+        return "Stone";
+    case COAL_ORE:
+        return "Coal Ore";
+    case BEDROCK:
+        return "Bedrock";
+    case WATER:
+        return "Water";
+    case SAND:
+        return "Sand";
+    case GLOWSTONE:
+        return "Glowstone";
+    case WOOD:
+        return "Wood";
+    case LEAVES:
+        return "Leaves";
+    case SNOW:
+        return "Snow";
+    case GRAVEL:
+        return "Gravel";
+    case CACTUS:
+        return "Cactus";
+    case TNT:
+        return "TNT";
+    case TALL_GRASS:
+        return "Tall Grass";
+    case DANDELION:
+        return "Dandelion";
+    case POPPY:
+        return "Poppy";
+    case PLANKS:
+        return "Oak Planks";
+    case COBBLESTONE:
+        return "Cobblestone";
+    case CRAFTING_TABLE:
+        return "Crafting Table";
+    default:
+        return "?";
+    }
+}
+
 // Texture-array layer for a block item's icon (its top face); -1 for
 // other items, whose icons are standalone images (TextureArray::itemIcon).
 inline int itemIconLayer(ItemId id) {
