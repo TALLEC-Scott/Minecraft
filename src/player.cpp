@@ -248,28 +248,15 @@ bool Player::tryAttack(World* world, float strength) {
     glm::vec3 dir = camera.getFront();
     constexpr float NONE = std::numeric_limits<float>::max();
 
-    float mobDist = NONE;
+    float mobDist = NONE; // raycast only writes it on a hit
     Mob* mob = world->mobManager ? world->mobManager->raycast(eye, dir, ATTACK_REACH, mobDist) : nullptr;
-    if (!mob) mobDist = NONE;
 
-    // Other players, hit-tested where we see them (interpolated
-    // RENDER_DELAY in the past, like they're drawn).
+    // Other players, hit-tested where we see them.
+    double now = glfwGetTime();
     float remoteDist = NONE;
-    uint32_t remoteId = 0;
-    if (netSession && netSession->connected()) {
-        double renderTime = glfwGetTime() - RENDER_DELAY;
-        for (const RemotePlayer& r : netSession->remotes()) {
-            glm::vec3 feet = r.sample(renderTime).pos - glm::vec3(0.0f, PLAYER_HEIGHT, 0.0f);
-            glm::vec3 half(PVP_HALF_WIDTH, 0.0f, PVP_HALF_WIDTH);
-            float t = 0.0f;
-            if (rayIntersectsAABB(eye, dir, feet - half, feet + half + glm::vec3(0.0f, PVP_HEIGHT, 0.0f), ATTACK_REACH,
-                                  t) &&
-                t < remoteDist) {
-                remoteDist = t;
-                remoteId = r.peerId;
-            }
-        }
-    }
+    const RemotePlayer* remote = netSession && netSession->connected()
+                                     ? netSession->raycastRemote(eye, dir, ATTACK_REACH, now, remoteDist)
+                                     : nullptr;
 
     float targetDist = std::min(mobDist, remoteDist);
     if (targetDist == NONE) return false;
@@ -284,9 +271,10 @@ bool Player::tryAttack(World* world, float strength) {
     // Minecraft-style critical: a charged hit while falling.
     bool falling = camera.isWalkMode() && !camera.isOnGround() && !camera.isInWater() && camera.getVelocityY() < 0.0f;
     float dmg = melee::damage(meleeStats(getSelectedItem()).damage, strength, falling);
-    if (remoteDist < mobDist) {
-        netSession->sendHit(remoteId, dmg, eye, glfwGetTime());
-        playHitSound();
+    if (remote && remoteDist < mobDist) {
+        // Swings inside their invulnerability window (or at a dead player)
+        // send nothing and give no feedback — only real hits sound.
+        if (netSession->sendHit(remote->peerId, dmg, eye, now)) playHitSound();
     } else if (world->mobManager->attackMob(*mob, dmg, eye)) {
         playHitSound();
     }

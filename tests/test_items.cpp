@@ -80,6 +80,18 @@ TEST(ItemMeshTest, ExtrudesOpaquePixelsWithEdgeFacesOnly) {
     }
 }
 
+TEST(ItemMeshTest, TrianglesAreClockwiseFromOutside) {
+    // The world pass culls with glFrontFace(GL_CW): seen from outside (along
+    // -normal), each triangle must wind clockwise, i.e. its geometric normal
+    // (b - a) × (c - a) points inward.
+    auto px = tinySprite();
+    std::vector<ItemMeshVertex> v = extrudeSprite(px.data(), 3, 2);
+    for (size_t i = 0; i < v.size(); i += 3) {
+        glm::vec3 n = glm::cross(v[i + 1].pos - v[i].pos, v[i + 2].pos - v[i].pos);
+        EXPECT_LT(glm::dot(n, v[i].normal), 0.0f) << "triangle " << i / 3;
+    }
+}
+
 TEST(ItemMeshTest, ImageTopRowIsHighestY) {
     auto px = tinySprite();
     float maxY = 0.0f;

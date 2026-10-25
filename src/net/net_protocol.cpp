@@ -69,7 +69,7 @@ inline double getF64LE(const uint8_t* p) {
 }
 
 constexpr std::size_t HELLO_LEN = 1 + 1 + 4;
-constexpr std::size_t PLAYER_STATE_LEN = 1 + 4 + 4 * 3 + 4 + 4 + 2;
+constexpr std::size_t PLAYER_STATE_LEN = 1 + 4 + 4 * 3 + 4 + 4 + 2 + 1;
 constexpr std::size_t PLACE_INTENT_LEN = 1 + 4 * 3 + 1;
 constexpr std::size_t DESTROY_INTENT_LEN = 1 + 4 * 3;
 constexpr std::size_t PLACE_APPLY_LEN = 1 + 4 * 3 + 1;
@@ -98,6 +98,7 @@ void encodePlayerState(std::vector<uint8_t>& out, const PlayerStateMsg& m) {
     putF32LE(out, m.yaw);
     putF32LE(out, m.pitch);
     putU16LE(out, m.heldItem);
+    putU8(out, m.flags);
 }
 
 void encodePlaceIntent(std::vector<uint8_t>& out, const PlaceIntentMsg& m) {
@@ -182,6 +183,7 @@ bool decodePlayerState(const uint8_t* buf, std::size_t len, PlayerStateMsg& out)
     out.yaw = getF32LE(buf + 17);
     out.pitch = getF32LE(buf + 21);
     out.heldItem = getU16LE(buf + 25);
+    out.flags = buf[27];
     return true;
 }
 

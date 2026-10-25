@@ -163,13 +163,15 @@ void PlayerRenderer::init() {
     glEnableVertexAttribArray(3);
     glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(7 * sizeof(float)));
     glEnableVertexAttribArray(4);
-    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(8 * sizeof(float)));
-    glEnableVertexAttribArray(5);
+    // loc 5 (packed light) stays a disabled array: draw() sets it with
+    // glVertexAttrib1f so each player is lit by the light where they stand.
+    glDisableVertexAttribArray(5);
     glBindVertexArray(0);
     glReady = true;
 }
 
-void PlayerRenderer::draw(const Shader& shader, glm::vec3 feetPos, float yaw, float pitch, glm::vec3 tint) {
+void PlayerRenderer::draw(const Shader& shader, glm::vec3 feetPos, float yaw, float pitch, glm::vec3 tint,
+                          float packedLight) {
     if (!glReady) init();
 
     // The session's yaw comes straight from Player::getYaw(), which uses the
@@ -183,6 +185,7 @@ void PlayerRenderer::draw(const Shader& shader, glm::vec3 feetPos, float yaw, fl
     shader.setInt("materialType", 0);
     shader.setFloat("entityTint", 1.0f);
     glBindVertexArray(vao);
+    glVertexAttrib1f(5, packedLight);
 
     // Pitch is clamped so the head can't spin past the shoulders.
     float pitchRad = glm::radians(-glm::clamp(pitch, -70.0f, 70.0f));

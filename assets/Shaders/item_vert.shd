@@ -1,18 +1,21 @@
 #version 330 core
-// First-person held tool (vertex-colored mesh). Drawn in view space, like
-// the arm, so there is no view matrix.
+// Held tool (vertex-colored sprite slab). First person passes view-space
+// matrices; other players' hands pass world-space ones (with fog).
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
 layout (location = 2) in vec3 aColor;
 
 out vec3 vNormal;
 out vec3 vColor;
+out vec3 vPos;
 
 uniform mat4 projection;
 uniform mat4 model;
 
 void main() {
+    vec4 pos = model * vec4(aPos, 1.0);
     vNormal = normalize(mat3(model) * aNormal); // rotation + uniform scale only
     vColor = aColor;
-    gl_Position = projection * model * vec4(aPos, 1.0);
+    vPos = pos.xyz;
+    gl_Position = projection * pos;
 }
