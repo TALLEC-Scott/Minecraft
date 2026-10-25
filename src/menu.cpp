@@ -9,10 +9,16 @@
 void Menu::init() {
     dirtTexture = UIRenderer::loadTexture("assets/Textures/dirt.png", true);
 
-    // Initialize audio engine and preload click sound
+    // Sounds load later in loadSounds(): on the web they arrive after
+    // startup (sounds.data is fetched in the background).
     ma_engine_config config = ma_engine_config_init();
-    if (ma_engine_init(&config, &audioEngine) == MA_SUCCESS) {
-        audioInitialized = true;
+    if (ma_engine_init(&config, &audioEngine) == MA_SUCCESS) audioInitialized = true;
+    // Widgets forwards click audio back to Menu::playClick so sound stays here.
+    widgets.setClickSound([this]() { playClick(); });
+}
+
+void Menu::loadSounds() {
+    if (audioInitialized) {
         if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/click.ogg", MA_SOUND_FLAG_DECODE, nullptr, nullptr,
                                     &clickSound) == MA_SUCCESS) {
             clickLoaded = true;
@@ -35,8 +41,10 @@ void Menu::init() {
             ma_sound_set_volume(&menuMusicSound, 1.0f);
         }
     }
-    // Widgets forwards click audio back to Menu::playClick so sound stays here.
-    widgets.setClickSound([this]() { playClick(); });
+    // Apply what was asked for while the files were still downloading.
+    setMusicVolume(musicVolume);
+    if (musicWanted) startMusic();
+    else if (menuMusicWanted) startMenuMusic();
 }
 
 void Menu::destroy() {
@@ -48,6 +56,8 @@ void Menu::destroy() {
 }
 
 void Menu::startMusic() {
+    musicWanted = true;
+    menuMusicWanted = false;
     if (musicLoaded && !musicPlaying) {
         stopMenuMusic();
         ma_sound_start(&musicSound);
@@ -56,6 +66,7 @@ void Menu::startMusic() {
 }
 
 void Menu::stopMusic() {
+    musicWanted = false;
     if (musicLoaded && musicPlaying) {
         ma_sound_stop(&musicSound);
         musicPlaying = false;
@@ -63,6 +74,7 @@ void Menu::stopMusic() {
 }
 
 void Menu::startMenuMusic() {
+    menuMusicWanted = true;
     if (menuMusicLoaded && !menuMusicPlaying) {
         ma_sound_start(&menuMusicSound);
         menuMusicPlaying = true;
@@ -70,11 +82,13 @@ void Menu::startMenuMusic() {
 }
 
 void Menu::setMusicVolume(float vol) {
+    musicVolume = vol;
     if (musicLoaded) ma_sound_set_volume(&musicSound, vol);
     if (menuMusicLoaded) ma_sound_set_volume(&menuMusicSound, vol);
 }
 
 void Menu::stopMenuMusic() {
+    menuMusicWanted = false;
     if (menuMusicLoaded && menuMusicPlaying) {
         ma_sound_stop(&menuMusicSound);
         menuMusicPlaying = false;
