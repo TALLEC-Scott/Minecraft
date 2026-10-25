@@ -104,6 +104,12 @@
     <div id="info">Click to capture mouse — M pause — R sprint — Double-Space toggle fly — Shift descend</div>
     <script>
         var APP_VERSION = "0.8.2";
+        // Chunk workers are pthreads, which need SharedArrayBuffer, which
+        // the browser only exposes when the server sends COOP/COEP headers.
+        if (!window.crossOriginIsolated) {
+            document.getElementById('statusText').textContent =
+                'Error: page is not cross-origin isolated (server must send COOP/COEP headers)';
+        }
         var Module = {
             locateFile: function(path) { return path + '?v=' + APP_VERSION; },
             preRun: [function() {
@@ -134,6 +140,7 @@
             // drive the progress bar; fall back to the status text when the
             // message doesn't carry a fraction.
             setStatus: function(text) {
+                if (!window.crossOriginIsolated) return; // keep the error above visible
                 var statusEl = document.getElementById('statusText');
                 var fill = document.getElementById('progressFill');
                 if (!text) {
@@ -155,7 +162,7 @@
             monitorRunDependencies: function(left) {
                 // Once network downloads are done, show an indeterminate
                 // "preparing" state for any remaining preRun work (IDBFS).
-                if (left === 0) {
+                if (left === 0 && window.crossOriginIsolated) {
                     document.getElementById('statusText').textContent = 'Starting...';
                     document.getElementById('progressFill').style.width = '100%';
                 }

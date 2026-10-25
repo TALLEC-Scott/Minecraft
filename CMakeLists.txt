@@ -89,7 +89,10 @@ if(EMSCRIPTEN)
   add_executable(minecraft ${COMMON_SOURCES})
   target_include_directories(minecraft PRIVATE include)
   target_include_directories(minecraft SYSTEM PRIVATE Libraries/include)
-  target_compile_options(minecraft PRIVATE -O2 ${WARNING_FLAGS})
+  # -pthread: chunk generation + meshing run on ChunkManager's worker
+  # threads (Web Workers sharing the wasm memory). Needs a cross-origin
+  # isolated page (COOP same-origin + COEP require-corp headers).
+  target_compile_options(minecraft PRIVATE -O2 -pthread ${WARNING_FLAGS})
   # Prevent system library paths from leaking into the Emscripten link
   set(CMAKE_EXE_LINKER_FLAGS "")
   set_property(DIRECTORY PROPERTY LINK_DIRECTORIES "")
@@ -102,6 +105,9 @@ if(EMSCRIPTEN)
       -sALLOW_MEMORY_GROWTH=1 \
       -sINITIAL_MEMORY=256MB \
       -sSTACK_SIZE=1MB \
+      -pthread \
+      -sPTHREAD_POOL_SIZE=4 \
+      -sDEFAULT_PTHREAD_STACK_SIZE=1MB \
       -lidbfs.js \
       --preload-file ${CMAKE_SOURCE_DIR}/assets@assets \
       --shell-file ${CMAKE_SOURCE_DIR}/web/shell.html \
