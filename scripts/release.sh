@@ -28,6 +28,11 @@ echo "Building web via dev.sh..."
 ./dev.sh build-web > /dev/null 2>&1
 cp web/favicon.png build_web/
 
+echo "Generating the item wiki (docs/wiki/Items.md + /wiki.html)..."
+g++ -std=c++20 -O2 -I Libraries/include -I include scripts/item_wiki.cpp -o scripts/item_wiki
+./scripts/item_wiki > build_web/items.json
+python3 scripts/item_wiki.py build_web/items.json --html build_web/wiki.html --standalone
+
 echo "Committing v${VERSION}..."
 git add -A
 git commit -m "Release v${VERSION}"
@@ -35,7 +40,7 @@ git tag "v${VERSION}"
 git push origin main --tags
 
 echo "Deploying to server..."
-rsync -az build_web/minecraft.{html,js,wasm,data} build_web/sounds.{js,data} build_web/favicon.png tallec-net:~/minecraft-web/
+rsync -az build_web/minecraft.{html,js,wasm,data} build_web/sounds.{js,data} build_web/wiki.html build_web/favicon.png tallec-net:~/minecraft-web/
 
 echo ""
 echo "=== v${VERSION} released ==="
