@@ -2,6 +2,7 @@
 
 #include "camera.h"
 #include "cube.h"
+#include "item.h"
 #include "player_health.h"
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -44,14 +45,18 @@ class Player {
     static constexpr int HOTBAR_SIZE = 10;
     int getSelectedSlot() const { return selectedSlot; }
     void setSelectedSlot(int s) { selectedSlot = s; }
-    block_type getSelectedBlockType() const { return hotbar[selectedSlot]; }
-    void setHotbarSlot(int slot, block_type type) {
-        if (slot >= 0 && slot < HOTBAR_SIZE) hotbar[slot] = type;
+    ItemId getSelectedItem() const { return hotbar[selectedSlot]; }
+    // Block the selected slot places (AIR for tools / empty hand).
+    block_type getSelectedBlockType() const { return itemBlock(hotbar[selectedSlot]); }
+    void setHotbarSlot(int slot, ItemId item) {
+        if (slot >= 0 && slot < HOTBAR_SIZE) hotbar[slot] = item;
     }
-    const block_type* getHotbar() const { return hotbar; }
+    const ItemId* getHotbar() const { return hotbar; }
 
     bool isWalkMode() const { return camera.isWalkMode(); }
     float getPunchSwingAngle() const;
+    // 0..1 progress through the current punch (0 when not punching).
+    float getSwingProgress() const;
     glm::mat4 getArmModelMatrix() const;
 
     // Block-placement "pop" effect. Progress 0→1 over PLACE_ANIM_DURATION.
@@ -62,9 +67,8 @@ class Player {
     Camera& getCamera() { return camera; }
 
     // --- Health & combat ---
-    static constexpr float ATTACK_REACH = 3.5f;     // mob melee reach (blocks from the eye)
-    static constexpr double ATTACK_COOLDOWN = 0.25; // seconds between damaging hits
-    static constexpr float FIST_DAMAGE = 1.0f;      // no tools yet; ×1.5 crit while falling
+    // Minecraft creative reach: 5 blocks for mobs, same as blocks (REACH).
+    static constexpr float ATTACK_REACH = 5.0f;     // mob melee reach (blocks from the eye)
     static constexpr float HURT_KNOCKBACK = 8.0f;   // blocks / second, decays in Camera
 
     const PlayerHealth& getHealth() const { return health; }
@@ -110,7 +114,7 @@ class Player {
     bool hasHighlight = false;
 
     // Hotbar
-    block_type hotbar[HOTBAR_SIZE] = {AIR, GRASS, DIRT, STONE, WOOD, SAND, WATER, GLOWSTONE, LEAVES, SNOW};
+    ItemId hotbar[HOTBAR_SIZE] = {AIR, GRASS, DIRT, STONE, WOOD, SAND, WATER, GLOWSTONE, LEAVES, SNOW};
     int selectedSlot = 0;
     bool rightClickHeld = false;
 
@@ -146,14 +150,17 @@ class Player {
     void updateTargetedBlock(World* world);
     // Left-click melee: true if a mob was in reach (and in front of any
     // targeted block) — the click is then consumed and no block breaks.
-    bool tryAttackMob(World* world);
+    // `strength` is the attack charge (melee.h) at the moment of the swing.
+    bool tryAttackMob(World* world, float strength);
     // Right-click mob interaction (shearing a woolly sheep): true if it
     // happened — the click is then consumed and no block is placed.
     bool tryInteractMob(World* world);
     void playHitSound();
 
     PlayerHealth health;
-    double lastAttackTime = -1.0;
+    // Every left-click swing restarts the attack charge (Minecraft resets
+    // it on misses too); far in the past = fully charged on spawn.
+    double lastSwingTime = -100.0;
 
     // Footstep audio
     ma_engine* audioEngine = nullptr;

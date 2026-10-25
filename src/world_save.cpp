@@ -101,7 +101,9 @@ bool WorldSave::loadLevelData(unsigned int& seed, PlayerSaveData& player) {
             std::string token;
             int i = 0;
             while (std::getline(iss, token, ',') && i < Player::HOTBAR_SIZE) {
-                player.hotbar[i++] = static_cast<block_type>(std::stoi(token));
+                int id = std::stoi(token);
+                bool valid = id >= 0 && id <= 0xFFFF && isValidItem(static_cast<ItemId>(id));
+                player.hotbar[i++] = valid ? static_cast<ItemId>(id) : ITEM_EMPTY;
             }
         }
     }

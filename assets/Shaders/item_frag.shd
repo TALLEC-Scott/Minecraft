@@ -1,0 +1,15 @@
+#version 330 core
+in vec3 vNormal;
+in vec3 vColor;
+
+out vec4 FragColor;
+
+uniform vec3 lightTint; // sun/moon/sky light at the camera (same as the arm)
+
+void main() {
+    // Fixed view-space key light from the upper left so the voxel faces
+    // read as distinct shades; lightTint carries day/night and caves.
+    vec3 keyDir = normalize(vec3(0.3, 0.8, 0.5));
+    float shade = 0.55 + 0.45 * max(dot(normalize(vNormal), keyDir), 0.0);
+    FragColor = vec4(vColor * shade * lightTint, 1.0);
+}

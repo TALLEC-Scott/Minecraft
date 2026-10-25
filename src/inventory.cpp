@@ -1,8 +1,9 @@
 #include "inventory.h"
 #include "texture_array.h"
 
-const char* Inventory::blockName(block_type t) {
-    switch (t) {
+const char* Inventory::itemName(ItemId id) {
+    if (id == ITEM_IRON_SWORD) return "Iron Sword";
+    switch (itemBlock(id)) {
     case GRASS:
         return "Grass";
     case DIRT:
@@ -46,7 +47,7 @@ void Inventory::draw(UIRenderer& ui, int windowW, int windowH, GLFWwindow* windo
     constexpr float CELL_SIZE = 48.0f;
     constexpr float CELL_PAD = 4.0f;
     constexpr float ICON_PAD = 6.0f;
-    int rows = (NUM_BLOCKS + GRID_COLS - 1) / GRID_COLS;
+    int rows = (NUM_ITEMS + GRID_COLS - 1) / GRID_COLS;
     float gridW = GRID_COLS * (CELL_SIZE + CELL_PAD) - CELL_PAD;
     float gridH = rows * (CELL_SIZE + CELL_PAD) - CELL_PAD;
 
@@ -78,7 +79,7 @@ void Inventory::draw(UIRenderer& ui, int windowW, int windowH, GLFWwindow* windo
 
     // Grid
     hoveredBlock = -1;
-    for (int i = 0; i < NUM_BLOCKS; i++) {
+    for (int i = 0; i < NUM_ITEMS; i++) {
         int col = i % GRID_COLS;
         int row = i / GRID_COLS;
         float cx = gridX + col * (CELL_SIZE + CELL_PAD);
@@ -91,9 +92,8 @@ void Inventory::draw(UIRenderer& ui, int windowW, int windowH, GLFWwindow* windo
         glm::vec4 cellColor = hovered ? glm::vec4(0.5f, 0.5f, 0.5f, 0.6f) : glm::vec4(0.25f, 0.25f, 0.25f, 0.6f);
         ui.drawRect(cx, cy, CELL_SIZE, CELL_SIZE, cellColor);
 
-        // Block icon (top face)
-        int layer = TextureArray::layerForFace(PLACEABLE_BLOCKS[i], 4);
-        GLuint tex = TextureArray::getLayerTexture2D(layer);
+        // Item icon (top face for blocks)
+        GLuint tex = TextureArray::itemIcon(ITEMS[i]);
         if (tex) {
             ui.drawTexturedRect(cx + ICON_PAD, cy + ICON_PAD, CELL_SIZE - ICON_PAD * 2, CELL_SIZE - ICON_PAD * 2, tex,
                                 0, 0, 1, 1);
@@ -101,13 +101,13 @@ void Inventory::draw(UIRenderer& ui, int windowW, int windowH, GLFWwindow* windo
 
         // Click: assign to selected hotbar slot
         if (hovered && clicked) {
-            player.setHotbarSlot(player.getSelectedSlot(), PLACEABLE_BLOCKS[i]);
+            player.setHotbarSlot(player.getSelectedSlot(), ITEMS[i]);
         }
     }
 
     // Block name tooltip
     if (hoveredBlock >= 0) {
-        const char* name = blockName(PLACEABLE_BLOCKS[hoveredBlock]);
+        const char* name = itemName(ITEMS[hoveredBlock]);
         float nameW = ui.textWidth(name, 1.0f);
         ui.drawTextShadow(name, panelX + (panelW - nameW) / 2.0f, gridY + gridH + CELL_PAD + 2.0f, 1.0f);
     }

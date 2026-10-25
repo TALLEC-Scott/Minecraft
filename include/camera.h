@@ -8,7 +8,7 @@
 #define GRAVITY 0.008f
 #define TERMINAL_VELOCITY -0.8f
 #define JUMP_VELOCITY 0.18f
-#define REACH 8.0f
+#define REACH 5.0f // block reach (Minecraft creative); Player::ATTACK_REACH matches
 #define PLAYER_HEIGHT 1.62f
 
 class Camera {
