@@ -28,6 +28,8 @@ void Player::destroyAudio() {
         for (auto& s : enterSounds) ma_sound_uninit(&s);
         for (auto& s : exitSounds) ma_sound_uninit(&s);
         for (auto& s : bubbleSounds) ma_sound_uninit(&s);
+        if (pickupSoundLoaded) ma_sound_uninit(&pickupSound);
+        pickupSoundLoaded = false;
         stepSoundsLoaded = false;
     }
 }
@@ -90,6 +92,11 @@ void Player::initAudio(ma_engine* engine) {
         ma_sound_init_from_file(engine, path.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, &bubbleSounds[i]);
         ma_sound_set_volume(&bubbleSounds[i], 0.3f);
     }
+
+    // Item pickup "pop" (generated for this game, not Minecraft's).
+    pickupSoundLoaded = ma_sound_init_from_file(engine, "assets/Sounds/random/pop.ogg", MA_SOUND_FLAG_DECODE,
+                                                nullptr, nullptr, &pickupSound) == MA_SUCCESS;
+    if (pickupSoundLoaded) ma_sound_set_volume(&pickupSound, 0.6f);
 
     stepSoundsLoaded = true;
     lastStepPos = camera.getPosition();
@@ -457,6 +464,15 @@ bool Player::tryInteractMob(World* world) {
     return static_cast<Sheep*>(mob)->shear();
 }
 
+void Player::playPickupSound() {
+    if (!pickupSoundLoaded) return;
+    // A different pitch each time, as Minecraft does for its pop.
+    static std::mt19937 rng(91);
+    ma_sound_set_pitch(&pickupSound, std::uniform_real_distribution<float>(0.8f, 1.6f)(rng));
+    ma_sound_seek_to_pcm_frame(&pickupSound, 0);
+    ma_sound_start(&pickupSound);
+}
+
 void Player::playHitSound() {
     // No dedicated hit samples in assets — the cloth dig sound reads as a
     // soft thump. Silent if audio isn't loaded.
@@ -532,7 +548,8 @@ void Player::update(World* world) {
     if (isPunching && (glfwGetTime() - punchStartTime) > PUNCH_DURATION) isPunching = false;
 
     // Survival never flies: a respawn into an unloaded spawn chunk hovers
-    // (main.cpp) only until the chunk under the player has streamed in.
+    // (main.cpp) only until the chunk under the player has streamed in, and
+    // main.cpp puts the player on the ground first.
     if (isSurvival() && !camera.isWalkMode() && world) {
         glm::vec3 p = camera.getPosition();
         int cx = worldToChunk((int)std::floor(p.x + 0.5f));

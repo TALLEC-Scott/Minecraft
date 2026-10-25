@@ -62,6 +62,7 @@ class Player {
         craftingTableRequested = false;
         return r;
     }
+    void playPickupSound();
     // Throws one of the selected item (or the whole stack) forward.
     void dropSelected(World* world, bool wholeStack);
     // Throws every stack out in random directions and empties the inventory.
@@ -247,6 +248,8 @@ class Player {
     ma_sound enterSounds[3]{};
     ma_sound exitSounds[3]{};
     ma_sound bubbleSounds[6]{};
+    ma_sound pickupSound{};
+    bool pickupSoundLoaded = false;
     bool wasSubmerged = false;
     bool wasEyesUnder = false;
     double lastBubbleTime = 0.0;
