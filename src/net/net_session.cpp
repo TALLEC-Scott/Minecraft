@@ -584,7 +584,7 @@ void NetSession::handleMessage(const uint8_t* data, std::size_t len, double now)
         // Host greets a new client with an immediate time sync so the
         // sun/clouds snap into place before the first scheduled pulse.
         if (role_ == NetRole::Host) {
-            netp::TimeSyncMsg tm{now};
+            netp::TimeSyncMsg tm{syncedTime(now)};
             std::vector<uint8_t> tbuf;
             netp::encodeTimeSync(tbuf, tm);
             sendRaw(tbuf);
@@ -708,7 +708,7 @@ void NetSession::tickBroadcast(const Player& p, double now) {
     // and clients only snap offset on receipt, never drift between syncs.
     if (role_ == NetRole::Host && (now - lastTimeSync_) > 1.0) {
         lastTimeSync_ = now;
-        netp::TimeSyncMsg tm{now};
+        netp::TimeSyncMsg tm{syncedTime(now)};
         std::vector<uint8_t> tbuf;
         netp::encodeTimeSync(tbuf, tm);
         sendRaw(tbuf);

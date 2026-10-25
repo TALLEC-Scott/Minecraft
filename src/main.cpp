@@ -59,6 +59,9 @@
 #include "particle_system.h"
 #include "player_renderer.h"
 #include "net/chat_overlay.h"
+#include "chat_commands.h"
+#include "chat_history.h"
+#include "day_cycle.h"
 #include "net/net_session.h"
 #include "net/multiplayer_menu.h"
 
@@ -75,8 +78,10 @@ int windowHeight = WINDOW_HEIGHT;
 // Desktop keeps it next to the executable for easy manual editing.
 #ifdef __EMSCRIPTEN__
 constexpr const char* SETTINGS_PATH = "saves/settings.txt";
+constexpr const char* CHAT_HISTORY_PATH = "saves/chat_history.txt";
 #else
 constexpr const char* SETTINGS_PATH = "settings.txt";
+constexpr const char* CHAT_HISTORY_PATH = "chat_history.txt";
 #endif
 
 // Fallback window size used when "Auto" is selected but neither the
@@ -209,6 +214,7 @@ bool previousDaylight = false;
 GameState currentState = GameState::MainMenu;
 GameSettings gameSettings;
 bool escKeyPressed = false;
+bool enterKeyPressed = false;
 Inventory inventory;
 bool eKeyPressed = false;
 
@@ -298,6 +304,14 @@ void scrollCallback(GLFWwindow* /*window*/, double /*xOffset*/, double yOffset) 
 
 void charCallback(GLFWwindow* /*window*/, unsigned int codepoint) {
     if (g_menu) g_menu->onCharInput(codepoint);
+    // '/' opens chat with the slash typed (Minecraft's command shortcut).
+    // Done on the char event rather than a key poll so it works on any
+    // keyboard layout (on AZERTY '/' is Shift+':').
+    if (g_chat && !g_chat->isOpen() && codepoint == '/' && currentState == GameState::Playing && !inventory.isOpen() &&
+        !player.isDead()) {
+        g_chat->open("/");
+        return;
+    }
     if (g_chat) g_chat->onCharInput(codepoint);
 }
 
@@ -399,10 +413,6 @@ static void buildHeldBlockMesh(block_type bt) {
 }
 
 void processInput(GLFWwindow* window) {
-    // Chat captures every game-world key while open (movement, pause, E, …).
-    // Return early so a stray T / Esc / WASD press doesn't leak through.
-    if (g_chat && g_chat->isOpen()) return;
-
     // Pause: ESC on desktop, M on web (ESC exits pointer lock in browsers
     // and TAB is intercepted by tab-stop focus cycling).
 #ifdef __EMSCRIPTEN__
@@ -410,6 +420,19 @@ void processInput(GLFWwindow* window) {
 #else
     bool pauseDown = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
 #endif
+    bool enterDown =
+        glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_KP_ENTER) == GLFW_PRESS;
+
+    // Chat captures every game-world key while open (movement, pause, E, …).
+    // Return early so a stray T / Esc / WASD press doesn't leak through,
+    // but keep tracking the pause + Enter keys so the press that closes
+    // chat doesn't also pause the game or reopen chat.
+    if (g_chat && g_chat->isOpen()) {
+        escKeyPressed = pauseDown;
+        enterKeyPressed = enterDown;
+        return;
+    }
+
     if (pauseDown && !escKeyPressed) {
         if (inventory.isOpen()) {
             // Close inventory instead of pausing
@@ -456,14 +479,15 @@ void processInput(GLFWwindow* window) {
     }
     eKeyPressed = eKeyDown;
 
-    // Chat open: 'T' key (edge-triggered). Not allowed when the inventory
-    // is up so we don't eat the player's keystrokes mid-menu.
+    // Chat open: 'T' or Enter (edge-triggered). Not allowed when the
+    // inventory is up so we don't eat the player's keystrokes mid-menu.
     static bool tKeyPressed = false;
     bool tKeyDown = glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS;
-    if (tKeyDown && !tKeyPressed && g_chat && !inventory.isOpen()) {
+    if (((tKeyDown && !tKeyPressed) || (enterDown && !enterKeyPressed)) && g_chat && !inventory.isOpen()) {
         g_chat->open();
     }
     tKeyPressed = tKeyDown;
+    enterKeyPressed = enterDown;
 
     // Skip player input while inventory is open
     if (inventory.isOpen()) return;
@@ -746,6 +770,12 @@ int main(int argc, char* argv[]) {
 #endif
         ChatOverlay chatObj;
     g_chat = &chatObj;
+#ifdef __EMSCRIPTEN__
+    static
+#endif
+        ChatHistory chatHistory(CHAT_HISTORY_PATH);
+    chatHistory.load();
+    chatObj.setHistory(&chatHistory);
 
     // Share audio engine with player for footstep sounds
     player.initAudio(menuObj.getAudioEngine());
@@ -977,6 +1007,56 @@ int main(int argc, char* argv[]) {
         netSession.setOnChat([](uint32_t peerId, const std::string& text) {
             if (g_chat) g_chat->pushRemoteMessage(peerId, text);
         });
+
+#ifdef __EMSCRIPTEN__
+        static
+#endif
+            ChatCommands chatCommands;
+        chatCommands.add("time", "<day|night>", "Jump to midday or midnight (also: noon, midnight)",
+                         [session = &netSession](const ChatCommands::Args& args, ChatCommands::Reply& out) {
+                             std::string arg = args.empty() ? "" : args.back(); // "/time set day" works too
+                             double target = 0.0;
+                             if (arg == "day" || arg == "noon" || arg == "midday") {
+                                 target = daycycle::NOON;
+                             } else if (arg == "night" || arg == "midnight") {
+                                 target = daycycle::MIDNIGHT;
+                             } else {
+                                 out.emplace_back("Usage: /time <day|night>");
+                                 return;
+                             }
+                             if (session->role() == NetRole::Client) {
+                                 out.emplace_back("Only the host can change the time.");
+                                 return;
+                             }
+                             if (!doDaylightCycle) {
+                                 out.emplace_back("The daylight cycle is disabled.");
+                                 return;
+                             }
+                             double now = session->syncedTime(glfwGetTime());
+                             session->advanceClock(daycycle::secondsUntil(now, target));
+                             out.emplace_back(target == daycycle::NOON ? "Time set to midday."
+                                                                       : "Time set to midnight.");
+                         });
+        chatCommands.add("cowrain", "[on|off]", "Toggle raining creeper cows that explode on impact",
+                         [](const ChatCommands::Args& args, ChatCommands::Reply& out) {
+                             if (!w || !w->mobManager) {
+                                 out.emplace_back("No world loaded.");
+                                 return;
+                             }
+                             bool on = !w->mobManager->cowRainEnabled();
+                             if (!args.empty()) {
+                                 if (args[0] == "on") {
+                                     on = true;
+                                 } else if (args[0] == "off") {
+                                     on = false;
+                                 } else {
+                                     out.emplace_back("Usage: /cowrain [on|off]");
+                                     return;
+                                 }
+                             }
+                             w->mobManager->setCowRain(on);
+                             out.emplace_back(on ? "Cow rain: ON. Look up." : "Cow rain: off.");
+                         });
 
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
@@ -1794,7 +1874,7 @@ int main(int argc, char* argv[]) {
             }
 
             // --- Game rendering (used by both Playing and Paused) ---
-            float speed = 0.025;
+            float speed = static_cast<float>(daycycle::RADIANS_PER_SECOND);
             float timeValue = 0.0f;
             if (doDaylightCycle) {
                 // syncedTime() == glfwGetTime() when offline or hosting;
@@ -1933,8 +2013,16 @@ int main(int argc, char* argv[]) {
                 if (g_chat) {
                     std::string outgoing;
                     if (g_chat->takePendingSend(outgoing)) {
-                        netSession.sendChat(outgoing);
-                        g_chat->pushLocalMessage(outgoing);
+                        chatHistory.add(outgoing);
+                        syncToPersistentStorage();
+                        if (ChatCommands::isCommand(outgoing)) {
+                            // Commands run locally and never go on the wire.
+                            g_chat->pushSystemMessage(outgoing);
+                            for (const std::string& line : chatCommands.run(outgoing)) g_chat->pushSystemMessage(line);
+                        } else {
+                            netSession.sendChat(outgoing);
+                            g_chat->pushLocalMessage(outgoing);
+                        }
                     }
                 }
             }

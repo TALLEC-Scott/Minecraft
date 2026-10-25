@@ -116,7 +116,12 @@ class NetSession {
     // lockstep across peers (sun position, etc.) should read this rather
     // than calling glfwGetTime() directly.
     double syncedTime(double localNow) const {
-        return (role_ == NetRole::Client) ? localNow + timeOffset_ : localNow;
+        return (role_ == NetRole::Client) ? localNow + timeOffset_ : localNow + clockShift_;
+    }
+    // Jump the shared clock forward (/time). Host / offline only — a
+    // client's clock follows the host's TimeSync, which carries the shift.
+    void advanceClock(double seconds) {
+        if (role_ != NetRole::Client) clockShift_ += seconds;
     }
 
     // Bind the world so incoming APPLY packets can reach it.
@@ -126,9 +131,7 @@ class NetSession {
     // channel. `sendChat` no-ops when disconnected so callers don't need
     // to gate on connected().
     void sendChat(const std::string& text);
-    void setOnChat(std::function<void(uint32_t peerId, const std::string& text)> cb) {
-        onChat_ = std::move(cb);
-    }
+    void setOnChat(std::function<void(uint32_t peerId, const std::string& text)> cb) { onChat_ = std::move(cb); }
 
     const std::vector<RemotePlayer>& remotes() const { return remotes_; }
 
@@ -140,6 +143,8 @@ class NetSession {
     // offset = host's syncedTime - our local glfwGetTime(); zero until the
     // first TimeSync arrives.
     double timeOffset_ = 0.0;
+    // Host / offline: seconds added to glfwGetTime() by /time commands.
+    double clockShift_ = 0.0;
     std::vector<RemotePlayer> remotes_;
     World* world_ = nullptr;
     std::function<void(uint32_t, const std::string&)> onChat_;
