@@ -1,11 +1,12 @@
-"""Convert the user's local Minecraft mob sounds into the game's layout:
-assets/Sounds/mob/<name>/<event>N.wav (44.1 kHz mono s16, N = 1..4).
+"""Copy the user's local Minecraft mob sounds into the game's layout:
+assets/Sounds/mob/<name>/<event>N.ogg (Minecraft's own OGG Vorbis files,
+unchanged, N = 1..4).
 
 usage: copy_mob_sounds.py <.minecraft dir> <project dir>
 """
 import json
 import os
-import subprocess
+import shutil
 import sys
 
 MC, PROJECT = sys.argv[1], sys.argv[2]
@@ -72,10 +73,6 @@ for mob, events in MAPPING.items():
         for n, src in enumerate(sources[:4], start=1):
             h = index["minecraft/sounds/" + src + ".ogg"]["hash"]
             ogg = os.path.join(MC, "assets/objects", h[:2], h)
-            wav = os.path.join(out_dir, f"{event}{n}.wav")
-            subprocess.run(
-                ["ffmpeg", "-loglevel", "error", "-y", "-i", ogg, "-ac", "1", "-ar", "44100", "-sample_fmt", "s16", wav],
-                check=True,
-            )
+            shutil.copyfile(ogg, os.path.join(out_dir, f"{event}{n}.ogg"))
             written += 1
 print("wrote", written, "files")

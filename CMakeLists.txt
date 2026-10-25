@@ -264,6 +264,7 @@ else()
         tests/test_chat_history.cpp
         tests/test_items.cpp
         tests/test_held_item_pose.cpp
+        tests/test_audio_assets.cpp
         src/TerrainGenerator.cpp
         src/terrain_fill.cpp
         src/section_visibility.cpp
@@ -303,6 +304,7 @@ else()
     target_include_directories(tests PRIVATE tests/stubs include)
     target_include_directories(tests SYSTEM PRIVATE Libraries/include)
     target_compile_options(tests PRIVATE ${WARNING_FLAGS})
+    target_compile_definitions(tests PRIVATE PROJECT_ROOT="${CMAKE_SOURCE_DIR}")
     target_link_libraries(tests GTest::gtest_main)
     set_target_properties(tests PROPERTIES CXX_CLANG_TIDY "")
     gtest_discover_tests(tests)
