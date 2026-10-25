@@ -31,7 +31,6 @@ class ZombieAttackGoal : public ChaseAndMeleeGoal {
 struct ZombieModel {
     MobModel model;
     int head, rightArm, leftArm, rightLeg, leftLeg;
-    UndeadMob::FlameParts flames{};
 };
 
 // Minecraft HumanoidModel (16 px = 1 block, +Z forward, feet origin):
@@ -73,7 +72,6 @@ const ZombieModel& zombieModel() {
         z.rightLeg = leg("leg_r", -1.9f);
         z.leftLeg = leg("leg_l", 1.9f);
 
-        z.flames = UndeadMob::addFlameParts(m);
         return z;
     }();
     return zm;
@@ -126,6 +124,5 @@ MobPose Zombie::pose(float partialTick) const {
     p.rotation[zm.rightArm].x += nod;
     p.rotation[zm.leftArm].x -= nod;
 
-    poseFlames(p, zm.flames, partialTick);
     return p;
 }
