@@ -174,6 +174,8 @@ inline const char* itemName(ItemId id) {
         return "Lava";
     case OBSIDIAN:
         return "Obsidian";
+    case TORCH:
+        return "Torch";
     default:
         return "?";
     }

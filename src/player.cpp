@@ -7,6 +7,7 @@
 #include "mobs/sheep.h"
 #include "net/net_session.h"
 #include "particle_system.h"
+#include "torch.h"
 #include "world.h"
 #include "ChunkManager.h"
 #include <algorithm>
@@ -248,6 +249,15 @@ void Player::handleInput(GLFWwindow* window, World* world) {
             // Don't place inside player body (2 blocks tall)
             bool blocked = (placementPos.x == px && placementPos.z == pzCoord &&
                             (placementPos.y == pyHead || placementPos.y == pyFeet));
+            // A torch goes on the clicked face: standing on a top face,
+            // hanging on a side; never on a ceiling or a non-solid block.
+            uint8_t state = 0;
+            if (getSelectedBlockType() == TORCH) {
+                glm::ivec3 n = placementPos - targeted;
+                state = torch::stateForFace(n.x, n.y, n.z);
+                blocked = blocked || !targetBlock || !torch::canSupport(targetBlock->getType()) ||
+                          !torch::validState(state);
+            }
             if (!blocked) {
                 playBreakSound(getSelectedBlockType());
                 // Client-side prediction: apply locally, then send the
@@ -257,7 +267,7 @@ void Player::handleInput(GLFWwindow* window, World* world) {
                 if (netSession)
                     netSession->notifyLocalPlace(placementPos, static_cast<uint8_t>(getSelectedBlockType()));
                 block_type placed = getSelectedBlockType();
-                world->placeBlock(placementPos, placed);
+                world->placeBlock(placementPos, placed, state);
                 if (isSurvival()) inventory.take(selectedSlot, 1); // Creative never runs out
                 // Arm swing (same feedback as left-click) + outline pop at placement pos
                 isPunching = true;
@@ -276,12 +286,14 @@ void Player::breakTargeted(World* world, block_type type, ItemId tool) {
     // setBlock with the same AIR result (idempotent), so prediction is
     // "free" until we add host-side rejects.
     if (netSession) netSession->notifyLocalDestroy(targeted);
-    world->destroyBlock(glm::vec3(targeted));
+    std::vector<glm::ivec3> poppedTorches;
+    world->destroyBlock(glm::vec3(targeted), &poppedTorches);
     if (!isSurvival() || !world->entityManager) return;
     hunger.addExhaustion(PlayerHunger::EXHAUST_BREAK_BLOCK);
     static std::mt19937 dropRng(std::random_device{}());
     ItemDrop drop = blockDrop(type, tool, std::uniform_real_distribution<float>(0.0f, 1.0f)(dropRng));
     if (drop.count > 0) world->entityManager->dropFromBlock(drop.id, drop.count, targeted);
+    for (glm::ivec3 t : poppedTorches) world->entityManager->dropFromBlock(blockItem(TORCH), 1, t);
 }
 
 void Player::dropSelected(World* world, bool wholeStack) {

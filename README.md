@@ -54,7 +54,7 @@ https://github.com/user-attachments/assets/c95a33fa-b7e2-41ac-b8ba-79bb7edf997f
 ### World
 - Procedural terrain with multi-octave Perlin noise - continentalness, temperature, humidity
 - 6 biomes - ocean, beach, plains, forest, desert, tundra - driving surface blocks, tree/cactus placement, snow caps and shore sand/gravel post-pass
-- 23 block types including `GRASS`, `DIRT`, `STONE`, `COBBLESTONE`, `COAL_ORE`, `BEDROCK`, `WATER`, `LAVA`, `OBSIDIAN`, `SAND`, `GLOWSTONE`, `WOOD`, `PLANKS`, `LEAVES`, `SNOW`, `GRAVEL`, `CACTUS`, `TNT`, `CRAFTING_TABLE`, and cross-quad plants (`TALL_GRASS`, `DANDELION`, `POPPY`)
+- 24 block types including `GRASS`, `DIRT`, `STONE`, `COBBLESTONE`, `COAL_ORE`, `BEDROCK`, `WATER`, `LAVA`, `OBSIDIAN`, `SAND`, `GLOWSTONE`, `WOOD`, `PLANKS`, `LEAVES`, `SNOW`, `GRAVEL`, `CACTUS`, `TNT`, `CRAFTING_TABLE`, and cross-quad blocks (`TALL_GRASS`, `DANDELION`, `POPPY`, `TORCH`)
 - Unified vegetation placement - trees, cacti, and plants share a `claimed[]` occupancy grid so nothing grows under a canopy or clips with another tree
 - Persistent worlds - modified chunks save as palette-encoded binary files in `saves/world/chunks/`; game mode, player position, yaw/pitch, inventory, selected slot, health, food and walk mode in `level.dat`
 
@@ -71,6 +71,7 @@ https://github.com/user-attachments/assets/c95a33fa-b7e2-41ac-b8ba-79bb7edf997f
 - Cellular-automaton water at 4 ticks/sec (FPS-agnostic, wall-clock timed) - gravity, horizontal spread, infinite source cloning, falling decay; sloped surfaces with corner-averaged heights across diagonal chunks
 - Flowing water pushes the player horizontally along the flow gradient; waterfalls push vertically down
 - Lava: glows (light 15), flows 3 blocks every 1.5 s with no infinite sources (Minecraft's overworld rules), fills cave space at y ≤ 10, hardens where it meets water (source → obsidian, flowing → cobblestone, poured onto water → stone); hurts and sets players and mobs on fire for 15 s (water puts it out), burns dropped items, orange fog when your head is in it; bubbles and pops embers (Minecraft's lava sounds), and hisses with smoke where it meets water
+- Torches: crafted from coal over a stick (4 per craft), light 14, stand on a block's top or hang on its side (leaning into the wall), pop off when the block holding them goes, and flicker a flame with a wisp of smoke
 - Swim physics (asymmetric vertical drag), underwater ambience, enter/exit splashes, bubble emission
 - Primed TNT as a separate entity (not a block): 4 s fuse default, 10–30 tick random fuse for chain reactions, gravity + voxel collision, visual flashing, 40-particle white smoke plume on detonation, 4 rotating explosion sound samples, isotropic camera shake
 

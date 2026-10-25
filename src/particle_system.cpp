@@ -306,6 +306,27 @@ void ParticleSystem::spawnFizzSmoke(glm::vec3 blockTop) {
     }
 }
 
+void ParticleSystem::spawnTorchFlame(glm::vec3 tip) {
+    Particle& f = allocParticle();
+    f.pos = tip;
+    f.velocity = glm::vec3((rand01() - 0.5f) * 0.02f, 0.05f + rand01() * 0.05f, (rand01() - 0.5f) * 0.02f);
+    f.tint = glm::vec3(1.0f, 0.75f + rand01() * 0.2f, 0.3f);
+    f.maxLife = 0.6f + rand01() * 1.6f; // Minecraft FlameParticle: 12..44 ticks
+    f.size = 0.04f + rand01() * 0.02f;
+    f.growth = -0.05f; // shrinks as it burns out
+    f.buoyant = false;
+    f.alive = true;
+
+    Particle& s = allocParticle();
+    s.pos = tip + glm::vec3(0.0f, 0.08f, 0.0f);
+    s.velocity = glm::vec3((rand01() - 0.5f) * 0.05f, 0.25f + rand01() * 0.15f, (rand01() - 0.5f) * 0.05f);
+    s.tint = glm::vec3(0.25f);
+    s.maxLife = 0.8f + rand01() * 0.6f;
+    s.size = 0.05f;
+    s.growth = 0.1f;
+    s.alive = true;
+}
+
 size_t ParticleSystem::aliveCount() const {
     size_t n = 0;
     for (const auto& p : pool)

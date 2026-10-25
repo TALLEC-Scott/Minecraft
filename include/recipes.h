@@ -26,6 +26,7 @@ inline const std::vector<Recipe>& allRecipes() {
         std::vector<Recipe> r = {
             {1, 1, {blockItem(WOOD)}, {blockItem(PLANKS), 4}},
             {1, 2, {blockItem(PLANKS), blockItem(PLANKS)}, {ITEM_STICK, 4}},
+            {1, 2, {ITEM_COAL, ITEM_STICK}, {blockItem(TORCH), 4}}, // coal over a stick
             {2, 2, {blockItem(PLANKS), blockItem(PLANKS), blockItem(PLANKS), blockItem(PLANKS)},
              {blockItem(CRAFTING_TABLE), 1}},
         };

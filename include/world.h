@@ -12,7 +12,7 @@
 using WorldResolver = WorldResolverT<ChunkManager, Chunk>;
 
 class EntityManager;
-class LavaEffects;
+class BlockEffects;
 class MobManager;
 class ParticleSystem;
 
@@ -22,8 +22,14 @@ class World {
     unsigned int getSeed() const { return seed; }
 
     // void render(Shader& shaderProgram);
-    void destroyBlock(glm::vec3 position) const;
-    void placeBlock(glm::ivec3 position, block_type type) const;
+    // Torches the removed block was holding pop off too; their positions
+    // are appended to `popped` (the local player drops them as items).
+    void destroyBlock(glm::vec3 position, std::vector<glm::ivec3>* popped = nullptr) const;
+    // `state` is the cell's state byte (torch.h: standing / which wall);
+    // a torch left at INVALID (the network path) picks one from its
+    // surroundings, and isn't placed if nothing can hold it.
+    void placeBlock(glm::ivec3 position, block_type type, uint8_t state = 0xFF) const;
+    uint8_t torchStateAt(glm::ivec3 p) const;
     void setBlock(int x, int y, int z, block_type type, uint8_t waterLevel = 0) const;
     // Between these, setBlock defers its light updates and the end call
     // relights them all in one pass (WaterSimulator wraps each tick).
@@ -48,7 +54,7 @@ class World {
     EntityManager* entityManager;
     MobManager* mobManager; // living mobs + projectiles, 20 TPS (see mob_manager.h)
     ParticleSystem* particles;
-    LavaEffects* lavaEffects; // lava bubbling / pops / hiss (sound + particles)
+    BlockEffects* blockEffects; // ambient block sounds + particles (lava, torches)
 
     // Camera-shake magnitude set by explode(); main.cpp decays it per-frame
     // and offsets the view. Mutable because the World pointer is shared via
