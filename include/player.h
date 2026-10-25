@@ -105,6 +105,7 @@ class Player {
     // Lava: on fire (Survival) and whether the eyes are in lava (orange fog).
     bool isOnFire() const { return fireTicks > 0; }
     bool eyesInLava() const { return eyesInLava_; }
+    bool eyesInWater() const { return eyesInWater_; }
     bool isDead() const { return health.isDead(); }
     glm::vec3 getFeetPosition() const { return camera.getPosition() - glm::vec3(0.0f, PLAYER_HEIGHT, 0.0f); }
     // Damage from a world position (mob, explosion). Knockback pushes away
@@ -234,6 +235,8 @@ class Player {
     double hazardAccumulator = 0.0;
     bool bodyInLava = false;
     bool eyesInLava_ = false;
+    bool bodyInWater = false;
+    bool eyesInWater_ = false;
     void updateHazards(World* world, double dt);
     // Every left-click swing restarts the attack charge (Minecraft resets
     // it on misses too); far in the past = fully charged on spawn.

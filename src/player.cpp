@@ -326,16 +326,23 @@ void Player::updateHunger(double now) {
 }
 
 void Player::updateHazards(World* world, double dt) {
-    // Which parts of the body are in lava (feet block and eye block).
-    auto isLavaAt = [&](glm::vec3 p) {
-        Cube* c = world ? world->getBlock((int)std::floor(p.x + 0.5f), (int)std::floor(p.y + 0.5f),
-                                          (int)std::floor(p.z + 0.5f))
-                        : nullptr;
-        return c && c->getType() == LAVA;
+    // Which liquid the feet / chest / eye blocks are in (the blocks
+    // Camera::update tests), read now. The camera's own in-liquid flags
+    // date from its last update and can't tell water from lava, so water
+    // splashes and bubbles go by these instead.
+    auto typeAt = [&](int x, int y, int z) {
+        Cube* c = world ? world->getBlock(x, y, z) : nullptr;
+        return c ? c->getType() : AIR;
     };
     glm::vec3 eye = camera.getPosition();
-    eyesInLava_ = isLavaAt(eye);
-    bodyInLava = eyesInLava_ || isLavaAt(getFeetPosition() + glm::vec3(0.0f, 0.1f, 0.0f));
+    int fx = (int)std::floor(eye.x + 0.5f), fz = (int)std::floor(eye.z + 0.5f);
+    int feetY = (int)std::floor(eye.y - PLAYER_HEIGHT + 0.5f);
+    block_type eyeT = typeAt(fx, (int)std::floor(eye.y + 0.5f), fz);
+    block_type feetT = typeAt(fx, feetY, fz), chestT = typeAt(fx, feetY + 1, fz);
+    eyesInLava_ = eyeT == LAVA;
+    bodyInLava = eyesInLava_ || feetT == LAVA || chestT == LAVA;
+    eyesInWater_ = eyeT == WATER;
+    bodyInWater = !bodyInLava && (eyesInWater_ || feetT == WATER || chestT == WATER);
     if (!isSurvival() || health.isDead()) {
         fireTicks = 0;
         return;
@@ -346,7 +353,7 @@ void Player::updateHazards(World* world, double dt) {
         if (bodyInLava) {
             hurt(LAVA_DAMAGE, eye, false); // the 0.5 s invulnerability paces it
             fireTicks = std::max(fireTicks, LAVA_FIRE_TICKS);
-        } else if (camera.isInWater()) {
+        } else if (bodyInWater) {
             fireTicks = 0; // water puts the fire out
         } else if (fireTicks > 0) {
             if (fireTicks % 20 == 0) hurt(1.0f, eye, false);
@@ -608,8 +615,8 @@ void Player::update(World* world) {
 
     // Movement sounds: swim sounds when any body part in water, footsteps on land
     // Splashes, bubbles and underwater ambience are water's, not lava's.
-    bool inWater = camera.isInWater() && !bodyInLava;
-    bool eyesUnder = camera.areEyesInWater() && !eyesInLava_;
+    bool inWater = bodyInWater;
+    bool eyesUnder = eyesInWater_;
     bool moving = camera.isWalkMode() && (inWater || camera.isOnGround());
     if (stepSoundsLoaded && moving) {
         glm::vec3 pos = camera.getPosition();
