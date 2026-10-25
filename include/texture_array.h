@@ -2,6 +2,7 @@
 #include "gl_header.h"
 #include "cube.h"
 #include "block_layers.h"
+#include "item.h"
 
 class TextureArray {
   public:
@@ -29,6 +30,9 @@ class TextureArray {
     static constexpr int NUM_LAYERS = block_layers::NUM_LAYERS;
     static void initLayerTextures();
     static GLuint getLayerTexture2D(int layer);
+    // 2D UI icon for a hotbar/inventory item: a block's top-face layer, or
+    // a tool's own image (loaded by initLayerTextures). 0 if unavailable.
+    static GLuint itemIcon(ItemId id);
     static void destroyLayerTextures();
     static GLuint id;
 };

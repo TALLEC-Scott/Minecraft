@@ -80,6 +80,8 @@ set(COMMON_SOURCES
     src/net/chat_overlay.cpp
     src/chat_commands.cpp
     src/chat_history.cpp
+    src/item_mesh.cpp
+    src/held_item_model.cpp
 )
 
 if(EMSCRIPTEN)
@@ -254,6 +256,8 @@ else()
         tests/test_worldgen.cpp
         tests/test_chat_commands.cpp
         tests/test_chat_history.cpp
+        tests/test_items.cpp
+        tests/test_held_item_pose.cpp
         src/TerrainGenerator.cpp
         src/terrain_fill.cpp
         src/section_visibility.cpp
@@ -283,6 +287,7 @@ else()
         src/mobs/creeper_cow.cpp
         src/chat_commands.cpp
         src/chat_history.cpp
+        src/item_mesh.cpp
         src/mobs/spider.cpp
     )
     # tests/stubs is searched before include/ so the water-sim tests can

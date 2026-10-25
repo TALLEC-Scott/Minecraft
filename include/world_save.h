@@ -16,7 +16,7 @@ struct PlayerSaveData {
     float yaw = -90.0f;
     float pitch = 0.0f;
     bool walkMode = false;
-    block_type hotbar[Player::HOTBAR_SIZE] = {AIR, GRASS, DIRT, STONE, WOOD, SAND, WATER, GLOWSTONE, LEAVES, SNOW};
+    ItemId hotbar[Player::HOTBAR_SIZE] = {AIR, GRASS, DIRT, STONE, WOOD, SAND, WATER, GLOWSTONE, LEAVES, SNOW};
     int selectedSlot = 0;
 };
 

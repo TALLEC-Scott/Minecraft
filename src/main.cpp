@@ -61,6 +61,8 @@
 #include "net/chat_overlay.h"
 #include "chat_commands.h"
 #include "chat_history.h"
+#include "held_item_model.h"
+#include "held_item_pose.h"
 #include "day_cycle.h"
 #include "net/net_session.h"
 #include "net/multiplayer_menu.h"
@@ -2524,7 +2526,40 @@ int main(int argc, char* argv[]) {
 
                 block_type heldType = player.getSelectedBlockType();
                 glDisable(GL_CULL_FACE);
-                if (heldType == AIR) {
+                if (const char* spritePath = toolIconPath(player.getSelectedItem())) {
+                    // Tool (the sword): its sprite extruded into a pixel
+                    // slab held in the hand — handle in the lower right, flat
+                    // side toward the camera, blade leaning toward the
+                    // crosshair. Attacks play Minecraft's swing about the
+                    // hand; the arm runs from the hand to a fixed shoulder.
+                    static HeldItemModel swordModel;
+                    if (swordModel.load(spritePath)) {
+                        constexpr float ITEM_SCALE = 0.04f;          // sprite pixels -> view units
+                        const glm::vec3 ITEM_GRIP(2.5f, 2.5f, 0.0f); // handle pixel, sprite coords
+                        const glm::vec3 HAND_REST(0.28f * aspect, -0.4f, -0.7f);
+                        const glm::vec3 SHOULDER = HAND_REST + glm::vec3(0.3f, -0.45f, 0.3f); // off-screen
+                        constexpr float ARM_HALF_WIDTH = 0.07f;
+                        float swing = player.getSwingProgress();
+                        glm::vec3 hand = HAND_REST + heldpose::swingOffset(swing);
+
+                        // Arm box (armVAO is ±0.4 tall, so rescale to a unit half height).
+                        glm::mat4 armM = heldpose::armBetween(hand, SHOULDER, ARM_HALF_WIDTH / 0.15f);
+                        armM = glm::scale(armM, glm::vec3(1.0f, 1.0f / 0.4f, 1.0f));
+                        billboardShader.setMat4("model", armM);
+                        TextureArray::bind();
+                        glBindVertexArray(armVAO);
+                        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
+
+                        glm::mat4 m = glm::translate(glm::mat4(1.0f), hand) * heldpose::swingRotation(swing);
+                        m = glm::rotate(m, glm::radians(-25.0f), glm::vec3(0, 1, 0)); // flat side toward us
+                        m = glm::rotate(m, glm::radians(-30.0f), glm::vec3(1, 0, 0)); // blade leans away
+                        m = glm::rotate(m, glm::radians(70.0f), glm::vec3(0, 0, 1));  // diagonal sprite upright
+                        m = glm::scale(m, glm::vec3(ITEM_SCALE));
+                        m = glm::translate(m, -ITEM_GRIP);
+                        swordModel.draw(projection, m, armTint);
+                        billboardShader.use(); // restore for the rest of this pass
+                    }
+                } else if (heldType == AIR) {
                     // Empty hand: show arm
                     armModel[3][0] *= aspect;
                     billboardShader.setMat4("model", armModel);
@@ -2588,7 +2623,7 @@ int main(int argc, char* argv[]) {
                 uiRenderer.begin(windowWidth, windowHeight);
                 // Background
                 uiRenderer.drawRect(barX, barY, totalW, SLOT_SIZE + BAR_PAD * 2, glm::vec4(0.0f, 0.0f, 0.0f, 0.5f));
-                const block_type* hotbar = player.getHotbar();
+                const ItemId* hotbar = player.getHotbar();
                 int sel = player.getSelectedSlot();
                 for (int i = 0; i < HSIZE; i++) {
                     float sx = barX + BAR_PAD + i * (SLOT_SIZE + SLOT_PAD);
@@ -2597,10 +2632,9 @@ int main(int argc, char* argv[]) {
                     glm::vec4 slotColor =
                         (i == sel) ? glm::vec4(1.0f, 1.0f, 1.0f, 0.4f) : glm::vec4(0.3f, 0.3f, 0.3f, 0.4f);
                     uiRenderer.drawRect(sx, sy, SLOT_SIZE, SLOT_SIZE, slotColor);
-                    // Block icon (top face) — skip empty slots
-                    if (hotbar[i] != AIR) {
-                        int layer = TextureArray::layerForFace(hotbar[i], 4);
-                        GLuint tex = TextureArray::getLayerTexture2D(layer);
+                    // Item icon (block top face) — skip empty slots
+                    if (hotbar[i] != ITEM_EMPTY) {
+                        GLuint tex = TextureArray::itemIcon(hotbar[i]);
                         if (tex) {
                             uiRenderer.drawTexturedRect(sx + 4, sy + 4, SLOT_SIZE - 8, SLOT_SIZE - 8, tex, 0, 0, 1, 1);
                         }
