@@ -374,6 +374,12 @@ void MobManager::render(const Shader& shader, const glm::mat4& viewProjection, g
         // Generous box: models can overhang the hitbox (heads, death tip-over).
         float r = std::max(m->halfWidth, m->height) + 0.5f;
         if (!aabbInFrustum(planes, p - glm::vec3(r, 0.5f, r), p + glm::vec3(r, m->height + 0.5f, r))) continue;
+        // Cave culling: skip mobs whose feet and head sections the BFS
+        // never reached (sealed caves). Both are checked so a mob
+        // straddling a section boundary shows if either half could.
+        if (!world->sectionVisible(MobContext::blockAtPos(p)) &&
+            !world->sectionVisible(MobContext::blockAtPos(p + glm::vec3(0.0f, m->height, 0.0f))))
+            continue;
         // Sample at the body center and the eyes and keep the brighter of
         // each channel: a single sample goes black whenever that block is
         // solid (a mob pressed into a wall, a low eye level on a ledge).
@@ -389,6 +395,7 @@ void MobManager::render(const Shader& shader, const glm::mat4& viewProjection, g
         glm::vec3 d = p - cameraPos;
         if (glm::dot(d, d) > maxD2) continue;
         if (!aabbInFrustum(planes, p - glm::vec3(0.5f), p + glm::vec3(0.5f))) continue;
+        if (!world->sectionVisible(MobContext::blockAtPos(p))) continue;
         // Orient the box's +Z along the flight direction.
         glm::vec3 dir = pr->direction();
         glm::mat4 m = glm::translate(glm::mat4(1.0f), p);
