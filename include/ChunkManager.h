@@ -11,14 +11,12 @@
 #include <unordered_set>
 #include <vector>
 
-#ifndef __EMSCRIPTEN__
 #include <thread>
 #include <mutex>
 #include <condition_variable>
 #include <queue>
 #include <atomic>
 #include <memory>
-#endif
 
 struct Vec2Hash {
     std::size_t operator()(const glm::ivec2& vec) const {
@@ -65,9 +63,7 @@ class ChunkManager {
 
     void loadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk);
     void unloadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk);
-    void generateChunk(int x, int z);
 
-#ifndef __EMSCRIPTEN__
     // Chunk generation
     std::queue<glm::ivec2> requestQueue;
     std::mutex requestMutex;
@@ -77,15 +73,12 @@ class ChunkManager {
     std::mutex resultMutex;
 
     std::unordered_set<glm::ivec2, Vec2Hash> pendingChunks;
-#endif
 
     // Chunks with a pending (built but not yet uploaded) mesh. Populated
-    // when drainResults (native) or the sync build path (web) marks a
-    // chunk's mesh ready; consumed by the stale-mesh flush pass in
+    // when drainResults marks a chunk's mesh ready; consumed by the stale-mesh flush pass in
     // update(). Having an explicit set avoids walking all loaded chunks
     // every frame (previously the #1 CPU bottleneck — ~1 ms at RD 16).
     std::unordered_set<glm::ivec2, Vec2Hash> chunksWithPendingMesh;
-#ifndef __EMSCRIPTEN__
 
     // Mesh build requests (dispatched to workers with snapshotted data)
     struct MeshRequest {
@@ -118,7 +111,6 @@ class ChunkManager {
     void drainResults();
     void queueMeshBuild(glm::ivec2 pos);
     void queueDirtyMeshBuilds();
-#endif
 
     // Render-distance box from the last update() call. Used to early-out
     // loadChunks/unloadChunks when the player hasn't crossed a chunk
