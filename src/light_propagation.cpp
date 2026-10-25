@@ -1,5 +1,6 @@
 #include "light_propagation.h"
 
+#include <algorithm>
 #include <vector>
 
 #include "ChunkManager.h"
@@ -161,7 +162,18 @@ void floodBlockLight(ChunkManager* cm, int sx, int sy, int sz, uint8_t emission)
     }
 }
 
-void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
+namespace {
+
+struct LightSeed {
+    int x, y, z;
+    uint8_t minLight; // treat the cell as at least this bright (a removed emitter)
+};
+
+// Light removal BFS from every seed at once, then one re-flood from the
+// lit cells bordering the cleared region. Batching matters for liquids: a
+// draining lava flow loses dozens of emitters in one tick, and clearing
+// them one by one re-floods the same region dozens of times.
+void removeBlockLightSeeds(ChunkManager* cm, const std::vector<LightSeed>& seeds) {
     WorldResolver resolve(cm);
 
     struct Node {
@@ -171,13 +183,15 @@ void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
     std::vector<Node> removeQueue;
     removeQueue.reserve(4096);
 
-    auto [srcChunk, srcIdx] = resolve(sx, sy, sz);
-    if (!srcChunk) return;
-    srcChunk->ensureSkyLightFlat();
-    uint8_t srcLight = unpackBlock(srcChunk->skyLight.get()[srcIdx]);
-    srcChunk->skyLight.get()[srcIdx] = packLight(unpackSky(srcChunk->skyLight.get()[srcIdx]), 0);
-    srcChunk->markSectionDirty(sy / 16);
-    removeQueue.push_back({sx, sy, sz, srcLight});
+    for (const LightSeed& seed : seeds) {
+        auto [srcChunk, srcIdx] = resolve(seed.x, seed.y, seed.z);
+        if (!srcChunk) continue;
+        srcChunk->ensureSkyLightFlat();
+        uint8_t srcLight = std::max(unpackBlock(srcChunk->skyLight.get()[srcIdx]), seed.minLight);
+        srcChunk->skyLight.get()[srcIdx] = packLight(unpackSky(srcChunk->skyLight.get()[srcIdx]), 0);
+        srcChunk->markSectionDirty(seed.y / 16);
+        removeQueue.push_back({seed.x, seed.y, seed.z, srcLight});
+    }
 
     struct LightNode {
         int x, y, z;
@@ -231,21 +245,40 @@ void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
     }
 }
 
-void relightBlockChange(ChunkManager* cm, int x, int y, int z, block_type oldType, block_type newType) {
-    if (y < 0 || y >= CHUNK_HEIGHT) return;
-    uint8_t oldEmission = getBlockLightEmission(oldType), newEmission = getBlockLightEmission(newType);
-    bool nowBlocks = hasFlag(newType, BF_OPAQUE) && !hasFlag(oldType, BF_OPAQUE);
-    if (oldEmission > 0 && oldEmission != newEmission) {
-        // Clears the cell and everything it lit, then re-floods from the
-        // emitters still around (other lava next to a draining cell).
-        removeBlockLightWorld(cm, x, y, z);
-    } else if (nowBlocks && newEmission == 0) {
-        WorldResolver resolve(cm);
-        auto [c, i] = resolve(x, y, z);
-        if (c) {
-            c->ensureSkyLightFlat();
-            if (unpackBlock(c->skyLight.get()[i]) > 0) removeBlockLightWorld(cm, x, y, z);
+} // namespace
+
+void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
+    removeBlockLightSeeds(cm, {{sx, sy, sz, 0}});
+}
+
+void relightBlockChanges(ChunkManager* cm, const std::vector<BlockChange>& changes) {
+    std::vector<LightSeed> seeds;
+    WorldResolver resolve(cm);
+    for (const BlockChange& c : changes) {
+        if (c.y < 0 || c.y >= CHUNK_HEIGHT || c.oldType == c.newType) continue;
+        uint8_t oldEmission = getBlockLightEmission(c.oldType), newEmission = getBlockLightEmission(c.newType);
+        if (oldEmission > 0 && oldEmission != newEmission) {
+            // A lost emitter takes away everything it lit.
+            seeds.push_back({c.x, c.y, c.z, oldEmission});
+        } else if (newEmission == 0 && hasFlag(c.newType, BF_OPAQUE) && !hasFlag(c.oldType, BF_OPAQUE)) {
+            // Turned opaque: stop the light that passed through it.
+            auto [ch, i] = resolve(c.x, c.y, c.z);
+            if (!ch) continue;
+            ch->ensureSkyLightFlat();
+            if (unpackBlock(ch->skyLight.get()[i]) > 0) seeds.push_back({c.x, c.y, c.z, 0});
         }
     }
-    if (newEmission > 0 && newEmission != oldEmission) floodBlockLight(cm, x, y, z, newEmission);
+    // Clear, then re-flood from the emitters still around (other lava next
+    // to a draining cell), then light the new emitters.
+    if (!seeds.empty()) removeBlockLightSeeds(cm, seeds);
+    for (const BlockChange& c : changes) {
+        if (c.y < 0 || c.y >= CHUNK_HEIGHT) continue;
+        uint8_t newEmission = getBlockLightEmission(c.newType);
+        if (newEmission > 0 && newEmission != getBlockLightEmission(c.oldType))
+            floodBlockLight(cm, c.x, c.y, c.z, newEmission);
+    }
+}
+
+void relightBlockChange(ChunkManager* cm, int x, int y, int z, block_type oldType, block_type newType) {
+    relightBlockChanges(cm, {{x, y, z, oldType, newType}});
 }

@@ -95,7 +95,7 @@ class WaterSimulator {
     bool tickChannel(Channel& ch);
     // Lava touching water hardens; returns true if the cell turned solid.
     bool hardenLava(const WaterTickCell& cell);
-    // A water change can harden lava next to it: wake the lava around it.
+    // A water change can harden lava next to it: wake the lava cells around it.
     void wakeLavaAround(int x, int y, int z);
 
     // Heap-allocated so WaterSimulator.h doesn't pull <miniaudio.h>

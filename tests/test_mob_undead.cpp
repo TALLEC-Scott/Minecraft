@@ -136,7 +136,7 @@ TEST(UndeadTest, WaterPreventsAndExtinguishesBurning) {
     h.blocks.fill(-12, 1, -12, 12, 5, 12, WATER);
     Zombie z;
     z.pos = z.prevPos = glm::vec3(0, 2.0f, 0);
-    z.fireTicks = 50; // already alight when it falls in
+    z.setOnFire(50); // already alight when it falls in
     h.run(z, 60);
     EXPECT_TRUE(z.inWater);
     EXPECT_FALSE(z.burning());

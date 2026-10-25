@@ -79,7 +79,16 @@ void WaterSimulator::activateNeighbors(int x, int y, int z) {
 }
 
 void WaterSimulator::wakeLavaAround(int x, int y, int z) {
-    for (auto& d : DIRS_6) lava.nextActive.insert(glm::ivec3(x + d[0], y + d[1], z + d[2]));
+    // Only actual lava: water changes by the hundred per tick (ocean
+    // refills) and almost never touch any.
+    WorldResolver resolver(world->chunkManager);
+    for (auto& d : DIRS_6) {
+        int ny = y + d[1];
+        if (ny < 0 || ny >= CHUNK_HEIGHT) continue;
+        auto n = resolver.local(x + d[0], z + d[2]);
+        if (n.chunk && n.chunk->getBlockType(n.lx, ny, n.lz) == LAVA)
+            lava.nextActive.insert(glm::ivec3(x + d[0], ny, z + d[2]));
+    }
 }
 
 bool WaterSimulator::due(std::chrono::steady_clock::time_point& last, double interval) const {
@@ -99,6 +108,7 @@ void WaterSimulator::tick() {
     bool lavaDue = due(lavaLastTickTime, LAVA_RULES.tickSeconds);
     forceNextTick = false;
     bool anyChanged = false;
+    world->beginLightBatch();
     if (waterDue) {
         ZoneScopedN("WaterSimulator::tick");
         TracyPlot("water_active", (int64_t)water.nextActive.size());
@@ -108,6 +118,7 @@ void WaterSimulator::tick() {
         ZoneScopedN("LavaSimulator::tick");
         tickChannel(lava);
     }
+    world->endLightBatch();
 
     if (waterDue && audioLoaded && flowSound) {
         if (anyChanged && !ma_sound_is_playing(flowSound)) {

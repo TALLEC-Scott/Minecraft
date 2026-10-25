@@ -2,6 +2,7 @@
 
 #include "camera.h"
 #include "cube.h"
+#include "fire.h"
 #include "game_mode.h"
 #include "inventory_model.h"
 #include "item.h"
@@ -103,7 +104,7 @@ class Player {
     // 0..1 through eating the held food (< 0 when not eating).
     float getEatProgress() const;
     // Lava: on fire (Survival) and whether the eyes are in lava (orange fog).
-    bool isOnFire() const { return fireTicks > 0; }
+    bool isOnFire() const { return fire.burning(); }
     bool eyesInLava() const { return eyesInLava_; }
     bool eyesInWater() const { return eyesInWater_; }
     bool isDead() const { return health.isDead(); }
@@ -227,11 +228,9 @@ class Player {
     ItemId eatItem = ITEM_EMPTY;
     void updateEating(bool rightDown, double now);
     void updateHunger(double now);
-    // Lava and fire (Minecraft: lava 4 damage per hit, sets you on fire
-    // for 15 s; fire 1 damage per second; water puts it out). 20 TPS.
-    static constexpr int LAVA_FIRE_TICKS = 300;
-    static constexpr float LAVA_DAMAGE = 4.0f;
-    int fireTicks = 0;
+    // Lava and fire: the rules and numbers are FireState's (fire.h),
+    // shared with mobs. 20 TPS.
+    FireState fire;
     double hazardAccumulator = 0.0;
     bool bodyInLava = false;
     bool eyesInLava_ = false;

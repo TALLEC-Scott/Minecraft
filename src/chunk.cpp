@@ -695,8 +695,13 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                             // different liquid (lava next to water shows until it hardens).
                             show = (f != 5) && (nbType == AIR || (hasFlag(nbType, BF_LIQUID) && nbType != bt));
                         } else {
+                            block_type above = AIR;
+                            if (nbType == LAVA && nc[1] + 1 < CHUNK_HEIGHT) {
+                                Cube* a = getBlockCross(this, nc[0], nc[1] + 1, nc[2], nx_neg, nx_pos, nz_neg, nz_pos);
+                                above = a ? a->getType() : AIR;
+                            }
                             show = (nbType == AIR) || hasFlag(nbType, BF_CROSS) ||
-                                   (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
+                                   (hasFlag(nbType, BF_LIQUID) && !lavaCoversFace(nbType, fd.d, fd.d_sign, above)) ||
                                    (useFancyLeaves && (hasFlag(bt, BF_TRANSLUCENT) || hasFlag(nbType, BF_TRANSLUCENT)));
                         }
                         int val = show ? (int)bt : -1;
@@ -1065,6 +1070,8 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
             // Water
             pendingMesh.waterVerts.insert(pendingMesh.waterVerts.end(), sm.waterVerts.begin(), sm.waterVerts.end());
             for (auto idx_val : sm.waterIdx) pendingMesh.waterIdx.push_back(idx_val + waterVertOff);
+            lavaTrianglesFirst(pendingMesh.waterIdx, r.waterStart, pendingMesh.waterIdx.size(), sm.waterVerts.data(),
+                               waterVertOff);
             waterVertOff += (unsigned int)(sm.waterVerts.size() / WATER_BYTES_PER_VERT);
             r.opaqueCount = (uint32_t)pendingMesh.opaqueIdx.size() - r.opaqueStart;
             r.crossCount = (uint32_t)pendingMesh.crossIdx.size() - r.crossStart;

@@ -344,20 +344,19 @@ void Player::updateHazards(World* world, double dt) {
     eyesInWater_ = eyeT == WATER;
     bodyInWater = !bodyInLava && (eyesInWater_ || feetT == WATER || chestT == WATER);
     if (!isSurvival() || health.isDead()) {
-        fireTicks = 0;
+        fire.extinguish();
         return;
     }
     hazardAccumulator += dt;
     while (hazardAccumulator >= 0.05) {
         hazardAccumulator -= 0.05;
         if (bodyInLava) {
-            hurt(LAVA_DAMAGE, eye, false); // the 0.5 s invulnerability paces it
-            fireTicks = std::max(fireTicks, LAVA_FIRE_TICKS);
+            hurt(FireState::LAVA_DAMAGE, eye, false); // the 0.5 s invulnerability paces it
+            fire.ignite(FireState::LAVA_FIRE_TICKS);
         } else if (bodyInWater) {
-            fireTicks = 0; // water puts the fire out
-        } else if (fireTicks > 0) {
-            if (fireTicks % 20 == 0) hurt(1.0f, eye, false);
-            --fireTicks;
+            fire.extinguish();
+        } else if (float dmg = fire.tick(); dmg > 0.0f) {
+            hurt(dmg, eye, false);
         }
     }
 }
@@ -545,7 +544,7 @@ void Player::respawn(glm::vec3 eyePos) {
     health.respawn(glfwGetTime());
     hunger.reset();
     eating = false;
-    fireTicks = 0;
+    fire.extinguish();
     camera.setPosition(eyePos);
     camera.resetMotion();
 }

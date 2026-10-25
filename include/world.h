@@ -6,6 +6,7 @@
 #include "TerrainGenerator.h"
 #include "ChunkManager.h"
 #include "WaterSimulator.h"
+#include "light_propagation.h"
 #include "world_resolver.h"
 
 using WorldResolver = WorldResolverT<ChunkManager, Chunk>;
@@ -24,6 +25,10 @@ class World {
     void destroyBlock(glm::vec3 position) const;
     void placeBlock(glm::ivec3 position, block_type type) const;
     void setBlock(int x, int y, int z, block_type type, uint8_t waterLevel = 0) const;
+    // Between these, setBlock defers its light updates and the end call
+    // relights them all in one pass (WaterSimulator wraps each tick).
+    void beginLightBatch() const { lightBatching = true; }
+    void endLightBatch() const;
     Chunk* getChunk(int x, int y);
     Cube* getBlock(int x, int y, int z) const;
 
@@ -55,6 +60,8 @@ class World {
     mutable glm::vec3 lastCameraPos{0.0f};
     // Set by render(): every loaded chunk's visibleSections mask is valid.
     mutable bool caveCullValid = false;
+    mutable bool lightBatching = false;
+    mutable std::vector<BlockChange> pendingLight;
 
     ~World();
 

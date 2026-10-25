@@ -5,8 +5,11 @@
 // Declared at namespace scope so they're usable without pulling in
 // class Chunk / GL headers.
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <vector>
+#include "block_layers.h"
 #include "cube.h"
 #include "section_visibility.h"
 
@@ -32,6 +35,28 @@ struct WaterVertex {
 };
 #pragma pack(pop)
 static_assert(sizeof(WaterVertex) == 20);
+
+// Lava shares the liquid mesh with water but draws opaque. Within one
+// draw, triangles rasterize in index order, so putting lava first lets it
+// write depth before the blended water: water in front of lava then
+// blends over it instead of hiding it. Reorders idx[begin, end), whose
+// values minus `vertBase` index WaterVertex records in `verts`.
+inline void lavaTrianglesFirst(std::vector<unsigned int>& idx, size_t begin, size_t end, const uint8_t* verts,
+                               unsigned int vertBase = 0) {
+    auto isLava = [&](unsigned int v) {
+        return reinterpret_cast<const WaterVertex*>(verts + static_cast<size_t>(v - vertBase) * sizeof(WaterVertex))
+                   ->texLayer == block_layers::LAVA_LAYER;
+    };
+    bool anyLava = false, anyWater = false;
+    for (size_t i = begin; i + 2 < end; i += 3) (isLava(idx[i]) ? anyLava : anyWater) = true;
+    if (!anyLava || !anyWater) return;
+    std::vector<std::array<unsigned int, 3>> tris;
+    tris.reserve((end - begin) / 3);
+    for (size_t i = begin; i + 2 < end; i += 3) tris.push_back({idx[i], idx[i + 1], idx[i + 2]});
+    std::stable_partition(tris.begin(), tris.end(), [&](const auto& t) { return isLava(t[0]); });
+    for (size_t t = 0; t < tris.size(); ++t)
+        for (int k = 0; k < 3; ++k) idx[begin + t * 3 + k] = tris[t][k];
+}
 
 // Tri-state so water corner averaging can distinguish AIR (cliff edges —
 // pull corner down toward floor) from SOLID (shoreline — exclude from
