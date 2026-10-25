@@ -5,7 +5,9 @@ Reads the JSON that scripts/item_wiki (item_wiki.cpp) dumps from the game's
 own tables and writes docs/wiki/Items.md, plus a self-contained HTML page
 (sprites embedded) when --html is given.
 
-usage: item_wiki.py <items.json> [--html out.html]
+usage: item_wiki.py <items.json> [--html out.html [--standalone]]
+--standalone writes a complete HTML document (for serving on the site,
+e.g. /wiki.html); without it the page body suits an embedding viewer.
 Run from the project root (it reads src/texture_array.cpp for block icons).
 """
 import base64
@@ -174,7 +176,17 @@ def data_uri(path):
     return "data:image/png;base64," + base64.b64encode((ROOT / path).read_bytes()).decode()
 
 
-def write_html(data, layers, out):
+STANDALONE_HEAD = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0}img{max-width:100%}[hidden]{display:none!important}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+"""
+
+
+def write_html(data, layers, out, standalone=False):
     icon_of = {}  # name -> data URI
     for b in data["blocks"]:
         icon_of[b["name"]] = data_uri(layers[b["iconLayer"]])
@@ -283,6 +295,10 @@ def write_html(data, layers, out):
         "FIST_SPD": f'{data["fist"]["attackSpeed"]:g}',
     }.items():
         page = page.replace("{{" + key + "}}", val)
+    if standalone:
+        # The page's own <title>/<style> stay in the head; the rest is body.
+        split = page.index('<div class="wrap">')
+        page = STANDALONE_HEAD + page[:split] + "</head>\n<body>\n" + page[split:] + "\n</body>\n</html>\n"
     out.write_text(page)
 
 
@@ -290,7 +306,7 @@ TEMPLATE = r"""<title>Item Almanac</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" crossorigin href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
 /* Layout: one reading column of reference tables, a sticky search bar,
    inventory-slot icons as the recurring motif. */
@@ -475,7 +491,7 @@ def main():
     layers = texture_paths()
     write_markdown(data, layers, ROOT / "docs/wiki/Items.md")
     if "--html" in sys.argv:
-        write_html(data, layers, Path(sys.argv[sys.argv.index("--html") + 1]))
+        write_html(data, layers, Path(sys.argv[sys.argv.index("--html") + 1]), "--standalone" in sys.argv)
     return 0
 
 
