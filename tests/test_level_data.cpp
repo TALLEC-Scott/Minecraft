@@ -21,7 +21,9 @@ TEST(LevelDataTest, RoundTrip) {
     in.player.pitch = -30.0f;
     in.player.walkMode = true;
     in.player.selectedSlot = 3;
-    in.player.hotbar[0] = ITEM_IRON_SWORD;
+    in.player.inventory.clear();
+    in.player.inventory.slots[0] = {ITEM_IRON_SWORD, 1};
+    in.player.inventory.slots[25] = {DIRT, 42};
     in.player.gameMode = GameMode::Survival;
 
     LevelData out = roundTrip(in);
@@ -33,7 +35,10 @@ TEST(LevelDataTest, RoundTrip) {
     EXPECT_FLOAT_EQ(out.player.pitch, -30.0f);
     EXPECT_TRUE(out.player.walkMode);
     EXPECT_EQ(out.player.selectedSlot, 3);
-    EXPECT_EQ(out.player.hotbar[0], ITEM_IRON_SWORD);
+    EXPECT_EQ(out.player.inventory.slots[0].id, ITEM_IRON_SWORD);
+    EXPECT_EQ(out.player.inventory.slots[25].id, DIRT);
+    EXPECT_EQ(out.player.inventory.slots[25].count, 42);
+    EXPECT_TRUE(out.player.inventory.slots[1].empty());
     EXPECT_EQ(out.player.gameMode, GameMode::Survival);
 }
 
@@ -53,6 +58,27 @@ TEST(LevelDataTest, MalformedValuesKeepDefaults) {
     EXPECT_EQ(out.seed, 0u);
     EXPECT_FLOAT_EQ(out.player.position.x, PlayerSaveData{}.position.x);
     EXPECT_EQ(out.player.gameMode, GameMode::Creative);
-    EXPECT_EQ(out.player.selectedSlot, SAVED_HOTBAR_SIZE - 1);
-    EXPECT_EQ(out.player.hotbar[0], 1);
+    EXPECT_EQ(out.player.selectedSlot, PlayerInventory::HOTBAR_SIZE - 1);
+    EXPECT_EQ(out.player.inventory.slots[0].id, 1);
+}
+
+TEST(LevelDataTest, PreStackHotbarLoadsOneOfEach) {
+    std::istringstream old("hotbar=0,1,2,3,9,7,6,8,10,11\n");
+    LevelData out;
+    readLevelData(old, out);
+    EXPECT_TRUE(out.player.inventory.slots[0].empty());
+    EXPECT_EQ(out.player.inventory.slots[4].id, WOOD);
+    EXPECT_EQ(out.player.inventory.slots[4].count, 1);
+}
+
+TEST(LevelDataTest, InventoryClampsCountsAndDropsBadIds) {
+    std::istringstream f("inventory=3:200,9999:5,256:4,x:1,2:7\n");
+    LevelData out;
+    readLevelData(f, out);
+    EXPECT_EQ(out.player.inventory.slots[0].count, 64);
+    EXPECT_TRUE(out.player.inventory.slots[1].empty());
+    EXPECT_EQ(out.player.inventory.slots[2].id, ITEM_IRON_SWORD);
+    EXPECT_EQ(out.player.inventory.slots[2].count, 1);
+    EXPECT_TRUE(out.player.inventory.slots[3].empty()); // "x:1"
+    EXPECT_EQ(out.player.inventory.slots[4].count, 7);  // still read after the bad entry
 }

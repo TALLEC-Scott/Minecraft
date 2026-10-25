@@ -18,12 +18,17 @@ void writeLevelData(std::ostream& f, const LevelData& data) {
     f << "pitch=" << player.pitch << "\n";
     f << "walkMode=" << (player.walkMode ? 1 : 0) << "\n";
     f << "selectedSlot=" << player.selectedSlot << "\n";
-    f << "hotbar=";
-    for (int i = 0; i < SAVED_HOTBAR_SIZE; i++) {
+    f << "inventory=";
+    for (int i = 0; i < PlayerInventory::SIZE; i++) {
+        const ItemStack& stack = player.inventory.slots[i];
         if (i > 0) f << ",";
-        f << (int)player.hotbar[i];
+        f << (stack.empty() ? 0 : (int)stack.id) << ":" << (stack.empty() ? 0 : stack.count);
     }
     f << "\n";
+}
+
+static bool validId(int id) {
+    return id > 0 && id <= 0xFFFF && isValidItem(static_cast<ItemId>(id));
 }
 
 static void readLine(const std::string& key, const std::string& val, LevelData& data) {
@@ -49,15 +54,35 @@ static void readLine(const std::string& key, const std::string& val, LevelData& 
     else if (key == "walkMode")
         player.walkMode = (std::stoi(val) != 0);
     else if (key == "selectedSlot")
-        player.selectedSlot = std::clamp(std::stoi(val), 0, SAVED_HOTBAR_SIZE - 1);
-    else if (key == "hotbar") {
+        player.selectedSlot = std::clamp(std::stoi(val), 0, PlayerInventory::HOTBAR_SIZE - 1);
+    else if (key == "hotbar") { // pre-stack files: one of each
         std::istringstream iss(val);
         std::string token;
         int i = 0;
-        while (std::getline(iss, token, ',') && i < SAVED_HOTBAR_SIZE) {
+        while (std::getline(iss, token, ',') && i < PlayerInventory::HOTBAR_SIZE) {
             int id = std::stoi(token);
-            bool valid = id >= 0 && id <= 0xFFFF && isValidItem(static_cast<ItemId>(id));
-            player.hotbar[i++] = valid ? static_cast<ItemId>(id) : ITEM_EMPTY;
+            ItemStack& slot = player.inventory.slots[i++];
+            if (validId(id))
+                slot = {static_cast<ItemId>(id), 1};
+            else
+                slot.clear();
+        }
+    } else if (key == "inventory") {
+        player.inventory.clear();
+        std::istringstream iss(val);
+        std::string token;
+        int i = 0;
+        while (std::getline(iss, token, ',') && i < PlayerInventory::SIZE) {
+            ItemStack& slot = player.inventory.slots[i++];
+            auto colon = token.find(':');
+            if (colon == std::string::npos) continue;
+            try { // one bad entry only empties its own slot
+                int id = std::stoi(token.substr(0, colon));
+                int count = std::stoi(token.substr(colon + 1));
+                if (validId(id) && count > 0)
+                    slot = {static_cast<ItemId>(id), std::min(count, maxStackSize(static_cast<ItemId>(id)))};
+            } catch (const std::exception&) {
+            }
         }
     }
 }

@@ -13,16 +13,17 @@
 
 #include "cube.h"
 #include "game_mode.h"
+#include "inventory_model.h"
 #include "item.h"
-
-inline constexpr int SAVED_HOTBAR_SIZE = 10; // Player::HOTBAR_SIZE
 
 struct PlayerSaveData {
     glm::vec3 position = glm::vec3(15, 90, 15);
     float yaw = -90.0f;
     float pitch = 0.0f;
     bool walkMode = false;
-    ItemId hotbar[SAVED_HOTBAR_SIZE] = {AIR, GRASS, DIRT, STONE, WOOD, SAND, WATER, GLOWSTONE, LEAVES, SNOW};
+    // Saved as `inventory=id:count,...`; files from before stacks have only
+    // `hotbar=id,...` (one of each).
+    PlayerInventory inventory = defaultCreativeInventory();
     int selectedSlot = 0;
     GameMode gameMode = GameMode::Creative; // no key = a pre-game-mode world
 };
