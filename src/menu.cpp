@@ -7,6 +7,7 @@
 #include <cmath>
 
 #include "open_url.h"
+#include "texture_array.h"
 
 void Menu::init() {
     dirtTexture = UIRenderer::loadTexture("assets/Textures/dirt.png", true);
@@ -158,12 +159,26 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
         settingsReturnState = GameState::MainMenu;
         next = GameState::Settings;
     }
+    int buttonRows = 3;
 #ifndef __EMSCRIPTEN__
     // Browsers don't let a page programmatically close a tab the user opened,
     // so Quit is desktop-only — GLFW's close flag drives the native main loop.
     if (widgets.button(ui, "Quit Game", btnX, startY + gap * 3, btnW, btnH))
         glfwSetWindowShouldClose(window, true);
+    buttonRows = 4;
 #endif
+
+    // Item wiki: a small square under the buttons, the crafting-table top as
+    // its logo. Opens in the browser (open_url.h).
+    {
+        float size = btnH;
+        float wx = cx - size / 2.0f;
+        float wy = startY + gap * buttonRows;
+        if (widgets.button(ui, "", wx, wy, size, size, WidgetOpts{/*enabled=*/true, /*tooltip=*/"Item wiki"}))
+            openWebPage("wiki.html", "https://tallec.freeboxos.fr:7862/wiki.html");
+        if (GLuint icon = TextureArray::itemIcon(blockItem(CRAFTING_TABLE)))
+            ui.drawTexturedRect(wx + 6.0f, wy + 6.0f, size - 12.0f, size - 12.0f, icon, 0, 0, 1, 1);
+    }
 
     // Splash text — rotated, pulsing, bottom-right corner
     {
@@ -175,9 +190,6 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
     }
     ui.drawTextShadow("v0.9.2", 4.0f, (float)windowH - 12.0f, 1.0f, glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
 
-    // Small link to the item wiki, just above the version number.
-    if (widgets.button(ui, "Wiki", 6.0f, (float)windowH - 50.0f, 88.0f, 32.0f))
-        openWebPage("wiki.html", "https://tallec.freeboxos.fr:7862/wiki.html");
 
     // Background sound download (web): small bar near the bottom, same
     // colors as the world loading bar, gone once the sounds are loaded.
