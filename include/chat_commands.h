@@ -24,6 +24,10 @@ class ChatCommands {
 
     static bool isCommand(const std::string& line) { return !line.empty() && line[0] == '/'; }
 
+    // Optional on/off argument: none → flip `current`, "on"/"true" → true,
+    // "off"/"false" → false. Returns false for anything else.
+    static bool parseToggle(const std::string& arg, bool current, bool& out);
+
     // Run a command line (leading '/' included) and return its reply.
     // Unknown commands reply with a pointer to /help.
     Reply run(const std::string& line) const;

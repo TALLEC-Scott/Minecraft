@@ -30,6 +30,20 @@ const ChatCommands::Command* ChatCommands::find(const std::string& name) const {
     return nullptr;
 }
 
+bool ChatCommands::parseToggle(const std::string& arg, bool current, bool& out) {
+    std::string a = lower(arg);
+    if (a.empty()) {
+        out = !current;
+    } else if (a == "on" || a == "true") {
+        out = true;
+    } else if (a == "off" || a == "false") {
+        out = false;
+    } else {
+        return false;
+    }
+    return true;
+}
+
 ChatCommands::Reply ChatCommands::run(const std::string& line) const {
     Reply out;
     std::istringstream in(isCommand(line) ? line.substr(1) : line);
