@@ -29,9 +29,11 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <random>
 #include <thread>
+#include <unordered_map>
 
 #include "profiler.h"
 #include "tracy_shim.h"
@@ -278,11 +280,13 @@ static GLuint armVAO, armVBO, armEBO;
 static GLuint heldBlockVAO, heldBlockVBO, heldBlockEBO;
 static block_type lastHeldBlock = AIR; // track when to rebuild held block mesh
 
-// The one tool model (the sword), shared by first person and other players'
-// hands. Loaded from the tool's sprite on first draw.
-static HeldItemModel& heldToolModel() {
-    static HeldItemModel model;
-    return model;
+// One extruded model per item sprite, shared by first person, other
+// players' hands and dropped items. Each loads on its first draw.
+static HeldItemModel& itemModel(const char* spritePath) {
+    static std::unordered_map<std::string, std::unique_ptr<HeldItemModel>> models;
+    auto& model = models[spritePath];
+    if (!model) model = std::make_unique<HeldItemModel>();
+    return *model;
 }
 // Grip pixel of a tool sprite (sprite coords): where the hand holds it.
 static const glm::vec3 TOOL_GRIP(2.5f, 2.5f, 0.0f);
@@ -1233,12 +1237,13 @@ int main(int argc, char* argv[]) {
             glBindVertexArray(0);
         }
 
-        // Wireframe highlight cube (12 edges = 24 line vertices)
+        // Wireframe highlight cube (12 edges = 24 line vertices); also holds
+        // the crack overlay (6 faces = 36 triangle vertices).
         glGenVertexArrays(1, &highlightVAO);
         glGenBuffers(1, &highlightVBO);
         glBindVertexArray(highlightVAO);
         glBindBuffer(GL_ARRAY_BUFFER, highlightVBO);
-        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(24 * 10) * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(36 * 10) * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
         constexpr int HL_STRIDE = 10 * sizeof(float);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, HL_STRIDE, nullptr);
         glEnableVertexAttribArray(0);
@@ -2407,15 +2412,15 @@ int main(int argc, char* argv[]) {
 
                     // What they hold, in the right fist (third person).
                     glm::mat4 hand = PlayerRenderer::rightHandFrame(feetPos, pose.yaw);
-                    if (const char* spritePath = toolIconPath(r.heldItem)) {
+                    if (const char* spritePath = itemIconPath(r.heldItem)) {
                         // Tool: sprite slab standing in the arm's forward
                         // plane, blade angled forward and up (sprite +X -> +Z).
-                        if (heldToolModel().load(spritePath)) {
+                        if (HeldItemModel& toolModel = itemModel(spritePath); toolModel.load(spritePath)) {
                             glm::mat4 m = glm::rotate(hand, glm::radians(-90.0f), glm::vec3(0, 1, 0));
                             m = glm::scale(m, glm::vec3(0.045f)); // 16 px ≈ 0.72 blocks
                             m = glm::translate(m, -TOOL_GRIP);
                             ItemShading shading{lightTintFor(light), sunDir, cameraPos, fogColor, fogStart, fogEnd};
-                            heldToolModel().draw(viewProjection, m, shading);
+                            toolModel.draw(viewProjection, m, shading);
                             shaderProgram.use();
                         }
                     } else if (block_type held = itemBlock(r.heldItem);
@@ -2558,6 +2563,59 @@ int main(int argc, char* argv[]) {
                 glEnable(GL_CULL_FACE);
             }
 
+            // Survival mining: the destroy-stage crack on the block being
+            // broken, ten stages over the break time (as in Minecraft).
+            if (float progress = player.getMiningProgress(); progress >= 0.0f) {
+                int stage = std::clamp((int)(progress * block_layers::DESTROY_STAGE_COUNT), 0,
+                                       block_layers::DESTROY_STAGE_COUNT - 1);
+                float layer = (float)(block_layers::DESTROY_STAGE_FIRST_LAYER + stage);
+                glm::vec3 c(player.getMiningPos());
+                constexpr float e = 0.501f; // just outside the block's faces
+                // Per face: the 4 corners as (axis signs), then two triangles.
+                static const int FACE_CORNERS[6][4][3] = {
+                    {{1, -1, -1}, {1, 1, -1}, {1, 1, 1}, {1, -1, 1}},     {{-1, -1, 1}, {-1, 1, 1}, {-1, 1, -1}, {-1, -1, -1}},
+                    {{-1, -1, 1}, {1, -1, 1}, {1, 1, 1}, {-1, 1, 1}},     {{1, -1, -1}, {-1, -1, -1}, {-1, 1, -1}, {1, 1, -1}},
+                    {{-1, 1, -1}, {-1, 1, 1}, {1, 1, 1}, {1, 1, -1}},     {{-1, -1, 1}, {-1, -1, -1}, {1, -1, -1}, {1, -1, 1}},
+                };
+                static const float UV[4][2] = {{0, 0}, {0, 1}, {1, 1}, {1, 0}};
+                static const int TRI[6] = {0, 1, 2, 0, 2, 3};
+                float crackVerts[36 * 10];
+                int vi = 0;
+                for (const auto& face : FACE_CORNERS) {
+                    for (int k : TRI) {
+                        crackVerts[vi++] = c.x + face[k][0] * e;
+                        crackVerts[vi++] = c.y + face[k][1] * e;
+                        crackVerts[vi++] = c.z + face[k][2] * e;
+                        crackVerts[vi++] = UV[k][0];
+                        crackVerts[vi++] = UV[k][1];
+                        crackVerts[vi++] = 0;
+                        crackVerts[vi++] = 0;
+                        crackVerts[vi++] = 0; // normal (unused)
+                        crackVerts[vi++] = layer;
+                        crackVerts[vi++] = 1; // brightness = alpha multiplier
+                    }
+                }
+                glBindBuffer(GL_ARRAY_BUFFER, highlightVBO);
+                glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(crackVerts), crackVerts);
+
+                billboardShader.use();
+                billboardShader.setMat4("projection", projection);
+                billboardShader.setMat4("view", player.getViewMatrix());
+                billboardShader.setMat4("model", glm::mat4(1.0f));
+                billboardShader.setVec3("tintColor", glm::vec3(1.0f));
+                TextureArray::bind();
+                glDisable(GL_CULL_FACE);
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                glDepthMask(GL_FALSE);
+                glBindVertexArray(highlightVAO);
+                glDrawArrays(GL_TRIANGLES, 0, 36);
+                glBindVertexArray(0);
+                glDepthMask(GL_TRUE);
+                glDisable(GL_BLEND);
+                glEnable(GL_CULL_FACE);
+            }
+
             // Block-placement "pop" — expanding white wireframe that fades out.
             // Shares highlightVAO with the targeted-block outline (re-uploaded each frame).
             {
@@ -2638,13 +2696,13 @@ int main(int argc, char* argv[]) {
 
                 block_type heldType = player.getSelectedBlockType();
                 glDisable(GL_CULL_FACE);
-                if (const char* spritePath = toolIconPath(player.getSelectedItem())) {
+                if (const char* spritePath = itemIconPath(player.getSelectedItem())) {
                     // Tool (the sword): its sprite extruded into a pixel
                     // slab held in the hand — handle in the lower right, flat
                     // side toward the camera, blade leaning toward the
                     // crosshair. Attacks play Minecraft's swing about the
                     // hand; the arm runs from the hand to a fixed shoulder.
-                    HeldItemModel& swordModel = heldToolModel();
+                    HeldItemModel& swordModel = itemModel(spritePath);
                     if (swordModel.load(spritePath)) {
                         constexpr float ITEM_SCALE = 0.04f; // sprite pixels -> view units
                         const glm::vec3 HAND_REST(0.28f * aspect, -0.4f, -0.7f);

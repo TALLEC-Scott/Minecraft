@@ -40,9 +40,41 @@ class Inventory {
     void drawSurvival(UIRenderer& ui, int windowW, int windowH, double mx, double my, bool leftClick,
                       bool rightClick, bool shift, Player& player);
 
+    // Creative palette.
     static constexpr ItemId ITEMS[] = {
-        GRASS,  DIRT, STONE,  COAL_ORE, BEDROCK, WATER,           SAND, GLOWSTONE, WOOD,
-        LEAVES, SNOW, GRAVEL, CACTUS,   TNT,     ITEM_IRON_SWORD,
+        GRASS,
+        DIRT,
+        STONE,
+        COBBLESTONE,
+        COAL_ORE,
+        BEDROCK,
+        WATER,
+        SAND,
+        GRAVEL,
+        GLOWSTONE,
+        WOOD,
+        PLANKS,
+        LEAVES,
+        SNOW,
+        CACTUS,
+        TNT,
+        CRAFTING_TABLE,
+        ITEM_STICK,
+        ITEM_COAL,
+        ITEM_WOODEN_PICKAXE,
+        ITEM_WOODEN_AXE,
+        ITEM_WOODEN_SHOVEL,
+        ITEM_WOODEN_SWORD,
+        ITEM_STONE_PICKAXE,
+        ITEM_STONE_AXE,
+        ITEM_STONE_SHOVEL,
+        ITEM_STONE_SWORD,
+        ITEM_IRON_SWORD,
+        ITEM_APPLE,
+        ITEM_RAW_PORKCHOP,
+        ITEM_RAW_BEEF,
+        ITEM_RAW_CHICKEN,
+        ITEM_RAW_MUTTON,
     };
     static constexpr int NUM_ITEMS = sizeof(ITEMS) / sizeof(ITEMS[0]);
     static constexpr int GRID_COLS = 9;

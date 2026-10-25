@@ -68,6 +68,11 @@ class Player {
     float getSwingProgress() const;
     glm::mat4 getArmModelMatrix() const;
 
+    // Survival block breaking in progress: 0..1 towards breaking the block
+    // at getMiningPos(), or < 0 when not mining (drives the crack overlay).
+    float getMiningProgress() const { return mining && miningTicks > 0 ? (float)miningProgress : -1.0f; }
+    glm::ivec3 getMiningPos() const { return miningPos; }
+
     // Block-placement "pop" effect. Progress 0→1 over PLACE_ANIM_DURATION.
     // Returns <0 when no animation is active.
     float getPlaceAnimProgress() const;
@@ -131,6 +136,21 @@ class Player {
     double punchStartTime = 0.0;
     bool leftClickHeld = false;
     static constexpr double PUNCH_DURATION = 0.3;
+
+    // Survival mining (mining.h): progress on the block being held down.
+    bool mining = false;
+    bool miningBlocked = false; // this press hit a mob, so it doesn't mine
+    glm::ivec3 miningPos = glm::ivec3(0);
+    block_type miningType = AIR;
+    ItemId miningTool = ITEM_EMPTY;
+    int miningTicks = 0; // break time of the current block with the current tool
+    double miningProgress = 0.0;
+    double lastMiningTime = 0.0;
+    double nextMiningSound = 0.0;
+    double breakCooldownUntil = 0.0; // Minecraft's 5-tick pause between breaks
+    void updateMining(World* world, bool active, double now);
+    // Breaks the targeted block (network + world) and collects its drop.
+    void breakTargeted(World* world, block_type type, ItemId tool);
 
     // Block-placement pop animation
     glm::ivec3 lastPlacedPos = glm::ivec3(0);

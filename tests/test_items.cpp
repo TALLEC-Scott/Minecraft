@@ -20,16 +20,49 @@ TEST(ItemTest, SwordIsAToolThatPlacesNothing) {
     EXPECT_EQ(itemBlock(ITEM_IRON_SWORD), AIR);
     EXPECT_FALSE(isSword(blockItem(STONE)));
     EXPECT_EQ(itemIconLayer(ITEM_IRON_SWORD), -1) << "tool icons are standalone images";
-    EXPECT_NE(toolIconPath(ITEM_IRON_SWORD), nullptr);
-    EXPECT_EQ(toolIconPath(blockItem(STONE)), nullptr);
+    EXPECT_NE(itemIconPath(ITEM_IRON_SWORD), nullptr);
+    EXPECT_EQ(itemIconPath(blockItem(STONE)), nullptr);
+}
+
+TEST(ItemTest, EveryItemHasANameAndIcon) {
+    for (ItemId id = FIRST_ITEM; id <= LAST_ITEM; ++id) {
+        ASSERT_NE(itemInfo(id), nullptr) << id;
+        EXPECT_NE(itemInfo(id)->name, nullptr) << id;
+        EXPECT_NE(itemIconPath(id), nullptr) << id;
+    }
+    EXPECT_EQ(itemInfo(LAST_ITEM + 1), nullptr);
+    EXPECT_EQ(itemInfo(blockItem(DIRT)), nullptr);
+}
+
+TEST(ItemTest, ToolKindsAndTiers) {
+    EXPECT_EQ(toolKind(ITEM_WOODEN_PICKAXE), ToolKind::Pickaxe);
+    EXPECT_EQ(toolTier(ITEM_WOODEN_PICKAXE), 1);
+    EXPECT_EQ(toolKind(ITEM_STONE_AXE), ToolKind::Axe);
+    EXPECT_EQ(toolTier(ITEM_STONE_AXE), 2);
+    EXPECT_EQ(toolKind(ITEM_STONE_SHOVEL), ToolKind::Shovel);
+    EXPECT_TRUE(isSword(ITEM_WOODEN_SWORD));
+    EXPECT_TRUE(isTool(ITEM_IRON_SWORD));
+    EXPECT_FALSE(isTool(ITEM_STICK));
+    EXPECT_FALSE(isTool(blockItem(STONE)));
+    EXPECT_EQ(toolKind(ITEM_EMPTY), ToolKind::None);
+}
+
+TEST(ItemTest, FoodValues) {
+    EXPECT_TRUE(isFood(ITEM_APPLE));
+    EXPECT_EQ(foodStats(ITEM_APPLE).hunger, 4);
+    EXPECT_FLOAT_EQ(foodStats(ITEM_RAW_BEEF).saturation, 1.8f);
+    EXPECT_EQ(foodStats(ITEM_RAW_CHICKEN).hunger, 2);
+    EXPECT_FALSE(isFood(ITEM_STICK));
+    EXPECT_FALSE(isFood(blockItem(DIRT)));
 }
 
 TEST(ItemTest, ValidatesSavedIds) {
     EXPECT_TRUE(isValidItem(ITEM_EMPTY));
-    EXPECT_TRUE(isValidItem(blockItem(POPPY)));
+    EXPECT_TRUE(isValidItem(blockItem(CRAFTING_TABLE)));
     EXPECT_TRUE(isValidItem(ITEM_IRON_SWORD));
-    EXPECT_FALSE(isValidItem(static_cast<ItemId>(POPPY) + 1));
-    EXPECT_FALSE(isValidItem(LAST_TOOL_ITEM + 1));
+    EXPECT_TRUE(isValidItem(LAST_ITEM));
+    EXPECT_FALSE(isValidItem(static_cast<ItemId>(BLOCK_TYPE_COUNT)));
+    EXPECT_FALSE(isValidItem(LAST_ITEM + 1));
 }
 
 TEST(ItemTest, MinecraftMeleeStats) {
@@ -37,6 +70,9 @@ TEST(ItemTest, MinecraftMeleeStats) {
     EXPECT_DOUBLE_EQ(meleeStats(ITEM_IRON_SWORD).cooldownSeconds, 0.625);
     EXPECT_FLOAT_EQ(meleeStats(ITEM_EMPTY).damage, 1.0f);
     EXPECT_DOUBLE_EQ(meleeStats(blockItem(DIRT)).cooldownSeconds, 0.25);
+    EXPECT_FLOAT_EQ(meleeStats(ITEM_STONE_AXE).damage, 9.0f);
+    EXPECT_DOUBLE_EQ(meleeStats(ITEM_STONE_AXE).cooldownSeconds, 1.25);
+    EXPECT_FLOAT_EQ(meleeStats(ITEM_STICK).damage, 1.0f);
 }
 
 TEST(MeleeTest, AttackStrengthRampsOverTheCooldown) {

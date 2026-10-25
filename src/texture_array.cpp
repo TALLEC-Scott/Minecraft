@@ -15,10 +15,18 @@ static const char* TEXTURE_PATHS[] = {
     "assets/Textures/moon.png",       "assets/Textures/wood_top.png",   "assets/Textures/tnt.png",
     "assets/Textures/tnt_top.png",    "assets/Textures/tnt_bottom.png", "assets/Textures/smoke.png",
     "assets/Textures/tall_grass.png", "assets/Textures/dandelion.png",  "assets/Textures/poppy.png",
+    "assets/Textures/planks.png",     "assets/Textures/cobblestone.png",
+    "assets/Textures/crafting_table_top.png", "assets/Textures/crafting_table_side.png",
+    "assets/Textures/crafting_table_front.png",
+    "assets/Textures/destroy_stage_0.png", "assets/Textures/destroy_stage_1.png", "assets/Textures/destroy_stage_2.png",
+    "assets/Textures/destroy_stage_3.png", "assets/Textures/destroy_stage_4.png", "assets/Textures/destroy_stage_5.png",
+    "assets/Textures/destroy_stage_6.png", "assets/Textures/destroy_stage_7.png", "assets/Textures/destroy_stage_8.png",
+    "assets/Textures/destroy_stage_9.png",
 };
+static_assert(sizeof(TEXTURE_PATHS) / sizeof(TEXTURE_PATHS[0]) == block_layers::NUM_LAYERS, "one path per layer");
 static constexpr int NUM_LAYERS = TextureArray::NUM_LAYERS;
 static GLuint layerTextures2D[NUM_LAYERS] = {};
-static GLuint toolIcons[LAST_TOOL_ITEM - FIRST_TOOL_ITEM + 1] = {};
+static GLuint itemIcons[LAST_ITEM - FIRST_ITEM + 1] = {};
 
 // RGBA 2D texture with nearest filtering (pixel-art UI icons). 0 on failure.
 static GLuint loadUiTexture(const char* path) {
@@ -97,13 +105,13 @@ void TextureArray::initLayerTextures() {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         stbi_image_free(data);
     }
-    for (ItemId id = FIRST_TOOL_ITEM; id <= LAST_TOOL_ITEM; ++id)
-        if (const char* path = toolIconPath(id)) toolIcons[id - FIRST_TOOL_ITEM] = loadUiTexture(path);
+    for (ItemId id = FIRST_ITEM; id <= LAST_ITEM; ++id)
+        if (const char* path = itemIconPath(id)) itemIcons[id - FIRST_ITEM] = loadUiTexture(path);
     stbi_set_flip_vertically_on_load(true); // restore for GL textures
 }
 
 GLuint TextureArray::itemIcon(ItemId id) {
-    if (!isBlockItem(id)) return id <= LAST_TOOL_ITEM ? toolIcons[id - FIRST_TOOL_ITEM] : 0;
+    if (!isBlockItem(id)) return id <= LAST_ITEM ? itemIcons[id - FIRST_ITEM] : 0;
     return getLayerTexture2D(itemIconLayer(id));
 }
 
@@ -119,7 +127,7 @@ void TextureArray::destroyLayerTextures() {
             layerTextures2D[i] = 0;
         }
     }
-    for (GLuint& tex : toolIcons) {
+    for (GLuint& tex : itemIcons) {
         if (tex) glDeleteTextures(1, &tex);
         tex = 0;
     }

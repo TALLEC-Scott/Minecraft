@@ -2,7 +2,7 @@
 #include "texture_array.h"
 
 const char* Inventory::itemName(ItemId id) {
-    if (id == ITEM_IRON_SWORD) return "Iron Sword";
+    if (const ItemInfo* info = itemInfo(id)) return info->name;
     switch (itemBlock(id)) {
     case GRASS:
         return "Grass";
@@ -32,6 +32,18 @@ const char* Inventory::itemName(ItemId id) {
         return "Cactus";
     case TNT:
         return "TNT";
+    case TALL_GRASS:
+        return "Grass";
+    case DANDELION:
+        return "Dandelion";
+    case POPPY:
+        return "Poppy";
+    case PLANKS:
+        return "Oak Planks";
+    case COBBLESTONE:
+        return "Cobblestone";
+    case CRAFTING_TABLE:
+        return "Crafting Table";
     default:
         return "?";
     }

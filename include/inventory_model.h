@@ -23,7 +23,7 @@ struct ItemStack {
 
 // Tools don't stack, as in Minecraft; everything else stacks to 64.
 inline int maxStackSize(ItemId id) {
-    return isSword(id) ? 1 : 64;
+    return isTool(id) ? 1 : 64;
 }
 
 class PlayerInventory {
