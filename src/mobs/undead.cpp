@@ -34,7 +34,7 @@ bool UndeadMob::sunExposed(const MobContext& ctx) const {
 void UndeadMob::customTick(MobContext& ctx) {
     if (inWater) {
         fireTicks = 0;
-    } else if (!dying && sunExposed(ctx)) {
+    } else if (!dying && (inLava || sunExposed(ctx))) {
         fireTicks = std::max(fireTicks, SUN_FIRE_TICKS);
     }
 

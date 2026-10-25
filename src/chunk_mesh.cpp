@@ -22,11 +22,13 @@ static constexpr int BYTES_PER_VERT = sizeof(PackedVertex);
 static constexpr int WATER_BYTES_PER_VERT = sizeof(WaterVertex);
 
 // Reads in-chunk from blocks[]/waterLevels[], cross-chunk from the
-// snapshotted NeighborBorders (cardinal edges + diagonal corners).
+// snapshotted NeighborBorders (cardinal edges + diagonal corners). Only
+// cells of `fluid` (the liquid being meshed) count as fluid, so water and
+// lava each slope against themselves.
 static WaterCellSample sampleBorder(const Cube* blocks, const uint8_t* waterLevels, const NeighborBorders& nb, int bx,
-                                    int by, int bz) {
-    auto classify = [](block_type t, uint8_t raw) -> WaterCellSample {
-        if (t == WATER) return {CellKind::Water, raw};
+                                    int by, int bz, block_type fluid) {
+    auto classify = [fluid](block_type t, uint8_t raw) -> WaterCellSample {
+        if (t == fluid) return {CellKind::Water, raw};
         if (t == AIR) return {CellKind::Air, 0};
         return {CellKind::Solid, 0};
     };
@@ -71,9 +73,10 @@ static WaterCellSample sampleBorder(const Cube* blocks, const uint8_t* waterLeve
 }
 
 static void computeWaterTopCornersBorder(const Cube* blocks, const uint8_t* waterLevels, int bx, int by, int bz,
-                                         int uSign, int vSign, float out[4], const NeighborBorders& nb) {
+                                         int uSign, int vSign, float out[4], const NeighborBorders& nb,
+                                         block_type fluid) {
     computeWaterTopCornersT(bx, by, bz, uSign, vSign, out,
-                            [&](int x, int y, int z) { return sampleBorder(blocks, waterLevels, nb, x, y, z); });
+                            [&](int x, int y, int z) { return sampleBorder(blocks, waterLevels, nb, x, y, z, fluid); });
 }
 
 // Side-face corner indices into topCorners[4] computed with uSign=1, vSign=-1.
@@ -163,7 +166,7 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
             uint8_t raw = waterLevels ? waterLevels[wi] : 0;
             if (!waterIsSource(raw)) return -1;
             float corners[4];
-            computeWaterTopCornersBorder(blocks, waterLevels, c[0], c[1], c[2], fd.u_sign, fd.v_sign, corners, nb);
+            computeWaterTopCornersBorder(blocks, waterLevels, c[0], c[1], c[2], fd.u_sign, fd.v_sign, corners, nb, bt);
             for (int i = 1; i < 4; i++)
                 if (corners[i] != corners[0]) return -1;
             waterBits = (17 + static_cast<int>(std::lround((corners[0] - c[1]) * 32.0f))) << 18;
@@ -249,7 +252,9 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                     block_type nbType = getTypeCross(nc[0], nc[1], nc[2]);
                     bool show;
                     if (hasFlag(bt, BF_LIQUID)) {
-                        show = (f != 5) && (nbType == AIR);
+                        // Against air, or a different liquid (lava next to water shows
+                        // until it hardens).
+                        show = (f != 5) && (nbType == AIR || (hasFlag(nbType, BF_LIQUID) && nbType != bt));
                     } else {
                         show = (nbType == AIR) || hasFlag(nbType, BF_CROSS) ||
                                (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
@@ -291,8 +296,10 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                     float d_val = (float)d + fd.d_sign * 0.5f;
 
                     float waterY2[4] = {d_val, d_val, d_val, d_val};
-                    if (bt == (int)WATER && f == 4) {
-                        computeWaterTopCornersBorder(blocks, waterLevels, u, d, v, fd.u_sign, fd.v_sign, waterY2, nb);
+                    const bool liquid = hasFlag((block_type)bt, BF_LIQUID);
+                    if (liquid && f == 4) {
+                        computeWaterTopCornersBorder(blocks, waterLevels, u, d, v, fd.u_sign, fd.v_sign, waterY2, nb,
+                                                     (block_type)bt);
                     }
 
                     float u_lo = (float)u - 0.5f, u_hi = (float)(u + w) - 0.5f;
@@ -303,9 +310,9 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                     float v1 = fd.v_sign > 0 ? v_hi : v_lo;
 
                     float vp[4][3];
-                    bool isWT2 = (bt == (int)WATER && f == 4);
+                    bool isWT2 = (liquid && f == 4);
 
-                    bool isWaterSide2 = (bt == (int)WATER && f != 4 && f != 5 && fd.v == 1);
+                    bool isWaterSide2 = (liquid && f != 4 && f != 5 && fd.v == 1);
                     float sideTopA2 = v1, sideTopB2 = v1;
                     if (isWaterSide2 && waterLevels) {
                         int bc[3];
@@ -313,7 +320,8 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                         bc[fd.u] = u;
                         bc[fd.v] = v;
                         float topY2[4];
-                        computeWaterTopCornersBorder(blocks, waterLevels, bc[0], bc[1], bc[2], 1, -1, topY2, nb);
+                        computeWaterTopCornersBorder(blocks, waterLevels, bc[0], bc[1], bc[2], 1, -1, topY2, nb,
+                                                     (block_type)bt);
                         sideTopA2 = topY2[SIDE_TOP_IDX[f][0]];
                         sideTopB2 = topY2[SIDE_TOP_IDX[f][1]];
                     }
@@ -373,7 +381,8 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                         blockLightVals[vi] = blDirect(bc[0] + n[0], bc[1] + n[1], bc[2] + n[2]);
                     }
 
-                    bool isWater = (bt == (int)WATER);
+                    // Both liquids go in the liquid pass (lava draws opaque there).
+                    bool isWater = liquid;
                     auto& idx = isWater ? waterIdx : opaqueIdx;
                     unsigned int& base = isWater ? waterBase : opaqueBase;
 

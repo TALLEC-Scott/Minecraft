@@ -220,7 +220,7 @@ void MobManager::trySpawnGroup(MobContext& ctx, MobCategory category) {
     int surface = -1;
     for (int y = CHUNK_HEIGHT - 1; y > 0; --y) {
         block_type t = blocks->blockAt(x, y, z);
-        if (t == WATER || (hasFlag(t, BF_SOLID) && hasFlag(t, BF_OPAQUE))) {
+        if (hasFlag(t, BF_LIQUID) || (hasFlag(t, BF_SOLID) && hasFlag(t, BF_OPAQUE))) {
             surface = y;
             break;
         }

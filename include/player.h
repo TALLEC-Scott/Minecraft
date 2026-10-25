@@ -102,6 +102,9 @@ class Player {
     void setVitals(float healthValue, int food, float saturation);
     // 0..1 through eating the held food (< 0 when not eating).
     float getEatProgress() const;
+    // Lava: on fire (Survival) and whether the eyes are in lava (orange fog).
+    bool isOnFire() const { return fireTicks > 0; }
+    bool eyesInLava() const { return eyesInLava_; }
     bool isDead() const { return health.isDead(); }
     glm::vec3 getFeetPosition() const { return camera.getPosition() - glm::vec3(0.0f, PLAYER_HEIGHT, 0.0f); }
     // Damage from a world position (mob, explosion). Knockback pushes away
@@ -223,6 +226,15 @@ class Player {
     ItemId eatItem = ITEM_EMPTY;
     void updateEating(bool rightDown, double now);
     void updateHunger(double now);
+    // Lava and fire (Minecraft: lava 4 damage per hit, sets you on fire
+    // for 15 s; fire 1 damage per second; water puts it out). 20 TPS.
+    static constexpr int LAVA_FIRE_TICKS = 300;
+    static constexpr float LAVA_DAMAGE = 4.0f;
+    int fireTicks = 0;
+    double hazardAccumulator = 0.0;
+    bool bodyInLava = false;
+    bool eyesInLava_ = false;
+    void updateHazards(World* world, double dt);
     // Every left-click swing restarts the attack charge (Minecraft resets
     // it on misses too); far in the past = fully charged on spawn.
     double lastSwingTime = -100.0;

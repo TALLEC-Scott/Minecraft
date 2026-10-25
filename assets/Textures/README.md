@@ -15,9 +15,11 @@ modified versions of them, stay under CC BY-SA 4.0; the rest of the project is u
 | `crafting_table_side.png` | `ITEMS/mcl_crafting_table/textures/crafting_workbench_side.png` (unmodified) |
 | `crafting_table_front.png` | `ITEMS/mcl_crafting_table/textures/crafting_workbench_front.png` (unmodified) |
 | `destroy_stage_0.png` … `destroy_stage_9.png` | `HUD/mcl_base_textures/textures/crack_anylength.png`, split into its ten 16×16 frames |
+| `lava.png` | `ITEMS/mcl_core/textures/default_lava_source_animated.png`, first 16×16 frame of the animation |
+| `obsidian.png` | `ITEMS/mcl_core/textures/default_obsidian.png` (unmodified) |
 
 Note: Mineclonia's `mcl_core/README.md` still says its textures come from the "Faithful 1.11"
-pack, which conflicts with the repository-wide `LEGAL.md`. `planks.png` and `cobblestone.png`
-are used on the strength of `LEGAL.md`.
+pack, which conflicts with the repository-wide `LEGAL.md`. `planks.png`, `cobblestone.png`,
+`lava.png` and `obsidian.png` are used on the strength of `LEGAL.md`.
 
 Item textures are credited in `items/README.md`.

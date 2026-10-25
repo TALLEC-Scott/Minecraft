@@ -170,6 +170,10 @@ inline const char* itemName(ItemId id) {
         return "Cobblestone";
     case CRAFTING_TABLE:
         return "Crafting Table";
+    case LAVA:
+        return "Lava";
+    case OBSIDIAN:
+        return "Obsidian";
     default:
         return "?";
     }

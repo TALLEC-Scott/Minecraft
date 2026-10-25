@@ -35,7 +35,9 @@ constexpr int CRAFTING_TABLE_FRONT_LAYER = 31;
 // Block-breaking crack overlay, stages 0..9 (frag.shd cuts these out).
 constexpr int DESTROY_STAGE_FIRST_LAYER = 32;
 constexpr int DESTROY_STAGE_COUNT = 10;
-constexpr int NUM_LAYERS = DESTROY_STAGE_FIRST_LAYER + DESTROY_STAGE_COUNT;
+constexpr int LAVA_LAYER = DESTROY_STAGE_FIRST_LAYER + DESTROY_STAGE_COUNT; // 42 (frag.shd: opaque, glowing)
+constexpr int OBSIDIAN_LAYER = LAVA_LAYER + 1;
+constexpr int NUM_LAYERS = OBSIDIAN_LAYER + 1;
 
 // Face-aware: grass uses different textures per face (top=grass,
 // bottom=dirt, sides=grass_side). Wood is top/bottom vs sides. Other
@@ -70,6 +72,8 @@ inline int layerForFace(block_type t, int face) {
         // Two opposite sides show the tools, the other two the plain side.
         return (face == 0 || face == 1) ? CRAFTING_TABLE_FRONT_LAYER : CRAFTING_TABLE_SIDE_LAYER;
     }
+    if (t == LAVA) return LAVA_LAYER;
+    if (t == OBSIDIAN) return OBSIDIAN_LAYER;
     return static_cast<int>(t);
 }
 
@@ -81,6 +85,8 @@ inline int layerForType(block_type t) {
     if (t == PLANKS) return PLANKS_LAYER;
     if (t == COBBLESTONE) return COBBLESTONE_LAYER;
     if (t == CRAFTING_TABLE) return CRAFTING_TABLE_SIDE_LAYER;
+    if (t == LAVA) return LAVA_LAYER;
+    if (t == OBSIDIAN) return OBSIDIAN_LAYER;
     return static_cast<int>(t);
 }
 
