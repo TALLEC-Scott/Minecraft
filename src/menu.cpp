@@ -13,7 +13,7 @@ void Menu::init() {
     ma_engine_config config = ma_engine_config_init();
     if (ma_engine_init(&config, &audioEngine) == MA_SUCCESS) {
         audioInitialized = true;
-        if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/click.wav", MA_SOUND_FLAG_DECODE, nullptr, nullptr,
+        if (ma_sound_init_from_file(&audioEngine, "assets/Sounds/click.ogg", MA_SOUND_FLAG_DECODE, nullptr, nullptr,
                                     &clickSound) == MA_SUCCESS) {
             clickLoaded = true;
         }

@@ -21,13 +21,13 @@ void WaterSimulator::initAudio(ma_engine* engine) {
     if (!engine) return;
     // CA transition sound (short bursts when blocks change)
     if (!flowSound) flowSound = new ma_sound{};
-    ma_sound_init_from_file(engine, "assets/Sounds/liquid/water.wav", MA_SOUND_FLAG_DECODE, nullptr, nullptr,
+    ma_sound_init_from_file(engine, "assets/Sounds/liquid/water.ogg", MA_SOUND_FLAG_DECODE, nullptr, nullptr,
                             flowSound);
     ma_sound_set_looping(flowSound, MA_FALSE);
     ma_sound_set_volume(flowSound, 0.5f);
     // Ambient loop — plays continuously when player is near flowing water
     if (!ambientFlowSound) ambientFlowSound = new ma_sound{};
-    ma_sound_init_from_file(engine, "assets/Sounds/liquid/water.wav", MA_SOUND_FLAG_DECODE, nullptr, nullptr,
+    ma_sound_init_from_file(engine, "assets/Sounds/liquid/water.ogg", MA_SOUND_FLAG_DECODE, nullptr, nullptr,
                             ambientFlowSound);
     ma_sound_set_looping(ambientFlowSound, MA_TRUE);
     ma_sound_set_volume(ambientFlowSound, 0.0f);
