@@ -497,7 +497,7 @@ void processInput(GLFWwindow* window) {
     if (pauseDown && !escKeyPressed) {
         if (inventory.isOpen()) {
             // Close inventory instead of pausing
-            inventory.close();
+            inventory.close(player);
             glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
             player.resetMouseState();
         } else {
@@ -523,7 +523,7 @@ void processInput(GLFWwindow* window) {
     // Inventory toggle: 'E' key (edge-triggered)
     bool eKeyDown = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
     if (eKeyDown && !eKeyPressed) {
-        inventory.toggle();
+        inventory.toggle(player);
         if (inventory.isOpen()) {
             glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
         } else {
@@ -870,7 +870,7 @@ int main(int argc, char* argv[]) {
             pd.yaw = player.getYaw();
             pd.pitch = player.getPitch();
             pd.walkMode = player.isWalkMode();
-            std::memcpy(pd.hotbar, player.getHotbar(), sizeof(pd.hotbar));
+            pd.inventory = player.getInventory();
             pd.selectedSlot = player.getSelectedSlot();
             pd.gameMode = player.getGameMode();
             return pd;
@@ -1002,13 +1002,16 @@ int main(int argc, char* argv[]) {
                 player.getCamera().setPosition(loaded.position);
                 player.setYawPitch(loaded.yaw, loaded.pitch);
                 player.getCamera().setWalkMode(loaded.walkMode);
-                for (int i = 0; i < Player::HOTBAR_SIZE; i++) player.setHotbarSlot(i, loaded.hotbar[i]);
                 player.setSelectedSlot(loaded.selectedSlot);
             } else {
                 player.getCamera().setPosition(glm::vec3(15, 90, 15));
                 player.setYawPitch(-90.0f, 0.0f);
                 player.getCamera().setWalkMode(false);
             }
+            // A new Survival world starts with nothing; otherwise the saved
+            // inventory (or the creative default for a new Creative world).
+            if (!hadSave && loaded.gameMode == GameMode::Survival) loaded.inventory.clear();
+            player.getInventory() = loaded.inventory;
             // After the walk-mode restore: Survival forces walking.
             player.setGameMode(loaded.gameMode);
             // Fresh health + motion for every world entered (health isn't saved).
@@ -2731,7 +2734,7 @@ int main(int argc, char* argv[]) {
                 uiRenderer.begin(windowWidth, windowHeight);
                 // Background
                 uiRenderer.drawRect(barX, barY, totalW, SLOT_SIZE + BAR_PAD * 2, glm::vec4(0.0f, 0.0f, 0.0f, 0.5f));
-                const ItemId* hotbar = player.getHotbar();
+                const PlayerInventory& inv = player.getInventory();
                 int sel = player.getSelectedSlot();
                 for (int i = 0; i < HSIZE; i++) {
                     float sx = barX + BAR_PAD + i * (SLOT_SIZE + SLOT_PAD);
@@ -2740,11 +2743,17 @@ int main(int argc, char* argv[]) {
                     glm::vec4 slotColor =
                         (i == sel) ? glm::vec4(1.0f, 1.0f, 1.0f, 0.4f) : glm::vec4(0.3f, 0.3f, 0.3f, 0.4f);
                     uiRenderer.drawRect(sx, sy, SLOT_SIZE, SLOT_SIZE, slotColor);
-                    // Item icon (block top face) — skip empty slots
-                    if (hotbar[i] != ITEM_EMPTY) {
-                        GLuint tex = TextureArray::itemIcon(hotbar[i]);
+                    // Item icon (block top face) and stack count — skip empty slots
+                    const ItemStack& stack = inv.slots[i];
+                    if (!stack.empty()) {
+                        GLuint tex = TextureArray::itemIcon(stack.id);
                         if (tex) {
                             uiRenderer.drawTexturedRect(sx + 4, sy + 4, SLOT_SIZE - 8, SLOT_SIZE - 8, tex, 0, 0, 1, 1);
+                        }
+                        if (stack.count > 1) {
+                            std::string count = std::to_string(stack.count);
+                            uiRenderer.drawTextShadow(count, sx + SLOT_SIZE - 2 - uiRenderer.textWidth(count, 1.5f),
+                                                      sy + SLOT_SIZE - 14, 1.5f);
                         }
                     }
                     // Slot number
@@ -2787,7 +2796,7 @@ int main(int argc, char* argv[]) {
             static double deathTime = 0.0;
             bool deadNow = currentState == GameState::Playing && player.isDead();
             if (deadNow && !wasDead) {
-                if (inventory.isOpen()) inventory.close();
+                if (inventory.isOpen()) inventory.close(player);
                 glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
                 deathTime = glfwGetTime();
             }

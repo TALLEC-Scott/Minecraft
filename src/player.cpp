@@ -231,7 +231,9 @@ void Player::handleInput(GLFWwindow* window, World* world) {
                 // transparent on the happy path.
                 if (netSession)
                     netSession->notifyLocalPlace(placementPos, static_cast<uint8_t>(getSelectedBlockType()));
-                world->placeBlock(placementPos, getSelectedBlockType());
+                block_type placed = getSelectedBlockType();
+                world->placeBlock(placementPos, placed);
+                if (isSurvival()) inventory.take(selectedSlot, 1); // Creative never runs out
                 // Arm swing (same feedback as left-click) + outline pop at placement pos
                 isPunching = true;
                 punchStartTime = glfwGetTime();

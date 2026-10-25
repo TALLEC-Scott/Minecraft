@@ -3,6 +3,7 @@
 #include "camera.h"
 #include "cube.h"
 #include "game_mode.h"
+#include "inventory_model.h"
 #include "item.h"
 #include "player_health.h"
 #include <GLFW/glfw3.h>
@@ -42,17 +43,18 @@ class Player {
     glm::ivec3 getTargetedBlock() const { return targeted; }
     glm::ivec3 getPlacementPos() const { return placementPos; }
 
-    // Hotbar
-    static constexpr int HOTBAR_SIZE = 10;
+    // Inventory: hotbar = slots 0..HOTBAR_SIZE-1, the selected one is held.
+    static constexpr int HOTBAR_SIZE = PlayerInventory::HOTBAR_SIZE;
     int getSelectedSlot() const { return selectedSlot; }
     void setSelectedSlot(int s) { selectedSlot = s; }
-    ItemId getSelectedItem() const { return hotbar[selectedSlot]; }
-    // Block the selected slot places (AIR for tools / empty hand).
-    block_type getSelectedBlockType() const { return itemBlock(hotbar[selectedSlot]); }
-    void setHotbarSlot(int slot, ItemId item) {
-        if (slot >= 0 && slot < HOTBAR_SIZE) hotbar[slot] = item;
+    ItemId getSelectedItem() const {
+        const ItemStack& s = inventory.slots[selectedSlot];
+        return s.empty() ? ITEM_EMPTY : s.id;
     }
-    const ItemId* getHotbar() const { return hotbar; }
+    // Block the selected slot places (AIR for tools / empty hand).
+    block_type getSelectedBlockType() const { return itemBlock(getSelectedItem()); }
+    PlayerInventory& getInventory() { return inventory; }
+    const PlayerInventory& getInventory() const { return inventory; }
 
     bool isWalkMode() const { return camera.isWalkMode(); }
 
@@ -120,8 +122,7 @@ class Player {
     glm::ivec3 placementPos = glm::ivec3(0);
     bool hasHighlight = false;
 
-    // Hotbar
-    ItemId hotbar[HOTBAR_SIZE] = {AIR, GRASS, DIRT, STONE, WOOD, SAND, WATER, GLOWSTONE, LEAVES, SNOW};
+    PlayerInventory inventory = defaultCreativeInventory();
     int selectedSlot = 0;
     bool rightClickHeld = false;
 
