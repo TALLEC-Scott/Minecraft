@@ -1,8 +1,10 @@
 #include "inventory.h"
 #include "texture_array.h"
+#include "world.h"
+#include "entity_manager.h"
 
 const char* Inventory::itemName(ItemId id) {
-    if (id == ITEM_IRON_SWORD) return "Iron Sword";
+    if (const ItemInfo* info = itemInfo(id)) return info->name;
     switch (itemBlock(id)) {
     case GRASS:
         return "Grass";
@@ -32,18 +34,72 @@ const char* Inventory::itemName(ItemId id) {
         return "Cactus";
     case TNT:
         return "TNT";
+    case TALL_GRASS:
+        return "Grass";
+    case DANDELION:
+        return "Dandelion";
+    case POPPY:
+        return "Poppy";
+    case PLANKS:
+        return "Oak Planks";
+    case COBBLESTONE:
+        return "Cobblestone";
+    case CRAFTING_TABLE:
+        return "Crafting Table";
     default:
         return "?";
     }
 }
 
+// Item icon + stack count (when more than one), as on the hotbar.
+static void drawStack(UIRenderer& ui, const ItemStack& stack, float x, float y, float size) {
+    if (stack.empty()) return;
+    constexpr float ICON_PAD = 6.0f;
+    GLuint tex = TextureArray::itemIcon(stack.id);
+    if (tex) ui.drawTexturedRect(x + ICON_PAD, y + ICON_PAD, size - ICON_PAD * 2, size - ICON_PAD * 2, tex, 0, 0, 1, 1);
+    if (stack.count > 1) {
+        std::string count = std::to_string(stack.count);
+        ui.drawTextShadow(count, x + size - 3 - ui.textWidth(count, 1.5f), y + size - 15, 1.5f);
+    }
+}
+
+void Inventory::close(Player& player, World* world) {
+    open = false;
+    std::vector<ItemStack> leftovers = craft.returnTo(player.getInventory());
+    if (!cursor.empty()) {
+        int left = player.getInventory().add(cursor.id, cursor.count);
+        if (left > 0) leftovers.push_back({cursor.id, left});
+    }
+    cursor.clear();
+    if (world && world->entityManager)
+        for (const ItemStack& s : leftovers)
+            world->entityManager->throwItem(s.id, s.count, player.getPosition(), player.getFront());
+}
+
 void Inventory::draw(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window, Player& player) {
     double mx, my;
     glfwGetCursorPos(window, &mx, &my);
-    bool mouseDown = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-    bool clicked = mouseDown && !mouseWasPressed;
-    mouseWasPressed = mouseDown;
+    bool leftDown = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+    bool rightDown = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+    bool leftClick = leftDown && !leftWasPressed;
+    bool rightClick = rightDown && !rightWasPressed;
+    leftWasPressed = leftDown;
+    rightWasPressed = rightDown;
+    bool shift = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+                 glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
 
+    ui.begin(windowW, windowH);
+    // Dark overlay
+    ui.drawRect(0, 0, (float)windowW, (float)windowH, glm::vec4(0.0f, 0.0f, 0.0f, 0.6f));
+    if (player.isSurvival() || tableMode)
+        drawSurvival(ui, windowW, windowH, mx, my, leftClick, rightClick, shift, player);
+    else
+        drawCreative(ui, windowW, windowH, mx, my, leftClick, player);
+    ui.end();
+}
+
+void Inventory::drawCreative(UIRenderer& ui, int windowW, int windowH, double mx, double my, bool clicked,
+                             Player& player) {
     constexpr float CELL_SIZE = 48.0f;
     constexpr float CELL_PAD = 4.0f;
     constexpr float ICON_PAD = 6.0f;
@@ -62,11 +118,6 @@ void Inventory::draw(UIRenderer& ui, int windowW, int windowH, GLFWwindow* windo
 
     float gridX = panelX + PANEL_PAD;
     float gridY = panelY + PANEL_PAD + TITLE_H;
-
-    ui.begin(windowW, windowH);
-
-    // Dark overlay
-    ui.drawRect(0, 0, (float)windowW, (float)windowH, glm::vec4(0.0f, 0.0f, 0.0f, 0.6f));
 
     // Panel background
     ui.drawRect(panelX, panelY, panelW, panelH, glm::vec4(0.12f, 0.12f, 0.12f, 0.9f));
@@ -101,7 +152,7 @@ void Inventory::draw(UIRenderer& ui, int windowW, int windowH, GLFWwindow* windo
 
         // Click: assign to selected hotbar slot
         if (hovered && clicked) {
-            player.setHotbarSlot(player.getSelectedSlot(), ITEMS[i]);
+            player.getInventory().slots[player.getSelectedSlot()] = {ITEMS[i], 1};
         }
     }
 
@@ -111,6 +162,102 @@ void Inventory::draw(UIRenderer& ui, int windowW, int windowH, GLFWwindow* windo
         float nameW = ui.textWidth(name, 1.0f);
         ui.drawTextShadow(name, panelX + (panelW - nameW) / 2.0f, gridY + gridH + CELL_PAD + 2.0f, 1.0f);
     }
+}
 
-    ui.end();
+void Inventory::drawSurvival(UIRenderer& ui, int windowW, int windowH, double mx, double my, bool leftClick,
+                             bool rightClick, bool shift, Player& player) {
+    constexpr float CELL_SIZE = 48.0f;
+    constexpr float CELL_PAD = 4.0f;
+    constexpr float PANEL_PAD = 16.0f;
+    constexpr float TITLE_H = 30.0f;
+    constexpr float SECTION_GAP = 16.0f;
+    constexpr float HOTBAR_GAP = 12.0f;
+    constexpr float NAME_H = 18.0f;
+    constexpr float STEP = CELL_SIZE + CELL_PAD;
+    constexpr int COLS = PlayerInventory::HOTBAR_SIZE;
+    constexpr int STORAGE_ROWS = PlayerInventory::STORAGE_SIZE / COLS;
+    const int n = craft.size;
+
+    float gridW = COLS * STEP - CELL_PAD;
+    float craftH = n * STEP - CELL_PAD;
+    float storageH = STORAGE_ROWS * STEP - CELL_PAD;
+    float panelW = gridW + PANEL_PAD * 2;
+    float panelH = TITLE_H + craftH + SECTION_GAP + storageH + HOTBAR_GAP + CELL_SIZE + NAME_H + PANEL_PAD * 2;
+    float panelX = (windowW - panelW) / 2.0f;
+    float panelY = (windowH - panelH) / 2.0f;
+    float gridX = panelX + PANEL_PAD;
+    float craftY = panelY + PANEL_PAD + TITLE_H;
+    float storageY = craftY + craftH + SECTION_GAP;
+    float hotbarY = storageY + storageH + HOTBAR_GAP;
+
+    ui.drawRect(panelX, panelY, panelW, panelH, glm::vec4(0.12f, 0.12f, 0.12f, 0.9f));
+    float titleScale = 2.0f;
+    std::string title = tableMode ? "Crafting" : "Inventory";
+    ui.drawTextShadow(title, panelX + (panelW - ui.textWidth(title, titleScale)) / 2.0f, panelY + PANEL_PAD,
+                      titleScale);
+
+    auto cell = [&](float cx, float cy, const ItemStack& stack) {
+        bool over = mx >= cx && mx < cx + CELL_SIZE && my >= cy && my < cy + CELL_SIZE;
+        ui.drawRect(cx, cy, CELL_SIZE, CELL_SIZE,
+                    over ? glm::vec4(0.5f, 0.5f, 0.5f, 0.6f) : glm::vec4(0.25f, 0.25f, 0.25f, 0.6f));
+        drawStack(ui, stack, cx, cy, CELL_SIZE);
+        return over;
+    };
+
+    // Crafting: the grid, an arrow, the output (centred in the panel).
+    float craftRowW = n * STEP + CELL_SIZE * 1.5f + CELL_SIZE;
+    float craftX = panelX + (panelW - craftRowW) / 2.0f;
+    int hoveredCraft = -1;
+    for (int i = 0; i < n * n; i++)
+        if (cell(craftX + (i % n) * STEP, craftY + (i / n) * STEP, craft.cells[i])) hoveredCraft = i;
+    std::string arrow = "->";
+    float arrowX = craftX + n * STEP + (CELL_SIZE * 1.5f - ui.textWidth(arrow, 2.0f)) / 2.0f;
+    float outY = craftY + (craftH - CELL_SIZE) / 2.0f;
+    ui.drawTextShadow(arrow, arrowX, outY + (CELL_SIZE - ui.textHeight(2.0f)) / 2.0f, 2.0f);
+    ItemDrop out = craft.result();
+    float outX = craftX + n * STEP + CELL_SIZE * 1.5f;
+    bool overOutput = cell(outX, outY, out.count > 0 ? ItemStack{out.id, out.count} : ItemStack{});
+
+    // Storage rows, then the hotbar row (as in Minecraft).
+    PlayerInventory& inv = player.getInventory();
+    int hovered = -1;
+    for (int i = 0; i < PlayerInventory::SIZE; i++) {
+        bool hotbar = i < PlayerInventory::HOTBAR_SIZE;
+        int col = hotbar ? i : (i - PlayerInventory::HOTBAR_SIZE) % COLS;
+        int row = hotbar ? 0 : (i - PlayerInventory::HOTBAR_SIZE) / COLS;
+        if (cell(gridX + col * STEP, hotbar ? hotbarY : storageY + row * STEP, inv.slots[i])) hovered = i;
+    }
+
+    if (leftClick || rightClick) {
+        if (overOutput) {
+            if (shift && leftClick)
+                craft.craftAll(inv);
+            else
+                craft.takeResult(cursor);
+        } else if (hoveredCraft >= 0) {
+            clickSlot(craft.cells[hoveredCraft], cursor, rightClick);
+        } else if (hovered >= 0) {
+            if (leftClick && shift && cursor.empty())
+                inv.quickMove(hovered);
+            else
+                clickSlot(inv.slots[hovered], cursor, rightClick);
+        }
+    }
+
+    // Name of the hovered item, under the grid.
+    const ItemStack* named = nullptr;
+    if (cursor.empty()) {
+        if (hovered >= 0) named = &inv.slots[hovered];
+        if (hoveredCraft >= 0) named = &craft.cells[hoveredCraft];
+    }
+    ItemStack outStack{out.id, out.count};
+    if (cursor.empty() && overOutput && out.count > 0) named = &outStack;
+    if (named && !named->empty()) {
+        const char* name = itemName(named->id);
+        ui.drawTextShadow(name, panelX + (panelW - ui.textWidth(name, 1.0f)) / 2.0f, hotbarY + CELL_SIZE + 6.0f,
+                          1.0f);
+    }
+
+    // The carried stack follows the mouse.
+    drawStack(ui, cursor, (float)mx - CELL_SIZE / 2.0f, (float)my - CELL_SIZE / 2.0f, CELL_SIZE);
 }

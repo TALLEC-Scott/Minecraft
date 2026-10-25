@@ -48,6 +48,7 @@ set(COMMON_SOURCES
     src/WaterSimulator.cpp
     src/inventory.cpp
     src/world_save.cpp
+    src/level_data.cpp
     src/world_directory.cpp
     src/light_propagation.cpp
     src/tnt_entity.cpp
@@ -259,6 +260,12 @@ else()
         tests/test_world_resolver.cpp
         tests/test_chunk_mesh.cpp
         tests/test_world_save.cpp
+        tests/test_level_data.cpp
+        tests/test_game_mode.cpp
+        tests/test_mining.cpp
+        tests/test_item_entity.cpp
+        tests/test_player_hunger.cpp
+        tests/test_recipes.cpp
         tests/test_inventory.cpp
         tests/test_tnt.cpp
         tests/test_block_light.cpp
@@ -291,6 +298,7 @@ else()
         src/tnt_entity.cpp
         src/light_propagation.cpp
         src/world_directory.cpp
+        src/level_data.cpp
         src/net/net_protocol.cpp
         src/mob.cpp
         src/mob_ai.cpp

@@ -1,5 +1,7 @@
 #include "player.h"
 #include "melee.h"
+#include "mining.h"
+#include "entity_manager.h"
 #include "collision.h"
 #include "mob_manager.h"
 #include "mobs/sheep.h"
@@ -26,6 +28,8 @@ void Player::destroyAudio() {
         for (auto& s : enterSounds) ma_sound_uninit(&s);
         for (auto& s : exitSounds) ma_sound_uninit(&s);
         for (auto& s : bubbleSounds) ma_sound_uninit(&s);
+        if (pickupSoundLoaded) ma_sound_uninit(&pickupSound);
+        pickupSoundLoaded = false;
         stepSoundsLoaded = false;
     }
 }
@@ -89,6 +93,11 @@ void Player::initAudio(ma_engine* engine) {
         ma_sound_set_volume(&bubbleSounds[i], 0.3f);
     }
 
+    // Item pickup "pop" (generated for this game, not Minecraft's).
+    pickupSoundLoaded = ma_sound_init_from_file(engine, "assets/Sounds/random/pop.ogg", MA_SOUND_FLAG_DECODE,
+                                                nullptr, nullptr, &pickupSound) == MA_SUCCESS;
+    if (pickupSoundLoaded) ma_sound_set_volume(&pickupSound, 0.6f);
+
     stepSoundsLoaded = true;
     lastStepPos = camera.getPosition();
 }
@@ -144,7 +153,7 @@ void Player::handleInput(GLFWwindow* window, World* world) {
         bool spaceDown = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
         if (spaceDown && !spaceWasPressed) {
             double now = glfwGetTime();
-            if (now - lastSpaceTap < DOUBLE_TAP_TIME) {
+            if (now - lastSpaceTap < DOUBLE_TAP_TIME && !isSurvival()) {
                 camera.toggleWalkMode();
                 lastSpaceTap = 0;
             } else {
@@ -152,8 +161,11 @@ void Player::handleInput(GLFWwindow* window, World* world) {
             }
         }
         if (spaceDown) {
-            if (camera.isWalkMode())
-                camera.jump();  // onGround-gated, so auto-repeats on landing
+            if (camera.isWalkMode()) {
+                if (isSurvival() && camera.isOnGround() && !camera.isInWater())
+                    hunger.addExhaustion(sprinting ? PlayerHunger::EXHAUST_SPRINT_JUMP : PlayerHunger::EXHAUST_JUMP);
+                camera.jump(); // onGround-gated, so auto-repeats on landing
+            }
             else
                 camera.up();
         }
@@ -161,13 +173,22 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     }
 
     // Down (fly mode only) — Shift or Q
-    if (!camera.isWalkMode() &&
-        (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS))
-        camera.down();
+    bool qDown = glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS;
+    if (!camera.isWalkMode() && (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || qDown)) camera.down();
+    // Survival never flies, so Q is free for Minecraft's "drop item" (with
+    // Ctrl: the whole stack).
+    if (isSurvival() && qDown && !qWasPressed) {
+        bool ctrl = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                    glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+        dropSelected(world, ctrl);
+    }
+    qWasPressed = qDown;
 
     // Sprint — Shift in walk mode, R always, or double-tap W latch.
     bool sprint = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS || sprintLatched;
     if (camera.isWalkMode()) sprint = sprint || glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
+    if (isSurvival() && !hunger.canSprint()) sprint = false; // too hungry
+    sprinting = sprint;
     if (sprint)
         camera.speedUp();
     else
@@ -179,41 +200,45 @@ void Player::handleInput(GLFWwindow* window, World* world) {
         if (glfwGetKey(window, key) == GLFW_PRESS) selectedSlot = i;
     }
 
-    // Left click: punch + break block
+    // Left click: punch a mob, else break the targeted block — instantly in
+    // Creative, by holding the button in Survival (updateMining).
     bool leftDown = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+    double now = glfwGetTime();
     if (leftDown && !leftClickHeld && world) {
         isPunching = true;
-        punchStartTime = glfwGetTime();
+        punchStartTime = now;
         float strength =
             melee::attackStrength(punchStartTime - lastSwingTime, meleeStats(getSelectedItem()).cooldownSeconds);
         lastSwingTime = punchStartTime;
         // Mobs are tested before blocks: a punch that lands on a mob never
         // also breaks the block behind it.
-        if (!tryAttack(world, strength) && hasHighlight) {
+        miningBlocked = tryAttack(world, strength);
+        if (!miningBlocked && hasHighlight && !isSurvival()) {
             Cube* block = world->getBlock(targeted.x, targeted.y, targeted.z);
-            if (block) playBreakSound(block->getType());
-            // Optimistic local apply — the host's DestroyApply echo will
-            // re-run setBlock with the same AIR result (idempotent), so
-            // prediction is "free" until we add host-side rejects.
-            if (netSession) netSession->notifyLocalDestroy(targeted);
-            world->destroyBlock(glm::vec3(targeted));
+            if (block) breakTargeted(world, block->getType(), getSelectedItem());
         }
     }
+    if (isSurvival()) updateMining(world, leftDown && !miningBlocked && hasHighlight, now);
     leftClickHeld = leftDown;
 
     // Right click: interact with a mob (shear) if one is in front, else
     // ignite TNT if targeted, otherwise place block
     bool rightDown = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
-    bool rightPressed = rightDown && !rightClickHeld && world;
+    if (isSurvival()) updateEating(rightDown, now);
+    bool rightPressed = rightDown && !rightClickHeld && world && !eating;
     if (rightPressed && tryInteractMob(world)) {
         isPunching = true;
         punchStartTime = glfwGetTime();
     } else if (rightPressed && hasHighlight) {
         Cube* targetBlock = world->getBlock(targeted.x, targeted.y, targeted.z);
+        bool sneaking = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
         if (targetBlock && targetBlock->getType() == TNT) {
             world->igniteTnt(targeted, glfwGetTime());
             isPunching = true;
             punchStartTime = glfwGetTime();
+        } else if (targetBlock && targetBlock->getType() == CRAFTING_TABLE && !sneaking) {
+            // Shift-click still places against the table, as in Minecraft.
+            craftingTableRequested = true;
         } else if (getSelectedBlockType() != AIR) {
             glm::vec3 camPos = camera.getPosition();
             int px = (int)std::floor(camPos.x);
@@ -231,7 +256,9 @@ void Player::handleInput(GLFWwindow* window, World* world) {
                 // transparent on the happy path.
                 if (netSession)
                     netSession->notifyLocalPlace(placementPos, static_cast<uint8_t>(getSelectedBlockType()));
-                world->placeBlock(placementPos, getSelectedBlockType());
+                block_type placed = getSelectedBlockType();
+                world->placeBlock(placementPos, placed);
+                if (isSurvival()) inventory.take(selectedSlot, 1); // Creative never runs out
                 // Arm swing (same feedback as left-click) + outline pop at placement pos
                 isPunching = true;
                 punchStartTime = glfwGetTime();
@@ -243,19 +270,155 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     rightClickHeld = rightDown;
 }
 
+void Player::breakTargeted(World* world, block_type type, ItemId tool) {
+    playBreakSound(type);
+    // Optimistic local apply — the host's DestroyApply echo will re-run
+    // setBlock with the same AIR result (idempotent), so prediction is
+    // "free" until we add host-side rejects.
+    if (netSession) netSession->notifyLocalDestroy(targeted);
+    world->destroyBlock(glm::vec3(targeted));
+    if (!isSurvival() || !world->entityManager) return;
+    hunger.addExhaustion(PlayerHunger::EXHAUST_BREAK_BLOCK);
+    static std::mt19937 dropRng(std::random_device{}());
+    ItemDrop drop = blockDrop(type, tool, std::uniform_real_distribution<float>(0.0f, 1.0f)(dropRng));
+    if (drop.count > 0) world->entityManager->dropFromBlock(drop.id, drop.count, targeted);
+}
+
+void Player::dropSelected(World* world, bool wholeStack) {
+    ItemStack& stack = inventory.slots[selectedSlot];
+    if (stack.empty() || !world || !world->entityManager) return;
+    int n = wholeStack ? stack.count : 1;
+    world->entityManager->throwItem(stack.id, n, camera.getPosition(), camera.getFront());
+    inventory.take(selectedSlot, n);
+}
+
+void Player::setVitals(float healthValue, int food, float saturation) {
+    health.health = std::clamp(healthValue, 1.0f, PlayerHealth::MAX_HEALTH);
+    hunger.food = std::clamp(food, 0, PlayerHunger::MAX_FOOD);
+    hunger.saturation = std::clamp(saturation, 0.0f, (float)hunger.food);
+}
+
+void Player::updateHunger(double now) {
+    double dt = lastUpdateTime < 0.0 ? 0.0 : std::min(now - lastUpdateTime, 0.25);
+    lastUpdateTime = now;
+    if (health.isDead()) return;
+
+    // Moving costs: sprinting on land, swimming (walking is free).
+    glm::vec3 p = camera.getPosition();
+    float moved = glm::length(glm::vec2(p.x - lastExhaustPos.x, p.z - lastExhaustPos.z));
+    lastExhaustPos = p;
+    if (moved < 2.0f) { // ignore teleports / respawns
+        if (camera.isInWater())
+            hunger.addExhaustion(moved * PlayerHunger::EXHAUST_SWIM_PER_BLOCK);
+        else if (sprinting && camera.isOnGround())
+            hunger.addExhaustion(moved * PlayerHunger::EXHAUST_SPRINT_PER_BLOCK);
+    }
+
+    hungerAccumulator += dt;
+    while (hungerAccumulator >= 0.05) {
+        hungerAccumulator -= 0.05;
+        float change = hunger.tick(health.health, PlayerHealth::MAX_HEALTH);
+        if (change > 0.0f) health.heal(change);
+        if (change < 0.0f) hurt(-change, p, false); // starving
+    }
+}
+
+void Player::updateEating(bool rightDown, double now) {
+    ItemId held = getSelectedItem();
+    bool canStart = rightDown && isFood(held) && hunger.canEat();
+    if (eating && (!rightDown || selectedSlot != eatSlot || held != eatItem)) eating = false; // let go / switched
+    if (!eating) {
+        if (!canStart || rightClickHeld) return; // a fresh press starts eating
+        eating = true;
+        eatStart = now;
+        eatSlot = selectedSlot;
+        eatItem = held;
+    }
+    // Chewing: the hand bobs a few times a second.
+    if (!isPunching || now - punchStartTime > 0.25) {
+        isPunching = true;
+        punchStartTime = now;
+    }
+    if (now - eatStart < EAT_SECONDS) return;
+    hunger.eat(foodStats(eatItem));
+    inventory.take(eatSlot, 1);
+    // Still holding the button with food left: start on the next one.
+    eatStart = now;
+    if (!hunger.canEat() || getSelectedItem() != eatItem) eating = false;
+}
+
+float Player::getEatProgress() const {
+    return eating ? std::clamp((float)((glfwGetTime() - eatStart) / EAT_SECONDS), 0.0f, 1.0f) : -1.0f;
+}
+
+void Player::spillInventory(World* world) {
+    if (world && world->entityManager) {
+        static std::mt19937 rng(std::random_device{}());
+        std::uniform_real_distribution<float> angle(0.0f, 6.2831853f), speed(0.1f, 0.6f);
+        for (const ItemStack& stack : inventory.slots) {
+            if (stack.empty()) continue;
+            float a = angle(rng), s = speed(rng);
+            world->entityManager->throwItem(stack.id, stack.count, camera.getPosition(),
+                                            glm::vec3(std::cos(a) * s, 0.2f, std::sin(a) * s));
+        }
+    }
+    inventory.clear();
+}
+
+void Player::updateMining(World* world, bool active, double now) {
+    Cube* block = active && world ? world->getBlock(targeted.x, targeted.y, targeted.z) : nullptr;
+    if (!block || block->getType() == AIR) {
+        mining = false;
+        return;
+    }
+    block_type type = block->getType();
+    ItemId tool = getSelectedItem();
+    // Looking at another block or switching item starts over, as in Minecraft.
+    if (!mining || targeted != miningPos || type != miningType || tool != miningTool) {
+        mining = true;
+        miningPos = targeted;
+        miningType = type;
+        miningTool = tool;
+        miningTicks = breakTicks(type, tool);
+        miningProgress = 0.0;
+        lastMiningTime = now;
+    }
+    if (miningTicks < 0) return; // unbreakable (bedrock)
+    double dt = std::min(now - lastMiningTime, 0.1); // no jump after a stall
+    lastMiningTime = now;
+    if (now < breakCooldownUntil) return;
+
+    // Keep swinging the arm and tapping the block's sound while digging.
+    if (!isPunching) {
+        isPunching = true;
+        punchStartTime = now;
+    }
+    if (now >= nextMiningSound) {
+        playStepSound(type);
+        nextMiningSound = now + 0.2; // every 4 ticks
+    }
+
+    miningProgress += miningTicks == 0 ? 1.0 : dt * 20.0 / miningTicks;
+    if (miningProgress < 1.0) return;
+    breakTargeted(world, type, tool);
+    mining = false;
+    breakCooldownUntil = now + 0.25;
+}
+
 bool Player::tryAttack(World* world, float strength) {
     glm::vec3 eye = camera.getPosition();
     glm::vec3 dir = camera.getFront();
     constexpr float NONE = std::numeric_limits<float>::max();
 
     float mobDist = NONE; // raycast only writes it on a hit
-    Mob* mob = world->mobManager ? world->mobManager->raycast(eye, dir, ATTACK_REACH, mobDist) : nullptr;
+    const float reach = attackReach(gameMode);
+    Mob* mob = world->mobManager ? world->mobManager->raycast(eye, dir, reach, mobDist) : nullptr;
 
     // Other players, hit-tested where we see them.
     double now = glfwGetTime();
     float remoteDist = NONE;
     const RemotePlayer* remote = netSession && netSession->connected()
-                                     ? netSession->raycastRemote(eye, dir, ATTACK_REACH, now, remoteDist)
+                                     ? netSession->raycastRemote(eye, dir, reach, now, remoteDist)
                                      : nullptr;
 
     float targetDist = std::min(mobDist, remoteDist);
@@ -264,13 +427,14 @@ bool Player::tryAttack(World* world, float strength) {
     if (hasHighlight) {
         float blockDist = 0.0f;
         glm::vec3 b(targeted);
-        if (rayIntersectsAABB(eye, dir, b - glm::vec3(0.5f), b + glm::vec3(0.5f), REACH, blockDist) &&
+        if (rayIntersectsAABB(eye, dir, b - glm::vec3(0.5f), b + glm::vec3(0.5f), blockReach(gameMode), blockDist) &&
             blockDist < targetDist)
             return false;
     }
     // Minecraft-style critical: a charged hit while falling.
     bool falling = camera.isWalkMode() && !camera.isOnGround() && !camera.isInWater() && camera.getVelocityY() < 0.0f;
     float dmg = melee::damage(meleeStats(getSelectedItem()).damage, strength, falling);
+    if (isSurvival()) hunger.addExhaustion(PlayerHunger::EXHAUST_ATTACK);
     if (remote && remoteDist < mobDist) {
         // Swings inside their invulnerability window (or at a dead player)
         // send nothing and give no feedback — only real hits sound.
@@ -286,18 +450,27 @@ bool Player::tryInteractMob(World* world) {
     glm::vec3 eye = camera.getPosition();
     glm::vec3 dir = camera.getFront();
     float mobDist = 0.0f;
-    Mob* mob = world->mobManager->raycast(eye, dir, ATTACK_REACH, mobDist);
+    Mob* mob = world->mobManager->raycast(eye, dir, attackReach(gameMode), mobDist);
     if (!mob || mob->type != MobType::Sheep) return false;
     // A targeted block nearer than the mob shields it.
     if (hasHighlight) {
         float blockDist = 0.0f;
         glm::vec3 b(targeted);
-        if (rayIntersectsAABB(eye, dir, b - glm::vec3(0.5f), b + glm::vec3(0.5f), REACH, blockDist) &&
+        if (rayIntersectsAABB(eye, dir, b - glm::vec3(0.5f), b + glm::vec3(0.5f), blockReach(gameMode), blockDist) &&
             blockDist < mobDist)
             return false;
     }
     // Already-sheared sheep fall through to normal block placement.
     return static_cast<Sheep*>(mob)->shear();
+}
+
+void Player::playPickupSound() {
+    if (!pickupSoundLoaded) return;
+    // A different pitch each time, as Minecraft does for its pop.
+    static std::mt19937 rng(91);
+    ma_sound_set_pitch(&pickupSound, std::uniform_real_distribution<float>(0.8f, 1.6f)(rng));
+    ma_sound_seek_to_pcm_frame(&pickupSound, 0);
+    ma_sound_start(&pickupSound);
 }
 
 void Player::playHitSound() {
@@ -312,8 +485,14 @@ void Player::playHitSound() {
     ma_sound_start(&set.sounds[idx]);
 }
 
+void Player::setGameMode(GameMode mode) {
+    gameMode = mode;
+    if (isSurvival()) camera.setWalkMode(true);
+}
+
 void Player::hurt(float amount, glm::vec3 fromPos, bool knockback) {
-    if (!health.hurt(amount, glfwGetTime())) return;
+    if (!isSurvival() || !health.hurt(amount, glfwGetTime())) return;
+    hunger.addExhaustion(PlayerHunger::EXHAUST_HURT);
     if (knockback) {
         glm::vec3 p = camera.getPosition();
         glm::vec2 away(p.x - fromPos.x, p.z - fromPos.z);
@@ -325,6 +504,8 @@ void Player::hurt(float amount, glm::vec3 fromPos, bool knockback) {
 
 void Player::respawn(glm::vec3 eyePos) {
     health.respawn(glfwGetTime());
+    hunger.reset();
+    eating = false;
     camera.setPosition(eyePos);
     camera.resetMotion();
 }
@@ -366,6 +547,16 @@ void Player::update(World* world) {
     // Update punch animation
     if (isPunching && (glfwGetTime() - punchStartTime) > PUNCH_DURATION) isPunching = false;
 
+    // Survival never flies: a respawn into an unloaded spawn chunk hovers
+    // (main.cpp) only until the chunk under the player has streamed in, and
+    // main.cpp puts the player on the ground first.
+    if (isSurvival() && !camera.isWalkMode() && world) {
+        glm::vec3 p = camera.getPosition();
+        int cx = worldToChunk((int)std::floor(p.x + 0.5f));
+        int cz = worldToChunk((int)std::floor(p.z + 0.5f));
+        if (world->chunkManager->getChunk(cx, cz)) camera.setWalkMode(true);
+    }
+
     // Physics
     findGroundAndUpdate(world);
 
@@ -373,7 +564,12 @@ void Player::update(World* world) {
     // falls while flying or in water), then slow regeneration.
     float fallDmg = PlayerHealth::fallDamage(camera.takeLandingFall());
     if (fallDmg > 0.0f) hurt(fallDmg, camera.getPosition(), false);
-    health.update(glfwGetTime());
+    // Survival heals (and starves) through the food bar; Creative can't be
+    // hurt, so its timer-based regen never matters there.
+    if (isSurvival())
+        updateHunger(glfwGetTime());
+    else
+        health.update(glfwGetTime());
 
     // Movement sounds: swim sounds when any body part in water, footsteps on land
     bool inWater = camera.isInWater();
@@ -529,7 +725,7 @@ void Player::findGroundAndUpdate(World* world) {
 void Player::updateTargetedBlock(World* world) {
     glm::vec3 pos = camera.getPosition();
     glm::vec3 front = camera.getFront();
-    hasHighlight = world->raycast(pos, front, REACH, targeted, placementPos);
+    hasHighlight = world->raycast(pos, front, blockReach(gameMode), targeted, placementPos);
 }
 
 float Player::getSwingProgress() const {

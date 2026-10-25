@@ -34,5 +34,7 @@ class TextureArray {
     // a tool's own image (loaded by initLayerTextures). 0 if unavailable.
     static GLuint itemIcon(ItemId id);
     static void destroyLayerTextures();
+    // PNG a texture-array layer was loaded from (nullptr out of range).
+    static const char* layerPath(int layer);
     static GLuint id;
 };

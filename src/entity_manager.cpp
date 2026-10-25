@@ -7,8 +7,10 @@
 #include <miniaudio.h>
 
 #include "entity_cube_renderer.h"
+#include "inventory_model.h"
 #include "shader.h"
 #include "world.h"
+#include "world_resolver.h"
 
 EntityManager::~EntityManager() {
     if (audioLoaded) {
@@ -56,6 +58,67 @@ void EntityManager::spawnTnt(glm::vec3 pos, int fuse, double now) {
     tntEntities.emplace_back(std::make_unique<TntEntity>(pos, fuse, now));
 }
 
+void EntityManager::spawnItem(ItemId id, int count, glm::vec3 pos, glm::vec3 velocity, int pickupDelay) {
+    if (id == ITEM_EMPTY || count <= 0) return;
+    if (itemEntities.size() >= MAX_ITEMS) itemEntities.erase(itemEntities.begin()); // oldest first
+    ItemEntity e;
+    e.id = id;
+    e.count = count;
+    e.pos = e.prevPos = pos;
+    e.velocity = velocity;
+    e.pickupDelay = pickupDelay;
+    e.spinPhase = std::uniform_real_distribution<float>(0.0f, 6.2831853f)(rng);
+    itemEntities.push_back(e);
+}
+
+void EntityManager::dropFromBlock(ItemId id, int count, glm::ivec3 block) {
+    // Minecraft: anywhere in the middle half of the block, a small random
+    // horizontal kick and a hop upwards.
+    std::uniform_real_distribution<float> jitter(-0.25f, 0.25f), kick(-0.05f, 0.05f);
+    glm::vec3 pos = glm::vec3(block) + glm::vec3(jitter(rng), -0.25f + jitter(rng), jitter(rng));
+    spawnItem(id, count, pos, glm::vec3(kick(rng), 0.2f, kick(rng)));
+}
+
+void EntityManager::throwItem(ItemId id, int count, glm::vec3 eyePos, glm::vec3 dir) {
+    glm::vec3 pos = eyePos - glm::vec3(0.0f, 0.3f, 0.0f);
+    spawnItem(id, count, pos, dir * 0.3f + glm::vec3(0.0f, 0.1f, 0.0f), ItemEntity::THROW_DELAY);
+}
+
+void EntityManager::tickItems(World* world) {
+    if (itemEntities.empty()) return;
+    WorldResolver resolver(world ? world->chunkManager : nullptr);
+    auto isSolid = [&](int bx, int by, int bz) -> bool {
+        if (!world) return by < 0;
+        if (by < 0 || by >= CHUNK_HEIGHT) return by < 0; // below the world is a floor
+        auto loc = resolver.local(bx, bz);
+        return loc.chunk && hasFlag(loc.chunk->getBlockType(loc.lx, by, loc.lz), BF_SOLID);
+    };
+    for (ItemEntity& e : itemEntities) {
+        if (e.removed) continue;
+        // Like mobs, drops in chunks that unloaded are simply gone.
+        if (world && !resolver.local((int)std::floor(e.pos.x + 0.5f), (int)std::floor(e.pos.z + 0.5f)).chunk) {
+            e.removed = true;
+            continue;
+        }
+        e.tick(isSolid);
+    }
+    // Merge neighbouring stacks of the same item, then hand reachable ones
+    // to the player.
+    for (size_t i = 0; i < itemEntities.size(); ++i)
+        for (size_t j = i + 1; j < itemEntities.size(); ++j)
+            mergeItems(itemEntities[i], itemEntities[j], maxStackSize(itemEntities[i].id));
+    if (pickup) {
+        for (ItemEntity& e : itemEntities) {
+            if (!e.canBePickedUp()) continue;
+            e.count -= std::min(pickup(e), e.count);
+            if (e.count <= 0) e.removed = true;
+        }
+    }
+    itemEntities.erase(std::remove_if(itemEntities.begin(), itemEntities.end(),
+                                      [](const ItemEntity& e) { return e.removed; }),
+                       itemEntities.end());
+}
+
 void EntityManager::tick(World* world, float dt, double now) {
     accumulator += dt;
     // Cap catch-up so a long pause (e.g. menu, breakpoint) can't trigger
@@ -84,6 +147,7 @@ void EntityManager::tick(World* world, float dt, double now) {
         tntEntities.erase(std::remove_if(tntEntities.begin(), tntEntities.end(),
                                          [](const std::unique_ptr<TntEntity>& e) { return e->dead; }),
                           tntEntities.end());
+        tickItems(world);
     }
 }
 
