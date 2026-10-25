@@ -8,7 +8,9 @@
 
 namespace netp {
 
-constexpr uint8_t PROTOCOL_VERSION = 1;
+// 2: PlayerState carries the held item (peers on different versions refuse
+//    each other at Hello instead of misreading PlayerState).
+constexpr uint8_t PROTOCOL_VERSION = 2;
 
 // Wire opcodes. Low bytes (<0x20) are reserved for this MVP protocol so
 // later additions (chat, entity sync) can claim 0x20+ without renumbering.
@@ -25,6 +27,10 @@ enum class Op : uint8_t {
     TimeSync = 0x08,
     // Symmetric peer-to-peer chat line. Both host and client send.
     Chat = 0x09,
+    // PvP melee hit. The attacker's client decides the hit (raycast, reach,
+    // cooldown) and the victim applies it to its own health — trusted
+    // peers, no host check.
+    Hit = 0x20,
 };
 
 struct HelloMsg {
@@ -37,6 +43,7 @@ struct PlayerStateMsg {
     glm::vec3 pos{0.0f};
     float yaw = 0.0f;
     float pitch = 0.0f;
+    uint16_t heldItem = 0; // ItemId (item.h) in the selected hotbar slot
 };
 
 struct PlaceIntentMsg {
@@ -76,6 +83,17 @@ struct ChatMsg {
     std::string text;
 };
 
+// Upper bound accepted for one PvP hit (a charged netherite-tier crit is
+// 12); anything larger or non-finite is rejected as corrupt.
+constexpr float HIT_MAX_DAMAGE = 20.0f;
+
+struct HitMsg {
+    uint32_t attackerId = 0;
+    uint32_t targetId = 0;
+    float damage = 0.0f;     // half-hearts, already scaled by charge / crit
+    glm::vec3 fromPos{0.0f}; // attacker's eye, for knockback direction
+};
+
 // Encoders append a little-endian framed message (opcode + payload) to `out`.
 void encodeHello(std::vector<uint8_t>& out, const HelloMsg& m);
 void encodePlayerState(std::vector<uint8_t>& out, const PlayerStateMsg& m);
@@ -86,6 +104,7 @@ void encodeDestroyApply(std::vector<uint8_t>& out, const DestroyApplyMsg& m);
 void encodeBye(std::vector<uint8_t>& out, const ByeMsg& m);
 void encodeTimeSync(std::vector<uint8_t>& out, const TimeSyncMsg& m);
 void encodeChat(std::vector<uint8_t>& out, const ChatMsg& m);
+void encodeHit(std::vector<uint8_t>& out, const HitMsg& m);
 
 // Decoders: read opcode at buf[0], verify length matches the payload for
 // that opcode, and fill `out`. Return true on success, false on short /
@@ -100,5 +119,6 @@ bool decodeDestroyApply(const uint8_t* buf, std::size_t len, DestroyApplyMsg& ou
 bool decodeBye(const uint8_t* buf, std::size_t len, ByeMsg& out);
 bool decodeTimeSync(const uint8_t* buf, std::size_t len, TimeSyncMsg& out);
 bool decodeChat(const uint8_t* buf, std::size_t len, ChatMsg& out);
+bool decodeHit(const uint8_t* buf, std::size_t len, HitMsg& out);
 
 } // namespace netp

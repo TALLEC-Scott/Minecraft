@@ -30,6 +30,10 @@ struct RemotePlayer {
     double prevTime = 0.0;
     double currTime = 0.0;
     double lastSeen = 0.0;
+    // What they hold (ItemId from the latest PlayerState; drawn in their hand).
+    uint16_t heldItem = 0;
+    // Local clock time until which this player flashes red (we hit them).
+    double hurtFlashUntil = -1.0;
 
     struct Pose {
         glm::vec3 pos{0.0f};
@@ -51,6 +55,9 @@ struct RemotePlayer {
 // has a valid pair. 10 Hz updates → 100 ms; a bit of slack swallows
 // network jitter without turning into perceptible lag.
 inline constexpr double RENDER_DELAY = 0.12;
+// How long a remote player we hit flashes red (Minecraft's hurt tint is
+// 10 ticks).
+inline constexpr double HIT_FLASH_SECONDS = 0.5;
 
 // MVP WebRTC session. Web builds (Emscripten) wire this up to a real
 // RTCPeerConnection + DataChannel; desktop builds compile a stub whose
@@ -131,6 +138,14 @@ class NetSession {
     // channel. `sendChat` no-ops when disconnected so callers don't need
     // to gate on connected().
     void sendChat(const std::string& text);
+
+    // PvP. `sendHit` tells `targetPeerId` it took `damage` from a swing at
+    // `fromPos` and flashes that remote red locally; no-op when disconnected.
+    // `setOnHit` fires when a peer's hit targets us.
+    void sendHit(uint32_t targetPeerId, float damage, glm::vec3 fromPos, double now);
+    void setOnHit(std::function<void(uint32_t attackerId, float damage, glm::vec3 fromPos)> cb) {
+        onHit_ = std::move(cb);
+    }
     void setOnChat(std::function<void(uint32_t peerId, const std::string& text)> cb) { onChat_ = std::move(cb); }
 
     const std::vector<RemotePlayer>& remotes() const { return remotes_; }
@@ -148,6 +163,7 @@ class NetSession {
     std::vector<RemotePlayer> remotes_;
     World* world_ = nullptr;
     std::function<void(uint32_t, const std::string&)> onChat_;
+    std::function<void(uint32_t, float, glm::vec3)> onHit_;
 
     // Web-only: handle into the JS side's RTCPeerConnection registry.
     // Unused on desktop builds (kept to keep the struct layout identical
