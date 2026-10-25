@@ -1,8 +1,8 @@
 #pragma once
 
 // Per-mob sound effects. Missing files degrade to a silent no-op. Sounds
-// live as WAVs (Git LFS, like every *.wav in the repo) at
-//     assets/Sounds/mob/<name>/<event>N.wav
+// live as OGG Vorbis (Git LFS, like every *.ogg in the repo) at
+//     assets/Sounds/mob/<name>/<event>N.ogg
 // where <name> is the registry name (e.g. "pig"), <event> is one of
 // ambient | hurt | death | step | attack, and N = 1..MAX_VARIANTS. The
 // bank picks a random present variant per play. (Web builds only see
@@ -39,7 +39,7 @@ class MobSoundBank {
     void play(MobType type, MobSoundEvent ev, glm::vec3 pos, glm::vec3 listener);
     // Play a one-off file (e.g. the player's hurt sound) if it was found by
     // loadExtra(). `key` is the index returned by loadExtra; -1 is a no-op.
-    int loadExtra(const char* pathPrefix); // tries <prefix>1.wav..<prefix>4.wav
+    int loadExtra(const char* pathPrefix); // tries <prefix>1.ogg..<prefix>4.ogg
     void playExtra(int key, float volume = 1.0f);
 
     static const char* eventName(MobSoundEvent ev);

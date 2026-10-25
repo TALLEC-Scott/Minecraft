@@ -25,7 +25,7 @@
 //     `#include "mobs/cow.h"` at the top of that file.
 //  4. Add src/mobs/cow.cpp to COMMON_SOURCES in CMakeLists.txt (and to the
 //     tests target if you write tests for it — mob code is GL-free).
-//  5. Optional sounds: drop WAV files at assets/Sounds/mob/cow/<event>N.wav
+//  5. Optional sounds: drop OGG files at assets/Sounds/mob/cow/<event>N.ogg
 //     (event = ambient | hurt | death | step, N = 1..4). Missing files are
 //     silently ignored, see mob_sounds.h.
 //

@@ -50,7 +50,7 @@ void Player::initAudio(ma_engine* engine) {
         auto& set = stepSounds[def.type - 1];
         set.sounds.resize(def.count);
         for (int i = 0; i < def.count; i++) {
-            std::string path = std::string(def.prefix) + std::to_string(i + 1) + ".wav";
+            std::string path = std::string(def.prefix) + std::to_string(i + 1) + ".ogg";
             ma_sound_init_from_file(engine, path.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, &set.sounds[i]);
         }
     }
@@ -65,26 +65,26 @@ void Player::initAudio(ma_engine* engine) {
         auto& set = breakSounds[def.type - 1];
         set.sounds.resize(def.count);
         for (int i = 0; i < def.count; i++) {
-            std::string path = std::string(def.prefix) + std::to_string(i + 1) + ".wav";
+            std::string path = std::string(def.prefix) + std::to_string(i + 1) + ".ogg";
             ma_sound_init_from_file(engine, path.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, &set.sounds[i]);
         }
     }
 
     // Underwater sounds
-    ma_sound_init_from_file(engine, "assets/Sounds/ambient/underwater/underwater_ambience.wav", MA_SOUND_FLAG_DECODE,
+    ma_sound_init_from_file(engine, "assets/Sounds/ambient/underwater/underwater_ambience.ogg", MA_SOUND_FLAG_DECODE,
                             nullptr, nullptr, &underwaterAmbience);
     ma_sound_set_looping(&underwaterAmbience, MA_TRUE);
     ma_sound_set_volume(&underwaterAmbience, 0.4f);
     for (int i = 0; i < 3; i++) {
-        std::string path = "assets/Sounds/ambient/underwater/enter" + std::to_string(i + 1) + ".wav";
+        std::string path = "assets/Sounds/ambient/underwater/enter" + std::to_string(i + 1) + ".ogg";
         ma_sound_init_from_file(engine, path.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, &enterSounds[i]);
     }
     for (int i = 0; i < 3; i++) {
-        std::string path = "assets/Sounds/ambient/underwater/exit" + std::to_string(i + 1) + ".wav";
+        std::string path = "assets/Sounds/ambient/underwater/exit" + std::to_string(i + 1) + ".ogg";
         ma_sound_init_from_file(engine, path.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, &exitSounds[i]);
     }
     for (int i = 0; i < 6; i++) {
-        std::string path = "assets/Sounds/ambient/underwater/bubbles" + std::to_string(i + 1) + ".wav";
+        std::string path = "assets/Sounds/ambient/underwater/bubbles" + std::to_string(i + 1) + ".ogg";
         ma_sound_init_from_file(engine, path.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, &bubbleSounds[i]);
         ma_sound_set_volume(&bubbleSounds[i], 0.3f);
     }

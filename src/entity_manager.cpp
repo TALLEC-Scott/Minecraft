@@ -26,7 +26,7 @@ void EntityManager::initAudio(ma_engine* engine) {
     if (!engine || audioLoaded) return;
     for (int i = 0; i < NUM_EXPLODE_SOUNDS; ++i) {
         explodeSounds[i] = new ma_sound{};
-        std::string path = "assets/Sounds/tnt/explode" + std::to_string(i + 1) + ".wav";
+        std::string path = "assets/Sounds/tnt/explode" + std::to_string(i + 1) + ".ogg";
         ma_result r =
             ma_sound_init_from_file(engine, path.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, explodeSounds[i]);
         if (r != MA_SUCCESS) {
