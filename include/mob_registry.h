@@ -52,7 +52,9 @@ enum class MobType : uint8_t {
     Skeleton,
     Creeper,
     Spider,
-    Count // keep last
+    // Special (never spawns naturally)
+    CreeperCow, // cow rain only
+    Count       // keep last
 };
 
 inline constexpr int MOB_TYPE_COUNT = static_cast<int>(MobType::Count);

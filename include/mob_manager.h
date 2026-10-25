@@ -33,10 +33,16 @@ class MobManager {
     static constexpr int PASSIVE_CAP = 10;       // counted within CAP_RADIUS of the player
     static constexpr int HOSTILE_CAP = 15;
     static constexpr float CAP_RADIUS = 128.0f;
-    static constexpr int MAX_MOBS = 256;           // hard ceiling incl. debug spawns
+    static constexpr int MAX_MOBS = 256;              // hard ceiling incl. debug spawns
     static constexpr int PASSIVE_SPAWN_INTERVAL = 20; // ticks between passive group attempts
     static constexpr int HOSTILE_SPAWN_INTERVAL = 5;
     static constexpr float MOB_RENDER_DISTANCE = 96.0f; // (RENDER_DISTANCE is a cube.h macro)
+    // Cow rain (/cowrain): one CreeperCow dropped every COW_RAIN_INTERVAL
+    // ticks, COW_RAIN_HEIGHT blocks above the player (clamped under the
+    // world ceiling), up to COW_RAIN_RADIUS blocks out horizontally.
+    static constexpr int COW_RAIN_INTERVAL = 10;
+    static constexpr float COW_RAIN_HEIGHT = 30.0f;
+    static constexpr float COW_RAIN_RADIUS = 64.0f;
 
     struct PlayerState {
         glm::vec3 feet{0.0f};
@@ -62,6 +68,8 @@ class MobManager {
         damagePlayerCb = std::move(cb);
     }
     void setSpawningEnabled(bool on) { spawningEnabled = on; }
+    void setCowRain(bool on) { cowRain = on; }
+    bool cowRainEnabled() const { return cowRain; }
     void initAudio(ma_engine* engine);
 
     // Run 0..n 20-TPS ticks for `dt` seconds. `now` is wall-clock (for
@@ -108,6 +116,7 @@ class MobManager {
     PlayerState player;
     bool playerKnown = false;
     bool spawningEnabled = true;
+    bool cowRain = false;
     bool isDay = true;
     int skyDarken = 0;
     double accumulator = 0.0;
@@ -119,5 +128,6 @@ class MobManager {
     void tickOnce();
     void despawn();
     void trySpawnGroup(MobContext& ctx, MobCategory category);
+    void dropRainingCow(MobContext& ctx);
     void flushSounds(Mob& mob);
 };

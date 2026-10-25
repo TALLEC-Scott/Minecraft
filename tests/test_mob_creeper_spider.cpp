@@ -6,6 +6,7 @@
 #include "mob_spawn.h"
 #include "mob_test_support.h"
 #include "mobs/creeper.h"
+#include "mobs/creeper_cow.h"
 #include "mobs/spider.h"
 
 namespace {
@@ -266,4 +267,38 @@ TEST(CreeperSpiderTest, LeapAppliesUpwardVelocity) {
         EXPECT_GT(maxY, 0.9f);
     }
     EXPECT_GT(trialsWithLeap, 0);
+}
+
+// --- Creeper cow (cow rain) ----------------------------------------------------
+
+TEST(CreeperCowTest, NeverSpawnsNaturally) {
+    const MobInfo& info = mobInfo(MobType::CreeperCow);
+    EXPECT_EQ(info.spawnBiomes, 0u);
+    EXPECT_EQ(info.spawnWeight, 0);
+    for (Biome b : {BIOME_PLAINS, BIOME_FOREST, BIOME_DESERT, BIOME_TUNDRA, BIOME_BEACH}) {
+        for (MobCategory c : {MobCategory::Passive, MobCategory::Hostile}) {
+            auto types = mobspawn::eligibleTypes(c, b);
+            EXPECT_EQ(std::find(types.begin(), types.end(), MobType::CreeperCow), types.end());
+        }
+    }
+}
+
+TEST(CreeperCowTest, ExplodesOnceWhenItLandsAfterAFall) {
+    HostileHarness h;
+    auto cow = createMob(MobType::CreeperCow);
+    place(*cow, {0.0f, 20.5f, 0.0f});
+    for (int i = 0; i < 200 && !cow->removed; ++i) cow->tick(h.ctx);
+    EXPECT_TRUE(cow->removed);
+    EXPECT_EQ(h.explosions, 1);
+    EXPECT_FLOAT_EQ(h.lastPower, CreeperCow::EXPLOSION_POWER);
+    EXPECT_NEAR(h.lastExplosion.y, 0.5f + cow->height * 0.5f, 0.1f) << "blast at ground level";
+}
+
+TEST(CreeperCowTest, StandingOnTheGroundDoesNotExplode) {
+    HostileHarness h;
+    auto cow = createMob(MobType::CreeperCow);
+    place(*cow, {0.0f, 0.5f, 0.0f});
+    h.run(*cow, 100);
+    EXPECT_FALSE(cow->removed);
+    EXPECT_EQ(h.explosions, 0);
 }

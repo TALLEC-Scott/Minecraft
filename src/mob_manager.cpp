@@ -170,6 +170,7 @@ void MobManager::tickOnce() {
         if (tickCount % PASSIVE_SPAWN_INTERVAL == 0) trySpawnGroup(ctx, MobCategory::Passive);
         if (tickCount % HOSTILE_SPAWN_INTERVAL == 0) trySpawnGroup(ctx, MobCategory::Hostile);
     }
+    if (cowRain && playerKnown && tickCount % COW_RAIN_INTERVAL == 0) dropRainingCow(ctx);
 
     mobList.erase(std::remove_if(mobList.begin(), mobList.end(), [](const auto& m) { return m->removed; }),
                   mobList.end());
@@ -245,6 +246,23 @@ void MobManager::trySpawnGroup(MobContext& ctx, MobCategory category) {
             ++placed;
         }
     }
+}
+
+void MobManager::dropRainingCow(MobContext& ctx) {
+    float ang = ctx.randf() * glm::two_pi<float>();
+    float r = std::sqrt(ctx.randf()) * COW_RAIN_RADIUS; // uniform over the disc
+    float x = std::floor(player.feet.x + std::cos(ang) * r + 0.5f);
+    float z = std::floor(player.feet.z + std::sin(ang) * r + 0.5f);
+    int bx = static_cast<int>(x), bz = static_cast<int>(z);
+    if (!blocks->isLoaded(bx, bz)) return;
+    const MobInfo& info = mobInfo(MobType::CreeperCow);
+    float y = std::min(player.feet.y + COW_RAIN_HEIGHT, static_cast<float>(CHUNK_HEIGHT) - info.height - 1.0f);
+    // Skip drop points inside terrain (e.g. the player is in a cave).
+    int by = MobContext::blockAtPos(glm::vec3(x, y, z)).y;
+    for (int dy = 0; dy <= static_cast<int>(std::ceil(info.height)); ++dy)
+        if (ctx.isSolid(bx, by + dy, bz)) return;
+    if (Mob* m = spawnMob(MobType::CreeperCow, glm::vec3(x, y, z), false))
+        m->yaw = m->prevYaw = m->headYaw = m->prevHeadYaw = ctx.randf() * 360.0f - 180.0f;
 }
 
 Mob* MobManager::spawnMob(MobType type, glm::vec3 feetPos, bool persistent) {

@@ -5,18 +5,23 @@
 #include <string>
 #include <vector>
 
+class ChatHistory;
 class UIRenderer;
 struct GLFWwindow;
 
-// Minecraft-style in-game chat. Press `T` to open an input row at the
-// bottom of the screen, type a line, press Enter to send (Esc to cancel).
+// Minecraft-style in-game chat. Press `T` or Enter to open an input row at
+// the bottom of the screen (`/` opens it with the slash typed, for
+// commands), type a line, press Enter to send (Esc to cancel).
 // Incoming lines (local + remote) accumulate in a log panel that fades
 // after a few seconds when chat is closed. Rendering + input handling
 // share the same UIRenderer font used by widgets.cpp.
 class ChatOverlay {
   public:
     bool isOpen() const { return open_; }
-    void open();
+    // Up / Down in the input walk this history (not owned; may be null).
+    void setHistory(ChatHistory* history) { history_ = history; }
+    // `prefill` seeds the input (e.g. "/" when opened by the slash key).
+    void open(const std::string& prefill = "");
     void close();
 
     // Wired to the GLFW char / key callbacks. Both no-op when chat is
@@ -29,6 +34,8 @@ class ChatOverlay {
     // of peerId.
     void pushLocalMessage(const std::string& text);
     void pushRemoteMessage(uint32_t peerId, const std::string& text);
+    // Command replies: no sender tag, drawn in yellow.
+    void pushSystemMessage(const std::string& text);
 
     // Drain pending input. If Enter was pressed this frame and the
     // buffer is non-empty, writes the trimmed text into `out`, clears
@@ -44,8 +51,12 @@ class ChatOverlay {
     struct LogLine {
         std::string text;
         double recvTime = 0.0;
+        bool system = false;
     };
 
+    void pushLine(std::string text, bool system);
+
+    ChatHistory* history_ = nullptr;
     bool open_ = false;
     std::string buffer_;
     std::size_t cursor_ = 0;
