@@ -2892,12 +2892,38 @@ int main(int argc, char* argv[]) {
                         m = glm::rotate(m, glm::radians(-25.0f), glm::vec3(0, 1, 0)); // flat side toward us
                         m = glm::rotate(m, glm::radians(-30.0f), glm::vec3(1, 0, 0)); // blade leans away
                         // Diagonal tool sprites stand up at 70°; upright ones
-                        // (torch, flowers) only need the same 25° lean.
-                        m = glm::rotate(m, glm::radians(uprightSprite ? 25.0f : 70.0f), glm::vec3(0, 0, 1));
-                        m = glm::scale(m, glm::vec3(ITEM_SCALE));
+                        // (torch, flowers) are smaller and only lean a little,
+                        // top toward the crosshair, so the torch's flame shows.
+                        m = glm::rotate(m, glm::radians(uprightSprite ? 12.0f : 70.0f), glm::vec3(0, 0, 1));
+                        m = glm::scale(m, glm::vec3(uprightSprite ? ITEM_SCALE * 0.75f : ITEM_SCALE));
                         m = glm::translate(m, uprightSprite ? -STEM_GRIP : -TOOL_GRIP);
-                        swordModel.draw(projection, m, ItemShading{armTint});
+                        // Something that gives light (the torch) isn't darkened by the night.
+                        bool glowing = heldItemLight(player.getSelectedItem()) > 0;
+                        swordModel.draw(projection, m, ItemShading{glowing ? glm::vec3(1.0f) : armTint});
                         billboardShader.use(); // restore for the rest of this pass
+
+                        // Held torch: flame flicker + smoke at its tip (sprite
+                        // point (8, 9), the flame in the iron cup), drawn in
+                        // this view-space pass so it stays on the torch.
+                        if (heldType == TORCH && w && w->particles) {
+                            static double lastHandFlame = 0.0;
+                            static int handFlames = 0;
+                            double now = glfwGetTime();
+                            glm::vec3 tip = glm::vec3(m * glm::vec4(8.0f, 9.0f, 0.5f, 1.0f));
+                            if (now - lastHandFlame > 0.05) {
+                                lastHandFlame = now;
+                                w->particles->spawnHeldTorchFlame(tip, ++handFlames % 6 == 0);
+                            }
+                            glDepthMask(GL_FALSE);
+                            glEnable(GL_BLEND);
+                            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                            w->particles->render(billboardShader, glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1.0f), true);
+                            glDisable(GL_BLEND);
+                            glDepthMask(GL_TRUE);
+                            billboardShader.setMat4("model", glm::mat4(1.0f));
+                            billboardShader.setFloat("glowMode", 0.0f);
+                            billboardShader.setVec3("tintColor", armTint);
+                        }
                     }
                 } else if (heldType == AIR) {
                     // Empty hand: show arm
