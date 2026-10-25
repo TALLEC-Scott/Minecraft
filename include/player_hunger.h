@@ -20,11 +20,11 @@ class PlayerHunger {
 
     // Exhaustion per action (Minecraft values).
     static constexpr float EXHAUST_SPRINT_PER_BLOCK = 0.1f;
-    static constexpr float EXHAUST_SWIM_PER_BLOCK = 0.01f;
+    static constexpr float EXHAUST_SWIM_PER_BLOCK = 0.01f; // 3D distance
     static constexpr float EXHAUST_JUMP = 0.05f;
     static constexpr float EXHAUST_SPRINT_JUMP = 0.2f;
     static constexpr float EXHAUST_ATTACK = 0.1f;
-    static constexpr float EXHAUST_HURT = 0.1f;
+    static constexpr float EXHAUST_HURT = 0.1f; // hits/explosions, not falls or starving
     static constexpr float EXHAUST_BREAK_BLOCK = 0.005f;
 
     int food = MAX_FOOD;
