@@ -36,7 +36,7 @@ class MobBlockAccess {
 };
 
 // Mob sound events. Played through MobContext::sound(); files are looked up
-// at assets/Sounds/mob/<name>/<event>N.wav (see mob_sounds.h).
+// at assets/Sounds/mob/<name>/<event>N.ogg (see mob_sounds.h).
 enum class MobSoundEvent : uint8_t { Ambient, Hurt, Death, Step, Attack, Count };
 
 // Arrow-like projectile request (skeletons, …). Physics is per tick, same

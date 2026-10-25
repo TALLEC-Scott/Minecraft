@@ -31,7 +31,7 @@ MobSoundBank::Variants MobSoundBank::loadVariants(const std::string& prefix) {
     Variants out;
     if (!engine) return out;
     for (int n = 1; n <= MAX_VARIANTS; ++n) {
-        std::string path = prefix + std::to_string(n) + ".wav";
+        std::string path = prefix + std::to_string(n) + ".ogg";
         // Cheap existence probe first so missing files don't spam
         // miniaudio's decoder error path.
         if (!std::ifstream(path).good()) continue;
