@@ -230,3 +230,22 @@ void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz) {
         }
     }
 }
+
+void relightBlockChange(ChunkManager* cm, int x, int y, int z, block_type oldType, block_type newType) {
+    if (y < 0 || y >= CHUNK_HEIGHT) return;
+    uint8_t oldEmission = getBlockLightEmission(oldType), newEmission = getBlockLightEmission(newType);
+    bool nowBlocks = hasFlag(newType, BF_OPAQUE) && !hasFlag(oldType, BF_OPAQUE);
+    if (oldEmission > 0 && oldEmission != newEmission) {
+        // Clears the cell and everything it lit, then re-floods from the
+        // emitters still around (other lava next to a draining cell).
+        removeBlockLightWorld(cm, x, y, z);
+    } else if (nowBlocks && newEmission == 0) {
+        WorldResolver resolve(cm);
+        auto [c, i] = resolve(x, y, z);
+        if (c) {
+            c->ensureSkyLightFlat();
+            if (unpackBlock(c->skyLight.get()[i]) > 0) removeBlockLightWorld(cm, x, y, z);
+        }
+    }
+    if (newEmission > 0 && newEmission != oldEmission) floodBlockLight(cm, x, y, z, newEmission);
+}

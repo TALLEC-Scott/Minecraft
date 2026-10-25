@@ -60,9 +60,12 @@ void World::setBlock(int x, int y, int z, block_type type, uint8_t waterLevel) c
     // setBlockType marks only the affected section (+ boundary neighbors)
     // dirty via markSectionDirty. Don't call markDirty() here — that would
     // set ALL sections dirty and defeat the incremental rebuild.
+    block_type oldType = chunk->getBlockType(lx, y, lz);
     chunk->setBlockType(lx, y, lz, type);
     chunk->setWaterLevel(lx, y, lz, waterLevel);
     markBorderNeighborsDirty(chunkManager, cx, cz, lx, y, lz);
+    // Lava that flows in, drains away or hardens adds / takes its light.
+    if (oldType != type) relightBlockChange(chunkManager, x, y, z, oldType, type);
 }
 
 void World::destroyBlock(glm::vec3 position) const {
