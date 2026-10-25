@@ -238,9 +238,10 @@ static void drawFood(UIRenderer& ui, float rightX, float y, int food, float satu
     }
 }
 
-// A brand-new world: once the spawn chunks have loaded, stand the player on
-// the ground at the spawn column instead of dropping them from y = 90
-// (which costs hearts in Survival).
+// A brand-new world, or a respawn while the spawn chunk was unloaded: once
+// the spawn chunk has loaded, stand the player on the ground at the spawn
+// column instead of dropping them from y = 90 (which costs hearts in
+// Survival).
 static bool g_placeAtSpawn = false;
 
 // Loading-state tracking: the chunk the player will spawn in, plus a start
@@ -1057,7 +1058,9 @@ int main(int argc, char* argv[]) {
                 float dx = item.pos.x - feet.x, dz = item.pos.z - feet.z;
                 if (std::max(std::abs(dx), std::abs(dz)) > 0.3f + 1.0f + ItemEntity::HALF_WIDTH) return 0;
                 if (item.pos.y + ItemEntity::HEIGHT < feet.y - 0.5f || item.pos.y > feet.y + 1.8f + 0.5f) return 0;
-                return item.count - player.getInventory().add(item.id, item.count);
+                int taken = item.count - player.getInventory().add(item.id, item.count);
+                if (taken > 0) player.playPickupSound();
+                return taken;
             });
             world->mobManager->setDamagePlayerCallback(
                 [](float amount, glm::vec3 from) { player.hurt(amount, from); });
@@ -2120,6 +2123,17 @@ int main(int argc, char* argv[]) {
             // Dead players are frozen behind the death screen while the
             // world keeps running.
             if (currentState == GameState::Playing && !player.isDead()) {
+                // A respawn into an unloaded spawn chunk: place the player on
+                // the ground as soon as it has streamed in.
+                if (g_placeAtSpawn && w) {
+                    bool spawnLoaded = false;
+                    glm::vec3 eye = worldSpawnEye(spawnLoaded);
+                    if (spawnLoaded) {
+                        player.getCamera().setPosition(eye);
+                        player.getCamera().resetMotion();
+                        g_placeAtSpawn = false;
+                    }
+                }
                 player.update(w);
             }
             nbFrames++;
@@ -2978,9 +2992,12 @@ int main(int argc, char* argv[]) {
                 glfwGetTime() - deathTime > 1.0) {
                 bool spawnLoaded = false;
                 glm::vec3 spawnEye = worldSpawnEye(spawnLoaded);
-                // Hover until the spawn chunk streams in (Player::update
-                // drops a survival player back to walking once it has).
-                if (!spawnLoaded) player.getCamera().setWalkMode(false);
+                // Spawn chunk not loaded (died far away): hover there until
+                // it streams in, then stand on the ground (g_placeAtSpawn).
+                if (!spawnLoaded) {
+                    player.getCamera().setWalkMode(false);
+                    g_placeAtSpawn = true;
+                }
                 player.respawn(spawnEye);
                 glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
                 player.resetMouseState();
