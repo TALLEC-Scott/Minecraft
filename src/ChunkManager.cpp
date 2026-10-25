@@ -10,33 +10,25 @@
 #include <initializer_list>
 #include <algorithm>
 
-#ifdef __EMSCRIPTEN__
-static constexpr int MAX_CHUNKS_PER_FRAME = 4;
-#else
 static constexpr int MAX_INTEGRATE_PER_FRAME = 2;
 static constexpr int MAX_MESH_RESULTS_PER_FRAME = 8;
-#endif
 
 ChunkManager::ChunkManager(int renderDist, int /*chunkSize*/, TerrainGenerator& terrainGenerator)
     : renderDistance(renderDist), terrainGenerator(terrainGenerator) {
     int diameter = 2 * renderDist + 1;
     chunks.reserve(static_cast<size_t>(diameter) * diameter * 2);
 
-#ifndef __EMSCRIPTEN__
     int numWorkers = std::min(4u, std::max(1u, std::thread::hardware_concurrency() - 1));
     for (int i = 0; i < numWorkers; i++) workers.emplace_back(&ChunkManager::workerLoop, this);
-#endif
 }
 
 ChunkManager::~ChunkManager() {
-#ifndef __EMSCRIPTEN__
     {
         std::lock_guard<std::mutex> lock(requestMutex);
         shutdownFlag = true;
     }
     requestCV.notify_all();
     for (auto& w : workers) w.join();
-#endif
 }
 
 size_t ChunkManager::totalChunkMemory() const {
@@ -67,27 +59,15 @@ void ChunkManager::update(glm::vec3 cameraPosition) {
     glm::ivec2 minChunk = currentChunk - glm::ivec2(renderDistance);
     glm::ivec2 maxChunk = currentChunk + glm::ivec2(renderDistance);
 
-#ifndef __EMSCRIPTEN__
     {
         ZoneScopedN("ChunkMgr::drainResults");
         drainResults();
     }
-#endif
     bool boxChanged = (minChunk != currentMin) || (maxChunk != currentMax);
     currentMin = minChunk;
     currentMax = maxChunk;
-#ifdef __EMSCRIPTEN__
-    {
-        ZoneScopedN("ChunkMgr::loadChunks");
-        loadChunks(minChunk, maxChunk);
-    }
-    if (boxChanged) {
-        ZoneScopedN("ChunkMgr::unloadChunks");
-        unloadChunks(minChunk, maxChunk);
-    }
-#else
-    // Native: workers drain the existing request queue on their own, so
-    // both passes can sit out until the player crosses a chunk boundary.
+    // Workers drain the existing request queue on their own, so both
+    // passes can sit out until the player crosses a chunk boundary.
     if (boxChanged) {
         {
             ZoneScopedN("ChunkMgr::loadChunks");
@@ -98,7 +78,6 @@ void ChunkManager::update(glm::vec3 cameraPosition) {
             unloadChunks(minChunk, maxChunk);
         }
     }
-#endif
 
     // Flush pendingMesh for chunks that haven't been rendered in a while.
     // Without this, async mesh builds for invisible chunks leak the full
@@ -107,10 +86,10 @@ void ChunkManager::update(glm::vec3 cameraPosition) {
     // short enough to reclaim memory, long enough to absorb camera spins
     // and rapid-rebuild transients without redundant GPU uploads.
     //
-    // Only walk chunks with pending meshes (populated in drainResults /
-    // web sync path). Rendered chunks reset framesSinceRender in
-    // Chunk::render; the remaining pending chunks get their counter
-    // incremented here and uploaded once stale.
+    // Only walk chunks with pending meshes (populated in drainResults).
+    // Rendered chunks reset framesSinceRender in Chunk::render; the
+    // remaining pending chunks get their counter incremented here and
+    // uploaded once stale.
     constexpr int STALE_FRAMES = 20;
     constexpr int FLUSH_BUDGET = 16; // cap per-frame uploads to avoid stalls
     int flushed = 0;
@@ -161,40 +140,6 @@ void ChunkManager::update(glm::vec3 cameraPosition) {
 }
 
 void ChunkManager::loadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
-#ifdef __EMSCRIPTEN__
-    int generated = 0;
-    for (int x = minChunk.x; x <= maxChunk.x && generated < MAX_CHUNKS_PER_FRAME; x++) {
-        for (int z = minChunk.y; z <= maxChunk.y && generated < MAX_CHUNKS_PER_FRAME; z++) {
-            if (chunks.find(glm::ivec2(x, z)) == chunks.end()) {
-                // Try loading from disk first
-                if (worldSave && worldSave->chunkExists(x, z)) {
-                    ChunkData data;
-                    if (worldSave->loadChunkData(x, z, data, terrainGenerator)) {
-                        chunks[glm::ivec2(x, z)] = Chunk(std::move(data));
-                        Chunk& c = chunks[glm::ivec2(x, z)];
-                        c.propagateBorderLight(getChunk(x - 1, z), getChunk(x + 1, z), getChunk(x, z - 1),
-                                               getChunk(x, z + 1));
-                        // Re-propagate on each existing neighbor so they pull
-                        // in light newly-contributed by this chunk (e.g. a
-                        // glowstone inside it that otherwise stops at its edge).
-                        for (auto& [dx, dz] :
-                             std::initializer_list<std::pair<int, int>>{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}) {
-                            Chunk* nbr = getChunk(x + dx, z + dz);
-                            if (!nbr) continue;
-                            nbr->propagateBorderLight(getChunk(x + dx - 1, z + dz), getChunk(x + dx + 1, z + dz),
-                                                      getChunk(x + dx, z + dz - 1), getChunk(x + dx, z + dz + 1));
-                            nbr->markDirty();
-                        }
-                        generated++;
-                        continue;
-                    }
-                }
-                generateChunk(x, z);
-                generated++;
-            }
-        }
-    }
-#else
     for (int x = minChunk.x; x <= maxChunk.x; x++) {
         for (int z = minChunk.y; z <= maxChunk.y; z++) {
             glm::ivec2 pos(x, z);
@@ -208,7 +153,6 @@ void ChunkManager::loadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
             }
         }
     }
-#endif
 }
 
 void ChunkManager::saveAllModifiedChunks() {
@@ -235,30 +179,11 @@ void ChunkManager::unloadChunks(glm::ivec2 minChunk, glm::ivec2 maxChunk) {
         }
     }
 
-#ifndef __EMSCRIPTEN__
     for (auto it = pendingChunks.begin(); it != pendingChunks.end();) {
         if (it->x < minChunk.x || it->x > maxChunk.x || it->y < minChunk.y || it->y > maxChunk.y)
             it = pendingChunks.erase(it);
         else
             ++it;
-    }
-#endif
-}
-
-void ChunkManager::generateChunk(int x, int z) {
-    Chunk chunk(x, z, terrainGenerator);
-    chunks[glm::ivec2(x, z)] = std::move(chunk);
-    // Cross-chunk light propagation
-    Chunk& newChunk = chunks[glm::ivec2(x, z)];
-    newChunk.propagateBorderLight(getChunk(x - 1, z), getChunk(x + 1, z), getChunk(x, z - 1), getChunk(x, z + 1));
-    for (auto& [dx, dz] : std::initializer_list<std::pair<int, int>>{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}) {
-        Chunk* nbr = getChunk(x + dx, z + dz);
-        if (!nbr) continue;
-        // Re-seed neighbor from all its neighbors so it picks up any fresh
-        // light we just introduced (e.g. glowstones in the new chunk).
-        nbr->propagateBorderLight(getChunk(x + dx - 1, z + dz), getChunk(x + dx + 1, z + dz),
-                                  getChunk(x + dx, z + dz - 1), getChunk(x + dx, z + dz + 1));
-        nbr->markDirty();
     }
 }
 
@@ -271,7 +196,6 @@ Chunk* ChunkManager::getChunk(int chunkX, int chunkZ) {
     return nullptr;
 }
 
-#ifndef __EMSCRIPTEN__
 void ChunkManager::workerLoop() {
     while (true) {
         bool isChunkGen = false;
@@ -476,12 +400,9 @@ void ChunkManager::drainResults() {
         meshDrained++;
     }
 }
-#endif
 
 bool ChunkManager::streamingIdle() const {
-#ifndef __EMSCRIPTEN__
     if (!pendingChunks.empty()) return false;
-#endif
     if (!chunksWithPendingMesh.empty()) return false;
     for (const auto& [pos, chunk] : chunks)
         if (chunk.meshBuildInFlight || chunk.isMeshDirty()) return false;
@@ -489,7 +410,5 @@ bool ChunkManager::streamingIdle() const {
 }
 
 void ChunkManager::settleDirtyMeshes() {
-#ifndef __EMSCRIPTEN__
     queueDirtyMeshBuilds();
-#endif
 }

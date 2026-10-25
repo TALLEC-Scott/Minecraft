@@ -130,10 +130,10 @@ make -C build_win -j$(nproc)
 
 ```bash
 ./build_web.sh
-python3 -m http.server -d build_web 8080     # then open http://localhost:8080/minecraft.html
+python3 serve_web.py 8080     # then open http://localhost:8080/minecraft.html
 ```
 
-Shaders are patched at runtime from `#version 330 core` to `#version 300 es`. WASM `INITIAL_MEMORY=256MB` with `ALLOW_MEMORY_GROWTH=1`. Assets are bundled via `--preload-file`.
+Shaders are patched at runtime from `#version 330 core` to `#version 300 es`. WASM `INITIAL_MEMORY=256MB` with `ALLOW_MEMORY_GROWTH=1`. Chunk generation and meshing run on pthreads (Web Workers), so the page must be served cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: require-corp`); `serve_web.py` sends both. Assets are bundled via `--preload-file`.
 
 ### CMake options
 
