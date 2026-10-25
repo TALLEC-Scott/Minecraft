@@ -173,6 +173,20 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
     }
     ui.drawTextShadow("v0.8.5", 4.0f, (float)windowH - 12.0f, 1.0f, glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
 
+    // Background sound download (web): small bar near the bottom, same
+    // colors as the world loading bar, gone once the sounds are loaded.
+    if (soundsProgress >= 0.0f) {
+        float barW = 240.0f, barH = 8.0f;
+        float barX = cx - barW / 2.0f;
+        float barY = (float)windowH - 40.0f;
+        ui.drawRect(barX - 2, barY - 2, barW + 4, barH + 4, glm::vec4(0.0f, 0.0f, 0.0f, 0.9f));
+        ui.drawRect(barX, barY, barW, barH, glm::vec4(0.12f, 0.12f, 0.14f, 0.95f));
+        ui.drawRect(barX, barY, barW * std::min(soundsProgress, 1.0f), barH, glm::vec4(0.35f, 0.65f, 0.35f, 0.95f));
+        std::string label = "Loading sounds " + std::to_string((int)(std::min(soundsProgress, 1.0f) * 100.0f)) + "%";
+        ui.drawTextShadow(label, cx - ui.textWidth(label, 1.0f) / 2.0f, barY - 14.0f, 1.0f,
+                          glm::vec4(0.8f, 0.8f, 0.8f, 1.0f));
+    }
+
     widgets.endFrame(ui);
     ui.end();
     return next;
