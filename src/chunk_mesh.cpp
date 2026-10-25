@@ -12,6 +12,7 @@
 #include "light_data.h"
 #include "light_sampler.h"
 #include "mesh_types.h"
+#include "torch.h"
 #include "tracy_shim.h"
 
 #include <algorithm>
@@ -491,15 +492,11 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
             crossIdx.push_back(b);
             opaqueBase += 4;
         };
-        float y0 = wy - 0.5f, y1 = wy + 0.5f;
-        float planeA[4][3] = {{wx - 0.5f, y0, wz - 0.5f},
-                              {wx - 0.5f, y1, wz - 0.5f},
-                              {wx + 0.5f, y1, wz + 0.5f},
-                              {wx + 0.5f, y0, wz + 0.5f}};
-        float planeB[4][3] = {{wx - 0.5f, y0, wz + 0.5f},
-                              {wx - 0.5f, y1, wz + 0.5f},
-                              {wx + 0.5f, y1, wz - 0.5f},
-                              {wx + 0.5f, y0, wz - 0.5f}};
+        uint8_t state = (bt == TORCH && waterLevels)
+                            ? waterLevels[lx * CHUNK_HEIGHT * CHUNK_SIZE + ly * CHUNK_SIZE + lz]
+                            : 0;
+        float planeA[4][3], planeB[4][3];
+        crossQuadCorners(bt, state, wx, wy, wz, planeA, planeB);
         emitPlane(planeA);
         emitPlane(planeB);
     };

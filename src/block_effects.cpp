@@ -1,11 +1,12 @@
-#include "lava_effects.h"
+#include "block_effects.h"
 
 #include <miniaudio.h>
 
 #include "particle_system.h"
+#include "torch.h"
 #include "world.h"
 
-LavaEffects::~LavaEffects() {
+BlockEffects::~BlockEffects() {
     for (Voices* v : {&ambient, &pop, &hiss})
         for (ma_sound*& s : *v) {
             if (!s) continue;
@@ -15,7 +16,7 @@ LavaEffects::~LavaEffects() {
         }
 }
 
-void LavaEffects::loadVoices(ma_engine* engine, const char* path, Voices& v) {
+void BlockEffects::loadVoices(ma_engine* engine, const char* path, Voices& v) {
     for (int i = 0; i < VOICES; ++i) {
         auto* s = new ma_sound{};
         // Later voices share the first one's decoded data.
@@ -29,7 +30,7 @@ void LavaEffects::loadVoices(ma_engine* engine, const char* path, Voices& v) {
     }
 }
 
-void LavaEffects::initAudio(ma_engine* engine) {
+void BlockEffects::initAudio(ma_engine* engine) {
     if (!engine || audioLoaded) return;
     loadVoices(engine, "assets/Sounds/liquid/lava.ogg", ambient);
     loadVoices(engine, "assets/Sounds/liquid/lavapop.ogg", pop);
@@ -37,7 +38,7 @@ void LavaEffects::initAudio(ma_engine* engine) {
     audioLoaded = true;
 }
 
-void LavaEffects::play(Voices& v, int& next, float volume, float pitch) {
+void BlockEffects::play(Voices& v, int& next, float volume, float pitch) {
     if (!audioLoaded || volume <= 0.0f) return;
     ma_sound* s = v[next];
     next = (next + 1) % VOICES;
@@ -48,7 +49,7 @@ void LavaEffects::play(Voices& v, int& next, float volume, float pitch) {
     ma_sound_start(s);
 }
 
-void LavaEffects::fizz(const World& world, glm::vec3 pos) {
+void BlockEffects::fizz(const World& world, glm::vec3 pos) {
     if (fizzesThisTick >= MAX_FIZZES_PER_TICK) return;
     ++fizzesThisTick;
     world.particles->spawnFizzSmoke(pos);
@@ -57,7 +58,7 @@ void LavaEffects::fizz(const World& world, glm::vec3 pos) {
     play(hiss, nextVoice[2], 0.5f * falloff, 2.6f + (rand01() - rand01()) * 0.8f);
 }
 
-void LavaEffects::update(const World& world, glm::vec3 listener, float dt) {
+void BlockEffects::update(const World& world, glm::vec3 listener, float dt) {
     accumulator += dt;
     bool tickDue = accumulator >= 0.05f;
     if (tickDue) {
@@ -77,7 +78,18 @@ void LavaEffects::update(const World& world, glm::vec3 listener, float dt) {
         int x = c.x + offset(rng), y = c.y + offset(rng), z = c.z + offset(rng);
         if (y < 0 || y + 1 >= CHUNK_HEIGHT) continue;
         auto loc = resolver.local(x, z);
-        if (!loc.chunk || loc.chunk->getBlockType(loc.lx, y, loc.lz) != LAVA) continue;
+        if (!loc.chunk) continue;
+        block_type t = loc.chunk->getBlockType(loc.lx, y, loc.lz);
+        if (t == TORCH) {
+            // Flame at the stick's tip; a wall torch's tip leans toward its wall.
+            uint8_t s = loc.chunk->getWaterLevel(loc.lx, y, loc.lz);
+            glm::vec3 tip(x, y - 0.5f + torch::TOP + 0.05f, z);
+            if (s != torch::STANDING && torch::validState(s))
+                tip += glm::vec3(torch::SUPPORT[s][0], 0, torch::SUPPORT[s][2]) * torch::WALL_TOP_SHIFT;
+            world.particles->spawnTorchFlame(tip);
+            continue;
+        }
+        if (t != LAVA) continue;
         if (loc.chunk->getBlockType(loc.lx, y + 1, loc.lz) != AIR) continue;
 
         bool popNow = std::uniform_int_distribution<int>(0, POP_CHANCE - 1)(rng) == 0;

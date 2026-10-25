@@ -3,6 +3,7 @@
  */
 
 #include "chunk.h"
+#include "torch.h"
 #include "light_data.h"
 #include "texture_array.h"
 #include "profiler.h"
@@ -1027,15 +1028,8 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                         sm.crossIdx.push_back(b);
                         opaqueBase += 4;
                     };
-                    float y0 = wy - 0.5f, y1 = wy + 0.5f;
-                    float planeA[4][3] = {{wx - 0.5f, y0, wz - 0.5f},
-                                          {wx - 0.5f, y1, wz - 0.5f},
-                                          {wx + 0.5f, y1, wz + 0.5f},
-                                          {wx + 0.5f, y0, wz + 0.5f}};
-                    float planeB[4][3] = {{wx - 0.5f, y0, wz + 0.5f},
-                                          {wx - 0.5f, y1, wz + 0.5f},
-                                          {wx + 0.5f, y1, wz - 0.5f},
-                                          {wx + 0.5f, y0, wz - 0.5f}};
+                    float planeA[4][3], planeB[4][3];
+                    crossQuadCorners(bt, bt == TORCH ? getWaterLevel(x, y, z) : 0, wx, wy, wz, planeA, planeB);
                     emitPlane(planeA);
                     emitPlane(planeB);
                 }
@@ -1458,6 +1452,8 @@ void Chunk::placeBlock(int x, int y, int z, block_type type) {
     setBlockType(x, y, z, type);
     setWaterLevel(x, y, z, 0);
     if (y > maxSolidY) maxSolidY = y;
+    // Plants and torches don't block the sky.
+    if (hasFlag(type, BF_CROSS)) return;
     auto flat = decompressBlocks();
     ensureSkyLightFlat(); // BFS modifies the flat skyLight
     darkenSkyLightLocal(flat.get(), skyLight.get(), x, y, z);

@@ -1,13 +1,14 @@
 #include "world.h"
 #include "entity_manager.h"
 #include "frustum.h"
-#include "lava_effects.h"
+#include "block_effects.h"
 #include "light_data.h"
 #include "light_propagation.h"
 #include "mob_manager.h"
 #include "particle_system.h"
 #include "profiler.h"
 #include "tnt_entity.h"
+#include "torch.h"
 #include "tracy_shim.h"
 #include <array>
 #include <algorithm>
@@ -20,7 +21,7 @@ World::World(unsigned int seed) : seed(seed) {
     this->waterSimulator = new WaterSimulator(this);
     this->entityManager = new EntityManager();
     this->particles = new ParticleSystem();
-    this->lavaEffects = new LavaEffects();
+    this->blockEffects = new BlockEffects();
     this->mobManager = new MobManager(this, seed);
 }
 
@@ -85,7 +86,7 @@ void World::endLightBatch() const {
     pendingLight.clear();
 }
 
-void World::destroyBlock(glm::vec3 position) const {
+void World::destroyBlock(glm::vec3 position, std::vector<glm::ivec3>* popped) const {
     int bx = (int)std::floor(position.x);
     int by = (int)std::floor(position.y);
     int bz = (int)std::floor(position.z);
@@ -101,6 +102,7 @@ void World::destroyBlock(glm::vec3 position) const {
 
     block_type oldType = chunk->getBlockType(lx, by, lz);
     chunk->destroyBlock(lx, by, lz);
+    if (oldType == TORCH) chunk->setWaterLevel(lx, by, lz, 0); // the state byte goes with it
     markBorderNeighborsDirty(chunkManager, chunkX, chunkZ, lx, by, lz);
 
     // World-space light updates — cross chunk boundaries
@@ -127,9 +129,34 @@ void World::destroyBlock(glm::vec3 position) const {
 
     // Trigger water simulation for neighbors (water may flow into the gap)
     waterSimulator->activateNeighbors(bx, by, bz);
+
+    // Torches hanging on (or standing on) this block fall off with it.
+    for (int s = 0; s <= 4; ++s) {
+        // The torch that block (bx,by,bz) would support in state s sits
+        // opposite that state's support offset.
+        int tx = bx - torch::SUPPORT[s][0], ty = by - torch::SUPPORT[s][1], tz = bz - torch::SUPPORT[s][2];
+        if (ty < 0 || ty >= CHUNK_HEIGHT) continue;
+        int tcx = worldToChunk(tx), tcz = worldToChunk(tz);
+        Chunk* tc = chunkManager->getChunk(tcx, tcz);
+        if (!tc) continue;
+        int tlx = worldToLocal(tx, tcx), tlz = worldToLocal(tz, tcz);
+        if (tc->getBlockType(tlx, ty, tlz) != TORCH || tc->getWaterLevel(tlx, ty, tlz) != s) continue;
+        destroyBlock(glm::vec3(tx, ty, tz));
+        if (popped) popped->emplace_back(tx, ty, tz);
+    }
 }
 
-void World::placeBlock(glm::ivec3 position, block_type type) const {
+uint8_t World::torchStateAt(glm::ivec3 p) const {
+    // Standing if the block below holds it, else the first wall that does
+    // (how a network peer, which only gets the block type, places it).
+    for (uint8_t s = 0; s <= 4; ++s) {
+        Cube* b = getBlock(p.x + torch::SUPPORT[s][0], p.y + torch::SUPPORT[s][1], p.z + torch::SUPPORT[s][2]);
+        if (b && torch::canSupport(b->getType())) return s;
+    }
+    return torch::INVALID;
+}
+
+void World::placeBlock(glm::ivec3 position, block_type type, uint8_t state) const {
     int bx = position.x;
     int by = position.y;
     int bz = position.z;
@@ -145,7 +172,13 @@ void World::placeBlock(glm::ivec3 position, block_type type) const {
     // Placing goes into air or, since aiming passes through liquids, into
     // water or lava: whatever was there takes its light with it.
     block_type oldType = chunk->getBlockType(lx, by, lz);
+    if (type == TORCH && !torch::validState(state)) {
+        // A network echo of our own placement keeps the facing we chose.
+        state = oldType == TORCH ? chunk->getWaterLevel(lx, by, lz) : torchStateAt(position);
+    }
+    if (type == TORCH && !torch::validState(state)) return; // nothing to hang on
     chunk->placeBlock(lx, by, lz, type);
+    if (type == TORCH) chunk->setWaterLevel(lx, by, lz, state);
     markBorderNeighborsDirty(chunkManager, chunkX, chunkZ, lx, by, lz);
 
     // Block light in world space, crossing chunk boundaries
@@ -162,7 +195,7 @@ void World::placeBlock(glm::ivec3 position, block_type type) const {
 
 World::~World() {
     delete this->mobManager;
-    delete this->lavaEffects;
+    delete this->blockEffects;
     delete this->particles;
     delete this->entityManager;
     delete this->waterSimulator;
@@ -337,8 +370,8 @@ void World::update(glm::vec3 cameraPosition, float dt, double now) const {
         this->waterSimulator->updateAmbient(cameraPosition);
     }
     {
-        ZoneScopedN("Lava::effects");
-        this->lavaEffects->update(*this, cameraPosition, dt);
+        ZoneScopedN("Block::effects");
+        this->blockEffects->update(*this, cameraPosition, dt);
     }
     {
         ZoneScopedN("Entities::tick");

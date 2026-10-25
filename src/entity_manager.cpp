@@ -8,7 +8,7 @@
 
 #include "entity_cube_renderer.h"
 #include "inventory_model.h"
-#include "lava_effects.h"
+#include "block_effects.h"
 #include "shader.h"
 #include "world.h"
 #include "world_resolver.h"
@@ -108,7 +108,7 @@ void EntityManager::tickItems(World* world) {
             auto loc = resolver.local(b.x, b.z);
             if (loc.chunk && loc.chunk->getBlockType(loc.lx, b.y, loc.lz) == LAVA) {
                 e.removed = true;
-                if (world->lavaEffects) world->lavaEffects->fizz(*world, e.pos);
+                if (world->blockEffects) world->blockEffects->fizz(*world, e.pos);
             }
         }
     }

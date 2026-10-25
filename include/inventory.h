@@ -82,6 +82,7 @@ class Inventory {
         TNT,
         CRAFTING_TABLE,
         OBSIDIAN,
+        TORCH,
         ITEM_STICK,
         ITEM_COAL,
         ITEM_WOODEN_PICKAXE,

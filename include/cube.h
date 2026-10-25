@@ -55,10 +55,11 @@ enum block_type : uint8_t {
     COBBLESTONE,
     CRAFTING_TABLE,
     LAVA,
-    OBSIDIAN
+    OBSIDIAN,
+    TORCH
 };
-// Number of block_type values; keep OBSIDIAN (the last one) in sync.
-inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(OBSIDIAN) + 1;
+// Number of block_type values; keep TORCH (the last one) in sync.
+inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(TORCH) + 1;
 
 enum Biome { BIOME_OCEAN, BIOME_BEACH, BIOME_PLAINS, BIOME_FOREST, BIOME_DESERT, BIOME_TUNDRA, BIOME_COUNT };
 
@@ -124,6 +125,7 @@ inline uint32_t getBlockFlags(block_type t) {
         /* CRAFTING_TABLE */ BF_SOLID | BF_OPAQUE,
         /* LAVA      */ BF_TRANSPARENT | BF_LIQUID,
         /* OBSIDIAN  */ BF_SOLID | BF_OPAQUE,
+        /* TORCH     */ BF_TRANSPARENT | BF_CROSS,
     };
     // clang-format on
     int idx = static_cast<int>(t);
@@ -168,6 +170,7 @@ enum StepSound {
 
 inline uint8_t getBlockLightEmission(block_type t) {
     if (t == GLOWSTONE || t == LAVA) return 15;
+    if (t == TORCH) return 14;
     return 0;
 }
 
@@ -197,6 +200,7 @@ inline StepSound getStepSound(block_type t) {
         /* CRAFTING_TABLE */ STEP_WOOD,
         /* LAVA      */ STEP_NONE,
         /* OBSIDIAN  */ STEP_STONE,
+        /* TORCH     */ STEP_WOOD,
     };
     // clang-format on
     int idx = static_cast<int>(t);

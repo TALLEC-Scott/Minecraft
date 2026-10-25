@@ -64,6 +64,10 @@ class ParticleSystem {
     // (Minecraft's LARGE_SMOKE ×8 on the extinguish hiss).
     void spawnFizzSmoke(glm::vec3 blockTop);
 
+    // Torch: a small flame flicker at the tip plus a wisp of smoke
+    // (Minecraft's torch animateTick: FLAME + SMOKE).
+    void spawnTorchFlame(glm::vec3 tip);
+
     size_t aliveCount() const;
 
   private:

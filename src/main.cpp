@@ -56,7 +56,7 @@
 #include "world_directory.h"
 #include "entity_cube_renderer.h"
 #include "entity_manager.h"
-#include "lava_effects.h"
+#include "block_effects.h"
 #include "mob_manager.h"
 #include "mob_registry.h"
 #include "particle_system.h"
@@ -284,7 +284,7 @@ static bool g_soundsLoaded = false;
 
 static void loadWorldSounds(World& world, ma_engine* engine) {
     world.waterSimulator->initAudio(engine);
-    world.lavaEffects->initAudio(engine);
+    world.blockEffects->initAudio(engine);
     world.entityManager->initAudio(engine);
     world.mobManager->initAudio(engine);
 }
@@ -337,6 +337,21 @@ static HeldItemModel& itemModel(const char* spritePath) {
 }
 // Grip pixel of a tool sprite (sprite coords): where the hand holds it.
 static const glm::vec3 TOOL_GRIP(2.5f, 2.5f, 0.0f);
+// Upright sprites (torch, flowers) are held at the bottom of their stem.
+static const glm::vec3 STEM_GRIP(8.0f, 1.0f, 0.0f);
+
+// The sprite an item is held / dropped as: an item's own icon, or a
+// cross-quad block's texture (torch, flowers, grass), which has no cube
+// form. `upright` is set for the latter (drawn standing, not diagonal
+// like the tools). nullptr = draw as a block cube (or nothing).
+static const char* heldSpritePath(ItemId id, bool& upright) {
+    upright = false;
+    if (const char* icon = itemIconPath(id)) return icon;
+    block_type bt = itemBlock(id);
+    if (bt == AIR || !hasFlag(bt, BF_CROSS)) return nullptr;
+    upright = true;
+    return TextureArray::layerPath(TextureArray::layerForType(bt));
+}
 static double lastTime = 0, lastFrameTime = 0;
 static int nbFrames = 0, chunksRendered = 0;
 
@@ -2545,19 +2560,19 @@ int main(int argc, char* argv[]) {
 
                     // What they hold, in the right fist (third person).
                     glm::mat4 hand = PlayerRenderer::rightHandFrame(feetPos, pose.yaw);
-                    if (const char* spritePath = itemIconPath(r.heldItem)) {
+                    bool upright = false;
+                    if (const char* spritePath = heldSpritePath(r.heldItem, upright)) {
                         // Tool: sprite slab standing in the arm's forward
                         // plane, blade angled forward and up (sprite +X -> +Z).
                         if (HeldItemModel& toolModel = itemModel(spritePath); toolModel.load(spritePath)) {
                             glm::mat4 m = glm::rotate(hand, glm::radians(-90.0f), glm::vec3(0, 1, 0));
                             m = glm::scale(m, glm::vec3(0.045f)); // 16 px ≈ 0.72 blocks
-                            m = glm::translate(m, -TOOL_GRIP);
+                            m = glm::translate(m, upright ? -STEM_GRIP : -TOOL_GRIP);
                             ItemShading shading{lightTintFor(light), sunDir, cameraPos, fogColor, fogStart, fogEnd};
                             toolModel.draw(viewProjection, m, shading);
                             shaderProgram.use();
                         }
-                    } else if (block_type held = itemBlock(r.heldItem);
-                               held != AIR && !hasFlag(held, BF_CROSS) && !hasFlag(held, BF_LIQUID)) {
+                    } else if (block_type held = itemBlock(r.heldItem); held != AIR && !hasFlag(held, BF_LIQUID)) {
                         // Solid block: a small cube in front of the fist. Plants
                         // and water have no cube form, so nothing is drawn.
                         glm::mat4 m = glm::translate(hand, glm::vec3(0.0f, -0.05f, 0.12f));
@@ -2829,7 +2844,8 @@ int main(int argc, char* argv[]) {
 
                 block_type heldType = player.getSelectedBlockType();
                 glDisable(GL_CULL_FACE);
-                if (const char* spritePath = itemIconPath(player.getSelectedItem())) {
+                bool uprightSprite = false;
+                if (const char* spritePath = heldSpritePath(player.getSelectedItem(), uprightSprite)) {
                     // Tool (the sword): its sprite extruded into a pixel
                     // slab held in the hand — handle in the lower right, flat
                     // side toward the camera, blade leaning toward the
@@ -2855,9 +2871,11 @@ int main(int argc, char* argv[]) {
                         glm::mat4 m = glm::translate(glm::mat4(1.0f), hand) * heldpose::swingRotation(swing);
                         m = glm::rotate(m, glm::radians(-25.0f), glm::vec3(0, 1, 0)); // flat side toward us
                         m = glm::rotate(m, glm::radians(-30.0f), glm::vec3(1, 0, 0)); // blade leans away
-                        m = glm::rotate(m, glm::radians(70.0f), glm::vec3(0, 0, 1));  // diagonal sprite upright
+                        // Diagonal tool sprites stand up at 70°; upright ones
+                        // (torch, flowers) only need the same 25° lean.
+                        m = glm::rotate(m, glm::radians(uprightSprite ? 25.0f : 70.0f), glm::vec3(0, 0, 1));
                         m = glm::scale(m, glm::vec3(ITEM_SCALE));
-                        m = glm::translate(m, -TOOL_GRIP);
+                        m = glm::translate(m, uprightSprite ? -STEM_GRIP : -TOOL_GRIP);
                         swordModel.draw(projection, m, ItemShading{armTint});
                         billboardShader.use(); // restore for the rest of this pass
                     }
