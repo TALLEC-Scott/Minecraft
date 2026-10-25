@@ -54,9 +54,18 @@ https://github.com/user-attachments/assets/c95a33fa-b7e2-41ac-b8ba-79bb7edf997f
 ### World
 - Procedural terrain with multi-octave Perlin noise - continentalness, temperature, humidity
 - 6 biomes - ocean, beach, plains, forest, desert, tundra - driving surface blocks, tree/cactus placement, snow caps and shore sand/gravel post-pass
-- 18 block types including `GRASS`, `DIRT`, `STONE`, `COAL_ORE`, `BEDROCK`, `WATER`, `SAND`, `GLOWSTONE`, `WOOD`, `LEAVES`, `SNOW`, `GRAVEL`, `CACTUS`, `TNT`, and cross-quad plants (`TALL_GRASS`, `DANDELION`, `POPPY`)
+- 21 block types including `GRASS`, `DIRT`, `STONE`, `COBBLESTONE`, `COAL_ORE`, `BEDROCK`, `WATER`, `SAND`, `GLOWSTONE`, `WOOD`, `PLANKS`, `LEAVES`, `SNOW`, `GRAVEL`, `CACTUS`, `TNT`, `CRAFTING_TABLE`, and cross-quad plants (`TALL_GRASS`, `DANDELION`, `POPPY`)
 - Unified vegetation placement - trees, cacti, and plants share a `claimed[]` occupancy grid so nothing grows under a canopy or clips with another tree
-- Persistent worlds - modified chunks save as palette-encoded binary files in `saves/world/chunks/`; player position, yaw/pitch, hotbar, selected slot, and walk mode in `level.dat`
+- Persistent worlds - modified chunks save as palette-encoded binary files in `saves/world/chunks/`; game mode, player position, yaw/pitch, inventory, selected slot, health, food and walk mode in `level.dat`
+
+### Survival
+- Survival or Creative per world (chosen on the Create World screen, switchable with `/gamemode survival|creative`); worlds from before game modes load as Creative
+- No flying; blocks take time to break with Minecraft's hardness and tool-speed rules (crack overlay while mining); stone and coal ore need a pickaxe to drop anything
+- Broken blocks and killed animals drop items that bob on the ground until picked up; dying spills the whole inventory
+- 40-slot inventory with stacks (Minecraft click rules: pick up, split, place one, shift-click), **Q** drops the held item
+- Crafting: 2×2 grid in the inventory, 3×3 at a crafting table - planks, sticks, crafting table, and wooden / stone pickaxe, axe, shovel and sword
+- Hunger: activity drains food; health regenerates only when fed and starves at zero; eat apples and raw meat (hold right click)
+- Item and new block textures from the Pixel Perfection resource pack (CC BY-SA 4.0), credited in `assets/Textures/README.md` and `assets/Textures/items/README.md`
 
 ### Simulation
 - Cellular-automaton water at 4 ticks/sec (FPS-agnostic, wall-clock timed) - gravity, horizontal spread, infinite source cloning, falling decay; sloped surfaces with corner-averaged heights across diagonal chunks
@@ -80,11 +89,11 @@ https://github.com/user-attachments/assets/c95a33fa-b7e2-41ac-b8ba-79bb7edf997f
 - Per-biome step / break sounds (grass, stone, sand, gravel, snow, wood, water, cloth)
 - Underwater ambience + enter/exit/bubble sounds
 - Water-flow ambient loop proximity-faded
-- 4 explosion WAV samples picked at random per TNT detonation; TNT click-ignition via flint-and-steel UX (right-click a TNT block)
+- 4 explosion samples picked at random per TNT detonation; TNT click-ignition via flint-and-steel UX (right-click a TNT block)
 
 ### UX
 - Main menu, settings, pause menu with dirt background + embedded 8×8 bitmap font (no external font file)
-- Inventory grid (press **E**) - click to assign a block to the current hotbar slot
+- Inventory (press **E**) - Creative: a palette, click to put an item in the current hotbar slot; Survival: your slots and a crafting grid
 - Settings persist to `settings.txt`: render distance, FOV, VSync, mouse sensitivity, daylight cycle, greedy meshing toggle
 - Grass-block icon embedded in the `.exe` (Windows taskbar + title bar) + runtime `glfwSetWindowIcon` fallback
 - Window title live stats: `FPS | frame time ms | chunks rendered/loaded`
@@ -92,7 +101,7 @@ https://github.com/user-attachments/assets/c95a33fa-b7e2-41ac-b8ba-79bb7edf997f
 ### Platform
 - Desktop: Linux / Windows (native or MinGW cross-compile from Linux)
 - WebAssembly build via Emscripten (WebGL 2.0 / OpenGL ES 3.0)
-- Async chunk generation + mesh builds on worker threads (native); single-threaded synchronous path on web
+- Async chunk generation + mesh builds on worker threads (native, and on the web as pthreads / Web Workers)
 - Frame profiler with GPU timer queries, per-phase breakdown (update / render / swap), memory attribution, and optional Tracy client integration
 
 ## Requirements
@@ -159,11 +168,12 @@ make -C build tests && ./build/tests
 | Key | Action |
 |---|---|
 | **WASD** | Move |
-| **Space** | Jump / fly up (double-tap toggles walk ↔ fly) |
+| **Space** | Jump / fly up (double-tap toggles walk ↔ fly, Creative only) |
 | **Shift** / **Q** | Fly down |
+| **Q** (Survival) | Drop one of the held item (**Ctrl+Q**: the stack) |
 | **R** (always), **Shift / Ctrl** in walk | Sprint |
-| **Left Click** | Break block |
-| **Right Click** | Place block - or ignite if aimed at TNT |
+| **Left Click** | Attack / break block (hold to mine in Survival) |
+| **Right Click** | Place block - ignite TNT, open a crafting table, or (hold) eat food |
 | **1 – 0** | Select hotbar slot |
 | **Scroll** | Cycle hotbar |
 | **E** | Toggle inventory |
