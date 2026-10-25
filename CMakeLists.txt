@@ -72,11 +72,14 @@ set(COMMON_SOURCES
     src/mobs/zombie.cpp
     src/mobs/skeleton.cpp
     src/mobs/creeper.cpp
+    src/mobs/creeper_cow.cpp
     src/mobs/spider.cpp
     src/net/net_protocol.cpp
     src/net/net_session.cpp
     src/net/multiplayer_menu.cpp
     src/net/chat_overlay.cpp
+    src/chat_commands.cpp
+    src/chat_history.cpp
 )
 
 if(EMSCRIPTEN)
@@ -249,6 +252,8 @@ else()
         tests/test_mob_creeper_spider.cpp
         tests/test_player_health.cpp
         tests/test_worldgen.cpp
+        tests/test_chat_commands.cpp
+        tests/test_chat_history.cpp
         src/TerrainGenerator.cpp
         src/terrain_fill.cpp
         src/section_visibility.cpp
@@ -275,6 +280,9 @@ else()
         src/mobs/zombie.cpp
         src/mobs/skeleton.cpp
         src/mobs/creeper.cpp
+        src/mobs/creeper_cow.cpp
+        src/chat_commands.cpp
+        src/chat_history.cpp
         src/mobs/spider.cpp
     )
     # tests/stubs is searched before include/ so the water-sim tests can

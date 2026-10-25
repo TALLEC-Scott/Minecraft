@@ -4,6 +4,7 @@ build_asan/
 build_debug/
 build_web/
 settings.txt
+chat_history.txt
 
 # IDE
 .vs/

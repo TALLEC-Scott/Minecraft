@@ -59,6 +59,9 @@
 #include "particle_system.h"
 #include "player_renderer.h"
 #include "net/chat_overlay.h"
+#include "chat_commands.h"
+#include "chat_history.h"
+#include "day_cycle.h"
 #include "net/net_session.h"
 #include "net/multiplayer_menu.h"
 
@@ -75,8 +78,10 @@ int windowHeight = WINDOW_HEIGHT;
 // Desktop keeps it next to the executable for easy manual editing.
 #ifdef __EMSCRIPTEN__
 constexpr const char* SETTINGS_PATH = "saves/settings.txt";
+constexpr const char* CHAT_HISTORY_PATH = "saves/chat_history.txt";
 #else
 constexpr const char* SETTINGS_PATH = "settings.txt";
+constexpr const char* CHAT_HISTORY_PATH = "chat_history.txt";
 #endif
 
 // Fallback window size used when "Auto" is selected but neither the
@@ -199,6 +204,7 @@ std::string g_loadingWorldName;
 
 bool xKeyPressed = false;
 bool wireframeMode = false;
+bool showCoordinates = false; // /gamerule showcoordinates
 
 bool f12KeyPressed = false;
 bool fullscreenMode = false;
@@ -209,6 +215,7 @@ bool previousDaylight = false;
 GameState currentState = GameState::MainMenu;
 GameSettings gameSettings;
 bool escKeyPressed = false;
+bool enterKeyPressed = false;
 Inventory inventory;
 bool eKeyPressed = false;
 
@@ -298,6 +305,14 @@ void scrollCallback(GLFWwindow* /*window*/, double /*xOffset*/, double yOffset) 
 
 void charCallback(GLFWwindow* /*window*/, unsigned int codepoint) {
     if (g_menu) g_menu->onCharInput(codepoint);
+    // '/' opens chat with the slash typed (Minecraft's command shortcut).
+    // Done on the char event rather than a key poll so it works on any
+    // keyboard layout (on AZERTY '/' is Shift+':').
+    if (g_chat && !g_chat->isOpen() && codepoint == '/' && currentState == GameState::Playing && !inventory.isOpen() &&
+        !player.isDead()) {
+        g_chat->open("/");
+        return;
+    }
     if (g_chat) g_chat->onCharInput(codepoint);
 }
 
@@ -398,11 +413,15 @@ static void buildHeldBlockMesh(block_type bt) {
     lastHeldBlock = bt;
 }
 
-void processInput(GLFWwindow* window) {
-    // Chat captures every game-world key while open (movement, pause, E, …).
-    // Return early so a stray T / Esc / WASD press doesn't leak through.
-    if (g_chat && g_chat->isOpen()) return;
+#ifndef __EMSCRIPTEN__
+// X key and /wireframe. Desktop only: WebGL has no glPolygonMode.
+static void setWireframe(bool on) {
+    wireframeMode = on;
+    glPolygonMode(GL_FRONT_AND_BACK, on ? GL_LINE : GL_FILL);
+}
+#endif
 
+void processInput(GLFWwindow* window) {
     // Pause: ESC on desktop, M on web (ESC exits pointer lock in browsers
     // and TAB is intercepted by tab-stop focus cycling).
 #ifdef __EMSCRIPTEN__
@@ -410,6 +429,19 @@ void processInput(GLFWwindow* window) {
 #else
     bool pauseDown = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
 #endif
+    bool enterDown =
+        glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_KP_ENTER) == GLFW_PRESS;
+
+    // Chat captures every game-world key while open (movement, pause, E, …).
+    // Return early so a stray T / Esc / WASD press doesn't leak through,
+    // but keep tracking the pause + Enter keys so the press that closes
+    // chat doesn't also pause the game or reopen chat.
+    if (g_chat && g_chat->isOpen()) {
+        escKeyPressed = pauseDown;
+        enterKeyPressed = enterDown;
+        return;
+    }
+
     if (pauseDown && !escKeyPressed) {
         if (inventory.isOpen()) {
             // Close inventory instead of pausing
@@ -432,14 +464,7 @@ void processInput(GLFWwindow* window) {
 #ifndef __EMSCRIPTEN__
     // Enable/Disable wireframe mode
     bool xKeyDown = glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS;
-    if (xKeyDown && !xKeyPressed) {
-        wireframeMode = !wireframeMode;
-        if (wireframeMode) {
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        } else {
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        }
-    }
+    if (xKeyDown && !xKeyPressed) setWireframe(!wireframeMode);
     xKeyPressed = xKeyDown;
 #endif
 
@@ -456,14 +481,15 @@ void processInput(GLFWwindow* window) {
     }
     eKeyPressed = eKeyDown;
 
-    // Chat open: 'T' key (edge-triggered). Not allowed when the inventory
-    // is up so we don't eat the player's keystrokes mid-menu.
+    // Chat open: 'T' or Enter (edge-triggered). Not allowed when the
+    // inventory is up so we don't eat the player's keystrokes mid-menu.
     static bool tKeyPressed = false;
     bool tKeyDown = glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS;
-    if (tKeyDown && !tKeyPressed && g_chat && !inventory.isOpen()) {
+    if (((tKeyDown && !tKeyPressed) || (enterDown && !enterKeyPressed)) && g_chat && !inventory.isOpen()) {
         g_chat->open();
     }
     tKeyPressed = tKeyDown;
+    enterKeyPressed = enterDown;
 
     // Skip player input while inventory is open
     if (inventory.isOpen()) return;
@@ -746,6 +772,12 @@ int main(int argc, char* argv[]) {
 #endif
         ChatOverlay chatObj;
     g_chat = &chatObj;
+#ifdef __EMSCRIPTEN__
+    static
+#endif
+        ChatHistory chatHistory(CHAT_HISTORY_PATH);
+    chatHistory.load();
+    chatObj.setHistory(&chatHistory);
 
     // Share audio engine with player for footstep sounds
     player.initAudio(menuObj.getAudioEngine());
@@ -977,6 +1009,86 @@ int main(int argc, char* argv[]) {
         netSession.setOnChat([](uint32_t peerId, const std::string& text) {
             if (g_chat) g_chat->pushRemoteMessage(peerId, text);
         });
+
+#ifdef __EMSCRIPTEN__
+        static
+#endif
+            ChatCommands chatCommands;
+        chatCommands.add("time", "<day|night>", "Jump to midday or midnight (also: noon, midnight)",
+                         [session = &netSession](const ChatCommands::Args& args, ChatCommands::Reply& out) {
+                             std::string arg = args.empty() ? "" : args.back(); // "/time set day" works too
+                             double target = 0.0;
+                             if (arg == "day" || arg == "noon" || arg == "midday") {
+                                 target = daycycle::NOON;
+                             } else if (arg == "night" || arg == "midnight") {
+                                 target = daycycle::MIDNIGHT;
+                             } else {
+                                 out.emplace_back("Usage: /time <day|night>");
+                                 return;
+                             }
+                             if (session->role() == NetRole::Client) {
+                                 out.emplace_back("Only the host can change the time.");
+                                 return;
+                             }
+                             if (!doDaylightCycle) {
+                                 out.emplace_back("The daylight cycle is disabled.");
+                                 return;
+                             }
+                             double now = session->syncedTime(glfwGetTime());
+                             session->advanceClock(daycycle::secondsUntil(now, target));
+                             out.emplace_back(target == daycycle::NOON ? "Time set to midday."
+                                                                       : "Time set to midnight.");
+                         });
+        chatCommands.add("cowrain", "[on|off]", "Toggle raining creeper cows that explode on impact",
+                         [](const ChatCommands::Args& args, ChatCommands::Reply& out) {
+                             if (!w || !w->mobManager) {
+                                 out.emplace_back("No world loaded.");
+                                 return;
+                             }
+                             bool on = false;
+                             if (!ChatCommands::parseToggle(args.empty() ? "" : args[0],
+                                                            w->mobManager->cowRainEnabled(), on)) {
+                                 out.emplace_back("Usage: /cowrain [on|off]");
+                                 return;
+                             }
+                             w->mobManager->setCowRain(on);
+                             out.emplace_back(on ? "Cow rain: ON. Look up." : "Cow rain: off.");
+                         });
+        chatCommands.add("wireframe", "[on|off]", "Toggle wireframe rendering (same as X)",
+                         [](const ChatCommands::Args& args, ChatCommands::Reply& out) {
+#ifdef __EMSCRIPTEN__
+                             (void)args;
+                             out.emplace_back("Wireframe isn't available in the browser.");
+#else
+                             bool on = false;
+                             if (!ChatCommands::parseToggle(args.empty() ? "" : args[0], wireframeMode, on)) {
+                                 out.emplace_back("Usage: /wireframe [on|off]");
+                                 return;
+                             }
+                             setWireframe(on);
+                             out.emplace_back(on ? "Wireframe: on." : "Wireframe: off.");
+#endif
+                         });
+        // Bedrock's coordinate toggle. Only this one rule exists for now.
+        chatCommands.add(
+            "gamerule", "showcoordinates [true|false]", "Show your position in the top-left corner",
+            [](const ChatCommands::Args& args, ChatCommands::Reply& out) {
+                if (args.empty() || (args[0] != "showcoordinates" && args[0] != "showCoordinates")) {
+                    out.emplace_back("Usage: /gamerule showcoordinates [true|false]");
+                    return;
+                }
+                if (args.size() == 1) {
+                    out.emplace_back(std::string("showcoordinates = ") + (showCoordinates ? "true" : "false"));
+                    return;
+                }
+                bool on = false;
+                if (!ChatCommands::parseToggle(args[1], showCoordinates, on)) {
+                    out.emplace_back("Usage: /gamerule showcoordinates [true|false]");
+                    return;
+                }
+                showCoordinates = on;
+                out.emplace_back(std::string("Game rule showcoordinates set to ") + (on ? "true" : "false"));
+            });
 
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
@@ -1794,7 +1906,7 @@ int main(int argc, char* argv[]) {
             }
 
             // --- Game rendering (used by both Playing and Paused) ---
-            float speed = 0.025;
+            float speed = static_cast<float>(daycycle::RADIANS_PER_SECOND);
             float timeValue = 0.0f;
             if (doDaylightCycle) {
                 // syncedTime() == glfwGetTime() when offline or hosting;
@@ -1933,8 +2045,16 @@ int main(int argc, char* argv[]) {
                 if (g_chat) {
                     std::string outgoing;
                     if (g_chat->takePendingSend(outgoing)) {
-                        netSession.sendChat(outgoing);
-                        g_chat->pushLocalMessage(outgoing);
+                        chatHistory.add(outgoing);
+                        syncToPersistentStorage();
+                        if (ChatCommands::isCommand(outgoing)) {
+                            // Commands run locally and never go on the wire.
+                            g_chat->pushSystemMessage(outgoing);
+                            for (const std::string& line : chatCommands.run(outgoing)) g_chat->pushSystemMessage(line);
+                        } else {
+                            netSession.sendChat(outgoing);
+                            g_chat->pushLocalMessage(outgoing);
+                        }
                     }
                 }
             }
@@ -2488,6 +2608,13 @@ int main(int argc, char* argv[]) {
                     // Slot number
                     std::string num = std::to_string((i + 1) % 10);
                     uiRenderer.drawTextShadow(num, sx + 2, sy + 2, 1.0f);
+                }
+                if (showCoordinates) {
+                    // Block containing the feet (block N spans [N-0.5, N+0.5)).
+                    glm::ivec3 b = glm::ivec3(glm::floor(player.getFeetPosition() + glm::vec3(0.5f)));
+                    std::string pos =
+                        "Position: " + std::to_string(b.x) + ", " + std::to_string(b.y) + ", " + std::to_string(b.z);
+                    uiRenderer.drawTextShadow(pos, 8.0f, 8.0f, 2.0f);
                 }
                 // Health: 10 hearts just above the hotbar's left edge.
                 drawHearts(uiRenderer, barX, barY - 22.0f, player.getHealth().health, player.getHurtFlash(),

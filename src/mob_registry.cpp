@@ -6,6 +6,7 @@
 #include "mobs/chicken.h"
 #include "mobs/cow.h"
 #include "mobs/creeper.h"
+#include "mobs/creeper_cow.h"
 #include "mobs/pig.h"
 #include "mobs/sheep.h"
 #include "mobs/skeleton.h"
@@ -34,6 +35,7 @@ constexpr MobInfo MOB_TABLE[] = {
     {MobType::Skeleton, "skeleton", &makeMob<Skeleton>,  MobCategory::Hostile, 0.3f,  1.99f,  20.0f, ALL_LAND_BIOMES,      1, 4,  100},
     {MobType::Creeper,  "creeper",  &makeMob<Creeper>,   MobCategory::Hostile, 0.3f,  1.7f,   20.0f, ALL_LAND_BIOMES,      1, 4,  100},
     {MobType::Spider,   "spider",   &makeMob<Spider>,    MobCategory::Hostile, 0.7f,  0.9f,   16.0f, ALL_LAND_BIOMES,      1, 4,  100},
+    {MobType::CreeperCow, "creeper_cow", &makeMob<CreeperCow>, MobCategory::Hostile, 0.45f, 1.4f, 10.0f, 0,                  1, 1,  0},
 };
 // clang-format on
 
