@@ -134,6 +134,12 @@
                 document.getElementById('cubeScene').style.display = 'none';
                 document.getElementById('status').style.display = 'none';
                 document.getElementById('progressWrap').style.display = 'none';
+                // Sounds + music come in a second package fetched now, in the
+                // background, so they don't delay the first frame. The game
+                // picks the files up as soon as they land in the FS.
+                var sounds = document.createElement('script');
+                sounds.src = 'sounds.js?v=' + APP_VERSION;
+                document.body.appendChild(sounds);
             },
             // Emscripten calls setStatus() with strings like
             // "Downloading data... (1234567/9876543)". Parse the bytes to

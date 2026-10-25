@@ -110,9 +110,24 @@ if(EMSCRIPTEN)
       -sDEFAULT_PTHREAD_STACK_SIZE=1MB \
       -lidbfs.js \
       --preload-file ${CMAKE_SOURCE_DIR}/assets@assets \
+      --exclude-file ${CMAKE_SOURCE_DIR}/assets/Sounds \
       --shell-file ${CMAKE_SOURCE_DIR}/web/shell.html \
     "
   )
+
+  # Sounds + music ship as a separate sounds.data package so the game can
+  # start without them: web/shell.html loads sounds.js once the runtime is
+  # up, and main.cpp loads the sounds when the files appear.
+  file(GLOB_RECURSE SOUND_FILES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/assets/Sounds/*)
+  add_custom_command(
+    OUTPUT ${CMAKE_BINARY_DIR}/sounds.data ${CMAKE_BINARY_DIR}/sounds.js
+    COMMAND ${EMSCRIPTEN_ROOT_PATH}/tools/file_packager ${CMAKE_BINARY_DIR}/sounds.data
+            --preload ${CMAKE_SOURCE_DIR}/assets/Sounds@assets/Sounds
+            --js-output=${CMAKE_BINARY_DIR}/sounds.js
+    DEPENDS ${SOUND_FILES}
+    VERBATIM
+  )
+  add_custom_target(sounds_package ALL DEPENDS ${CMAKE_BINARY_DIR}/sounds.data ${CMAKE_BINARY_DIR}/sounds.js)
 
 else()
   # --- Desktop build ---
