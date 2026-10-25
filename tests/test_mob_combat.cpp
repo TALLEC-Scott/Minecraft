@@ -273,6 +273,7 @@ TEST(MobFireTest, LavaSetsAnyMobOnFireAndItKeepsBurning) {
     EXPECT_FLOAT_EQ(pig.health, 100.0f - Mob::LAVA_DAMAGE);
 
     pig.pos = pig.prevPos = glm::vec3(8, 0.5f, 0); // out of the lava
+    h.blocks.fill(-1, 1, -1, 1, 1, 1, AIR);          // and it can't panic its way back in
     h.run(pig, Mob::INVULNERABLE_TICKS);
     float out = pig.health;
     h.run(pig, Mob::BURN_INTERVAL);
@@ -303,4 +304,23 @@ TEST(MobFireTest, FlamesHugTheHitbox) {
         EXPECT_LE(f.center.y, pig.height * 1.1f);
         EXPECT_GT(f.halfSize.y, 0.0f);
     }
+}
+
+TEST(MobFireTest, MobsSwimUpInLavaWithoutFallDamage) {
+    MobHarness h;
+    h.floor();
+    h.blocks.fill(-3, 1, -3, 3, 4, 3, LAVA);
+    Pig pig;
+    pig.health = pig.maxHealth = 1000.0f;
+    pig.pos = pig.prevPos = glm::vec3(0, 12.0f, 0); // falls 7+ blocks into the pool
+    h.run(pig, 20);
+    ASSERT_TRUE(pig.inLava);
+    EXPECT_FLOAT_EQ(pig.fallDistance, 0.0f);
+    EXPECT_GE(pig.health, 1000.0f - 2 * Mob::LAVA_DAMAGE) << "no fall damage on top of the lava";
+    float highest = pig.pos.y;
+    for (int i = 0; i < 60; i++) {
+        h.run(pig, 1);
+        highest = std::max(highest, pig.pos.y);
+    }
+    EXPECT_GT(highest, 2.0f) << "swims up off the bottom (floor top 0.5) instead of sinking";
 }

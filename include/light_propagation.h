@@ -15,6 +15,7 @@
 //     Chunk* getChunk(int cx, int cz);
 
 #include <cstdint>
+#include <vector>
 
 #include "cube.h"
 
@@ -29,6 +30,13 @@ void removeBlockLightWorld(ChunkManager* cm, int sx, int sy, int sz);
 // hardening): a lost emitter takes its light with it, a new one floods,
 // and a cell turning opaque stops the light that passed through it.
 void relightBlockChange(ChunkManager* cm, int x, int y, int z, block_type oldType, block_type newType);
+// The same for many cells at once, with one shared removal + re-flood
+// (World batches a liquid tick's changes through this).
+struct BlockChange {
+    int x, y, z;
+    block_type oldType, newType;
+};
+void relightBlockChanges(ChunkManager* cm, const std::vector<BlockChange>& changes);
 
 // Intra-chunk block-light BFS: walks the chunk's blocks, seeds from any
 // emissive block (glowstone etc.), floods outward. Writes the low nibble

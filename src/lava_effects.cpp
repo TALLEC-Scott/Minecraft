@@ -58,14 +58,17 @@ void LavaEffects::fizz(const World& world, glm::vec3 pos) {
 }
 
 void LavaEffects::update(const World& world, glm::vec3 listener, float dt) {
+    accumulator += dt;
+    bool tickDue = accumulator >= 0.05f;
+    if (tickDue) {
+        accumulator = std::fmod(accumulator, 0.05f); // one pass per frame at most, even after a hitch
+        fizzesThisTick = 0; // before this frame's fizzes, so they count toward the new tick
+    }
+
     // Block N spans [N-0.5, N+0.5); smoke starts on the hardened block's top.
     for (const glm::ivec3& b : world.waterSimulator->fizzes) fizz(world, glm::vec3(b) + glm::vec3(0.0f, 0.5f, 0.0f));
     world.waterSimulator->fizzes.clear();
-
-    accumulator += dt;
-    if (accumulator < 0.05f) return;
-    accumulator = std::fmod(accumulator, 0.05f); // one pass per frame at most, even after a hitch
-    fizzesThisTick = 0;
+    if (!tickDue) return;
 
     WorldResolver resolver(world.chunkManager);
     glm::ivec3 c(glm::floor(listener + 0.5f));

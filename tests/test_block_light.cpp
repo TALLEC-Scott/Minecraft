@@ -185,3 +185,20 @@ TEST_F(BlockLightDestroyRelightTest, PlacedGlowstoneStillLights) {
     EXPECT_EQ(blockLightAt(cm, 5, 5, 5), 15);
     EXPECT_EQ(blockLightAt(cm, 8, 5, 5), 12);
 }
+
+TEST_F(BlockLightDestroyRelightTest, BatchedDrainMatchesOneByOne) {
+    // A lava row drains all at once (one liquid tick, one batch).
+    Chunk& c = cm.getOrCreate(0, 0);
+    for (int x = 3; x <= 8; x++) {
+        c.setBlockType(x, 5, 5, LAVA);
+        floodBlockLight(&cm, x, 5, 5, 15);
+    }
+    std::vector<BlockChange> changes;
+    for (int x = 4; x <= 8; x++) {
+        c.setBlockType(x, 5, 5, AIR);
+        changes.push_back({x, 5, 5, LAVA, AIR});
+    }
+    relightBlockChanges(&cm, changes);
+    EXPECT_EQ(blockLightAt(cm, 3, 5, 5), 15) << "the lava left keeps its light";
+    for (int x = 4; x <= 12; x++) EXPECT_EQ(blockLightAt(cm, x, 5, 5), 15 - (x - 3)) << x;
+}

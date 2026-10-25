@@ -140,7 +140,18 @@ inline bool hasFlag(block_type t, uint32_t f) {
 // NOT cast AO shadows on adjacent cube faces. Liquid + air are also
 // excluded. Used by the mesh builders' opacity grid.
 inline bool isAOOccluder(block_type t) {
-    return t != AIR && t != WATER && !hasFlag(t, BF_CROSS);
+    return t != AIR && !hasFlag(t, BF_LIQUID) && !hasFlag(t, BF_CROSS);
+}
+
+// Lava is drawn opaque, so a solid block's face against it is hidden when
+// the lava covers it completely: a face pointing up into lava, or a side
+// face whose lava neighbour has lava above it (full height; a lone source
+// sits at 8/9 and leaves the top of the face showing). `nbAbove` is the
+// block above the neighbour.
+inline bool lavaCoversFace(block_type nb, int axis, int sign, block_type nbAbove) {
+    if (nb != LAVA) return false;
+    if (axis == 1) return sign > 0;
+    return nbAbove == LAVA;
 }
 
 enum StepSound {

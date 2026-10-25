@@ -256,8 +256,11 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                         // until it hardens).
                         show = (f != 5) && (nbType == AIR || (hasFlag(nbType, BF_LIQUID) && nbType != bt));
                     } else {
+                        bool covered = nbType == LAVA &&
+                                       lavaCoversFace(nbType, fd.d, fd.d_sign,
+                                                      nc[1] + 1 < CHUNK_HEIGHT ? getTypeCross(nc[0], nc[1] + 1, nc[2]) : AIR);
                         show = (nbType == AIR) || hasFlag(nbType, BF_CROSS) ||
-                               (hasFlag(nbType, BF_LIQUID) && !hasFlag(bt, BF_LIQUID)) ||
+                               (hasFlag(nbType, BF_LIQUID) && !covered) ||
                                (useFancyLeaves && (hasFlag(bt, BF_TRANSLUCENT) || hasFlag(nbType, BF_TRANSLUCENT)));
                     }
                     int val = show ? (int)bt : -1;
@@ -513,6 +516,7 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
     range.opaqueCount = (uint32_t)opaqueIdx.size() - range.opaqueStart;
     range.crossCount = (uint32_t)crossIdx.size() - range.crossStart;
     range.waterCount = (uint32_t)waterIdx.size() - range.waterStart;
+    lavaTrianglesFirst(waterIdx, range.waterStart, waterIdx.size(), waterVerts.data());
     } // end per-section loop
 
     MeshData result;

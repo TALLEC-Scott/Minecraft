@@ -61,11 +61,28 @@ void World::setBlock(int x, int y, int z, block_type type, uint8_t waterLevel) c
     // dirty via markSectionDirty. Don't call markDirty() here — that would
     // set ALL sections dirty and defeat the incremental rebuild.
     block_type oldType = chunk->getBlockType(lx, y, lz);
-    chunk->setBlockType(lx, y, lz, type);
-    chunk->setWaterLevel(lx, y, lz, waterLevel);
+    if (hasFlag(type, BF_OPAQUE) && !hasFlag(oldType, BF_OPAQUE)) {
+        // Liquid hardening into stone / cobblestone / obsidian: placeBlock
+        // also shades the sky light below, as a placed block would.
+        chunk->placeBlock(lx, y, lz, type);
+    } else {
+        chunk->setBlockType(lx, y, lz, type);
+        chunk->setWaterLevel(lx, y, lz, waterLevel);
+    }
     markBorderNeighborsDirty(chunkManager, cx, cz, lx, y, lz);
     // Lava that flows in, drains away or hardens adds / takes its light.
-    if (oldType != type) relightBlockChange(chunkManager, x, y, z, oldType, type);
+    if (oldType == type) return;
+    if (lightBatching)
+        pendingLight.push_back({x, y, z, oldType, type});
+    else
+        relightBlockChange(chunkManager, x, y, z, oldType, type);
+}
+
+void World::endLightBatch() const {
+    lightBatching = false;
+    if (pendingLight.empty()) return;
+    relightBlockChanges(chunkManager, pendingLight);
+    pendingLight.clear();
 }
 
 void World::destroyBlock(glm::vec3 position) const {
