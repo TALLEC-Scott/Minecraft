@@ -171,14 +171,18 @@ TEST(NetProtocol, ChatTruncatedRejected) {
 }
 
 TEST(NetProtocol, ChatOversizedLengthPrefixRejected) {
-    // Hand-craft a header whose textLen exceeds CHAT_MAX_TEXT_LEN.
-    std::vector<uint8_t> buf;
-    buf.push_back(static_cast<uint8_t>(Op::Chat));
-    buf.insert(buf.end(), {0x01, 0x00, 0x00, 0x00});       // peerId
+    // Hand-craft a header whose textLen exceeds CHAT_MAX_TEXT_LEN. The
+    // buffer is allocated at full size up front: growing it with resize()
+    // after the header trips a GCC 13 -Warray-bounds false positive.
     uint16_t overCap = static_cast<uint16_t>(CHAT_MAX_TEXT_LEN + 1);
-    buf.push_back(static_cast<uint8_t>(overCap & 0xFF));
-    buf.push_back(static_cast<uint8_t>((overCap >> 8) & 0xFF));
-    buf.resize(buf.size() + overCap, 'x');
+    std::vector<uint8_t> buf(7 + overCap, 'x');
+    buf[0] = static_cast<uint8_t>(Op::Chat);
+    buf[1] = 0x01; // peerId
+    buf[2] = 0x00;
+    buf[3] = 0x00;
+    buf[4] = 0x00;
+    buf[5] = static_cast<uint8_t>(overCap & 0xFF); // textLen
+    buf[6] = static_cast<uint8_t>((overCap >> 8) & 0xFF);
     ChatMsg out{};
     EXPECT_FALSE(decodeChat(buf.data(), buf.size(), out));
 }
