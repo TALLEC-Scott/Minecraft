@@ -22,6 +22,7 @@ struct Particle {
     bool alive = false;
     bool buoyant = true; // smoke/bubbles rise; underwater motes should not
     float gravity = 0.0f; // world units / s² pulled down (lava embers)
+    bool viewSpace = false; // drawn in the first-person hand pass (held torch flame)
 };
 
 class ParticleSystem {
@@ -40,7 +41,9 @@ class ParticleSystem {
     // Renders all live particles as camera-facing quads through the
     // billboard shader. Caller is responsible for setting projection/view
     // on the shader beforehand.
-    void render(const Shader& billboardShader, glm::vec3 cameraPos, glm::vec3 cameraFront);
+    // `viewSpace` picks which particles to draw: the world's (false) or the
+    // first-person hand's (true; positions in view space, camera at the origin).
+    void render(const Shader& billboardShader, glm::vec3 cameraPos, glm::vec3 cameraFront, bool viewSpace = false);
 
     // Spawn ~40 white-smoke puffs centered on `pos` — Minecraft-style plume.
     void spawnSmokePlume(glm::vec3 pos);
@@ -63,6 +66,15 @@ class ParticleSystem {
     // Lava meeting water: grey smoke puffs rising off the hardened block
     // (Minecraft's LARGE_SMOKE ×8 on the extinguish hiss).
     void spawnFizzSmoke(glm::vec3 blockTop);
+
+    // Torch: a small flame flicker at the tip plus a wisp of smoke
+    // (Minecraft's torch animateTick: FLAME + SMOKE).
+    void spawnTorchFlame(glm::vec3 tip);
+
+    // The torch in first-person hand: a flame flicker at `tipView` (view
+    // space), now and then with a wisp of smoke. Short-lived, so they read
+    // as the flame itself rather than a trail.
+    void spawnHeldTorchFlame(glm::vec3 tipView, bool withSmoke);
 
     size_t aliveCount() const;
 

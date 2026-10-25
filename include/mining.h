@@ -43,6 +43,7 @@ inline BlockMining blockMining(block_type t) {
         /* LAVA           */ {-1.0f, ToolKind::None,    false},
         // Minecraft needs a diamond pickaxe; nothing here is good enough yet.
         /* OBSIDIAN       */ {50.0f, ToolKind::Pickaxe, true, 4},
+        /* TORCH          */ {0.0f,  ToolKind::None,    false},
     };
     // clang-format on
     static_assert(sizeof(table) / sizeof(table[0]) == BLOCK_TYPE_COUNT, "one row per block_type");

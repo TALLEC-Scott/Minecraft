@@ -1,10 +1,11 @@
 #pragma once
 
-// Lava's sounds and particles, after Minecraft's LavaFluid.animateTick and
+// Ambient block sounds and particles, after Minecraft's animateTick and
 // the lava-extinguish event:
 //   - 20 times a second, 667 random blocks within 16 of the listener are
 //     checked; a lava block with air above pops (1 in 100: lavapop.ogg + an
-//     ember) and bubbles (1 in 200: lava.ogg).
+//     ember) and bubbles (1 in 200: lava.ogg); a torch puffs a flame and a
+//     wisp of smoke at its tip every time it's picked.
 //   - lava that hardens against water (WaterSimulator::fizzes) or an item
 //     burning up hisses (fizz.ogg, high pitched) under a puff of smoke.
 // Volumes fall off linearly to silence at HEARING_DISTANCE. Missing sound
@@ -19,7 +20,7 @@ class World;
 struct ma_engine;
 struct ma_sound;
 
-class LavaEffects {
+class BlockEffects {
   public:
     static constexpr int SAMPLES_PER_TICK = 667; // Minecraft's animateTick count
     static constexpr int SAMPLE_RADIUS = 16;
@@ -28,10 +29,10 @@ class LavaEffects {
     static constexpr float HEARING_DISTANCE = 16.0f;
     static constexpr int MAX_FIZZES_PER_TICK = 4; // a big pour hardening at once stays one hiss, not 50
 
-    LavaEffects() = default;
-    ~LavaEffects();
-    LavaEffects(const LavaEffects&) = delete;
-    LavaEffects& operator=(const LavaEffects&) = delete;
+    BlockEffects() = default;
+    ~BlockEffects();
+    BlockEffects(const BlockEffects&) = delete;
+    BlockEffects& operator=(const BlockEffects&) = delete;
 
     void initAudio(ma_engine* engine);
     // Drains world.waterSimulator->fizzes and runs the 20 TPS ambient pass.
