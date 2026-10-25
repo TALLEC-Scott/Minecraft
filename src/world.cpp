@@ -164,6 +164,12 @@ Cube* World::getBlock(int x, int y, int z) const {
     return res->getBlock(x - chunkX * CHUNK_SIZE, y, z - chunkZ * CHUNK_SIZE);
 }
 
+bool World::sectionVisible(glm::ivec3 block) const {
+    if (!caveCullValid || block.y < 0 || block.y >= CHUNK_HEIGHT) return true;
+    const Chunk* c = chunkManager->getChunk(worldToChunk(block.x), worldToChunk(block.z));
+    return c && (c->visibleSections & (1u << (block.y >> 4))) != 0;
+}
+
 int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const {
     ZoneScopedN("World::render");
     g_frame.meshBuildBudget = 4; // reset per frame
@@ -200,6 +206,7 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
     // air-connectivity graph; only reached sections emit draws. Runs over
     // loaded chunks (not just frustum survivors) because sight lines can
     // re-enter the frustum through chunks behind the camera.
+    caveCullValid = false;
     if (g_caveCulling) {
         int camCx = worldToChunk((int)std::floor(cameraPos.x + 0.5f));
         int camCz = worldToChunk((int)std::floor(cameraPos.z + 0.5f));
@@ -208,9 +215,9 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
             // Camera chunk not loaded (teleport/startup): degrade to no culling.
             for (auto& vc : visible) vc.chunk->visibleSections = 0xFF;
         } else {
-            // Only frustum survivors are drawn, so only their masks need
-            // clearing — chunks outside the frustum can keep stale bits.
-            for (auto& vc : visible) vc.chunk->visibleSections = 0;
+            // Every loaded chunk's mask is cleared (not just the frustum
+            // survivors') so sectionVisible() is exact for mobs too.
+            caveCullValid = true;
             // Flat chunk-pointer grid: one hash pass over the chunk map up
             // front, then the BFS's per-section lookups are array reads
             // (it would otherwise do two map lookups per visited section).
@@ -219,6 +226,7 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
             static std::vector<Chunk*> grid;
             grid.assign(static_cast<size_t>(side) * side, nullptr);
             for (auto& [pos, chunk] : chunkManager->chunks) {
+                const_cast<Chunk&>(chunk).visibleSections = 0;
                 int dx = pos.x - camCx, dz = pos.y - camCz;
                 if (dx < -radius || dx > radius || dz < -radius || dz > radius) continue;
                 grid[static_cast<size_t>(dx + radius) * side + (dz + radius)] = const_cast<Chunk*>(&chunk);

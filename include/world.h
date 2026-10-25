@@ -51,12 +51,18 @@ class World {
     // compute player knockback / shake distance without the caller having
     // to pass it again.
     mutable glm::vec3 lastCameraPos{0.0f};
+    // Set by render(): every loaded chunk's visibleSections mask is valid.
+    mutable bool caveCullValid = false;
 
     ~World();
 
     unsigned int seed = 0;
 
     int render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const;
+    // Did last render()'s cave-culling BFS reach the section holding this
+    // block? Always true when cave culling didn't run that frame (disabled,
+    // or the camera chunk wasn't loaded). Used to skip mobs in sealed caves.
+    bool sectionVisible(glm::ivec3 block) const;
     // `dt` drives the 20-TPS entity tick accumulator; `now` is used for the
     // visual-flash phase on primed TNT.
     void update(glm::vec3 cameraPosition, float dt, double now) const;

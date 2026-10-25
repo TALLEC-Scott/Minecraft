@@ -170,6 +170,7 @@ void MobManager::tickOnce() {
         if (tickCount % PASSIVE_SPAWN_INTERVAL == 0) trySpawnGroup(ctx, MobCategory::Passive);
         if (tickCount % HOSTILE_SPAWN_INTERVAL == 0) trySpawnGroup(ctx, MobCategory::Hostile);
     }
+    if (cowRain && playerKnown && tickCount % COW_RAIN_INTERVAL == 0) dropRainingCow(ctx);
 
     mobList.erase(std::remove_if(mobList.begin(), mobList.end(), [](const auto& m) { return m->removed; }),
                   mobList.end());
@@ -245,6 +246,23 @@ void MobManager::trySpawnGroup(MobContext& ctx, MobCategory category) {
             ++placed;
         }
     }
+}
+
+void MobManager::dropRainingCow(MobContext& ctx) {
+    float ang = ctx.randf() * glm::two_pi<float>();
+    float r = std::sqrt(ctx.randf()) * COW_RAIN_RADIUS; // uniform over the disc
+    float x = std::floor(player.feet.x + std::cos(ang) * r + 0.5f);
+    float z = std::floor(player.feet.z + std::sin(ang) * r + 0.5f);
+    int bx = static_cast<int>(x), bz = static_cast<int>(z);
+    if (!blocks->isLoaded(bx, bz)) return;
+    const MobInfo& info = mobInfo(MobType::CreeperCow);
+    float y = std::min(player.feet.y + COW_RAIN_HEIGHT, static_cast<float>(CHUNK_HEIGHT) - info.height - 1.0f);
+    // Skip drop points inside terrain (e.g. the player is in a cave).
+    int by = MobContext::blockAtPos(glm::vec3(x, y, z)).y;
+    for (int dy = 0; dy <= static_cast<int>(std::ceil(info.height)); ++dy)
+        if (ctx.isSolid(bx, by + dy, bz)) return;
+    if (Mob* m = spawnMob(MobType::CreeperCow, glm::vec3(x, y, z), false))
+        m->yaw = m->prevYaw = m->headYaw = m->prevHeadYaw = ctx.randf() * 360.0f - 180.0f;
 }
 
 Mob* MobManager::spawnMob(MobType type, glm::vec3 feetPos, bool persistent) {
@@ -356,6 +374,12 @@ void MobManager::render(const Shader& shader, const glm::mat4& viewProjection, g
         // Generous box: models can overhang the hitbox (heads, death tip-over).
         float r = std::max(m->halfWidth, m->height) + 0.5f;
         if (!aabbInFrustum(planes, p - glm::vec3(r, 0.5f, r), p + glm::vec3(r, m->height + 0.5f, r))) continue;
+        // Cave culling: skip mobs whose feet and head sections the BFS
+        // never reached (sealed caves). Both are checked so a mob
+        // straddling a section boundary shows if either half could.
+        if (!world->sectionVisible(MobContext::blockAtPos(p)) &&
+            !world->sectionVisible(MobContext::blockAtPos(p + glm::vec3(0.0f, m->height, 0.0f))))
+            continue;
         // Sample at the body center and the eyes and keep the brighter of
         // each channel: a single sample goes black whenever that block is
         // solid (a mob pressed into a wall, a low eye level on a ledge).
@@ -371,6 +395,7 @@ void MobManager::render(const Shader& shader, const glm::mat4& viewProjection, g
         glm::vec3 d = p - cameraPos;
         if (glm::dot(d, d) > maxD2) continue;
         if (!aabbInFrustum(planes, p - glm::vec3(0.5f), p + glm::vec3(0.5f))) continue;
+        if (!world->sectionVisible(MobContext::blockAtPos(p))) continue;
         // Orient the box's +Z along the flight direction.
         glm::vec3 dir = pr->direction();
         glm::mat4 m = glm::translate(glm::mat4(1.0f), p);

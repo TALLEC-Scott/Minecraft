@@ -1,5 +1,6 @@
 #include "net/chat_overlay.h"
 
+#include "chat_history.h"
 #include "net/net_protocol.h"
 #include "ui_renderer.h"
 
@@ -75,12 +76,13 @@ std::string trim(const std::string& s) {
 
 } // namespace
 
-void ChatOverlay::open() {
+void ChatOverlay::open(const std::string& prefill) {
     open_ = true;
-    buffer_.clear();
-    cursor_ = 0;
+    buffer_ = prefill.substr(0, netp::CHAT_MAX_TEXT_LEN);
+    cursor_ = buffer_.size();
     pendingChars_.clear();
     pendingKeys_.clear();
+    if (history_) history_->resetNavigation();
     // Don't clear latches — a press that arrives mid-frame should still
     // reach takePendingSend().
 }
@@ -93,6 +95,7 @@ void ChatOverlay::close() {
     pendingKeys_.clear();
     enterLatched_ = false;
     escLatched_ = false;
+    if (history_) history_->resetNavigation();
 }
 
 void ChatOverlay::onCharInput(unsigned int codepoint) {
@@ -106,7 +109,9 @@ void ChatOverlay::onKeyInput(GLFWwindow* window, int key, int action, int mods) 
     if (!open_) return;
     if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
     if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
-        enterLatched_ = true;
+        // PRESS only: a held Enter (the one that opened chat) must not
+        // auto-repeat into an immediate empty send.
+        if (action == GLFW_PRESS) enterLatched_ = true;
     } else if (key == GLFW_KEY_ESCAPE) {
         escLatched_ = true;
     } else if (key == GLFW_KEY_V && (mods & GLFW_MOD_CONTROL)) {
@@ -126,22 +131,27 @@ void ChatOverlay::onKeyInput(GLFWwindow* window, int key, int action, int mods) 
     }
 }
 
-void ChatOverlay::pushLocalMessage(const std::string& text) {
+void ChatOverlay::pushLine(std::string text, bool system) {
     LogLine l;
-    l.text = "<you> " + text;
+    l.text = std::move(text);
     l.recvTime = glfwGetTime();
+    l.system = system;
     log_.push_back(std::move(l));
     while (log_.size() > MAX_LOG_LINES) log_.pop_front();
+}
+
+void ChatOverlay::pushLocalMessage(const std::string& text) {
+    pushLine("<you> " + text, false);
 }
 
 void ChatOverlay::pushRemoteMessage(uint32_t peerId, const std::string& text) {
     char tag[16];
     std::snprintf(tag, sizeof(tag), "<peer %04X> ", peerId & 0xFFFFu);
-    LogLine l;
-    l.text = std::string(tag) + text;
-    l.recvTime = glfwGetTime();
-    log_.push_back(std::move(l));
-    while (log_.size() > MAX_LOG_LINES) log_.pop_front();
+    pushLine(std::string(tag) + text, false);
+}
+
+void ChatOverlay::pushSystemMessage(const std::string& text) {
+    pushLine(text, true);
 }
 
 bool ChatOverlay::takePendingSend(std::string& out) {
@@ -172,8 +182,23 @@ bool ChatOverlay::takePendingSend(std::string& out) {
         case GLFW_KEY_RIGHT:
             if (cursor_ < buffer_.size()) ++cursor_;
             break;
-        case GLFW_KEY_HOME: cursor_ = 0; break;
-        case GLFW_KEY_END: cursor_ = buffer_.size(); break;
+        case GLFW_KEY_UP:
+        case GLFW_KEY_DOWN: {
+            std::string recalled;
+            bool moved =
+                history_ && (key == GLFW_KEY_UP ? history_->older(buffer_, recalled) : history_->newer(recalled));
+            if (moved) {
+                buffer_ = recalled.substr(0, netp::CHAT_MAX_TEXT_LEN);
+                cursor_ = buffer_.size();
+            }
+            break;
+        }
+        case GLFW_KEY_HOME:
+            cursor_ = 0;
+            break;
+        case GLFW_KEY_END:
+            cursor_ = buffer_.size();
+            break;
         }
     }
     pendingKeys_.clear();
@@ -232,6 +257,7 @@ void ChatOverlay::draw(UIRenderer& ui, int windowW, int windowH, double now) {
     struct Row {
         std::string text;
         float alpha;
+        bool system;
     };
     std::vector<Row> rows;
     for (std::size_t i : showIdx) {
@@ -245,7 +271,7 @@ void ChatOverlay::draw(UIRenderer& ui, int windowW, int windowH, double now) {
             }
         }
         auto wrapped = wrapLines(l.text, wrapCols);
-        for (auto& w : wrapped) rows.push_back({std::move(w), alpha});
+        for (auto& w : wrapped) rows.push_back({std::move(w), alpha, l.system});
     }
 
     const float inputRowH = rowH + 6.0f;
@@ -264,7 +290,8 @@ void ChatOverlay::draw(UIRenderer& ui, int windowW, int windowH, double now) {
         // Draw rows bottom-up so older lines appear above newer ones.
         float y = panelY + panelH - panelPad - rowH;
         for (auto it = rows.rbegin(); it != rows.rend(); ++it) {
-            glm::vec4 color(1.0f, 1.0f, 1.0f, it->alpha);
+            glm::vec4 color =
+                it->system ? glm::vec4(1.0f, 1.0f, 0.4f, it->alpha) : glm::vec4(1.0f, 1.0f, 1.0f, it->alpha);
             if (open_) {
                 ui.drawText(it->text, panelX + panelPad, y, scale, color);
             } else {
@@ -284,7 +311,8 @@ void ChatOverlay::draw(UIRenderer& ui, int windowW, int windowH, double now) {
         ui.drawText(prompt + buffer_, panelX + panelPad, inputY + 3.0f, scale);
         bool caretVisible = std::fmod(glfwGetTime(), 1.0) < 0.5;
         if (caretVisible) {
-            float caretX = panelX + panelPad + (static_cast<float>(prompt.size()) + static_cast<float>(cursor_)) * glyphW;
+            float caretX =
+                panelX + panelPad + (static_cast<float>(prompt.size()) + static_cast<float>(cursor_)) * glyphW;
             ui.drawRect(caretX, inputY + 3.0f, 2.0f, ui.textHeight(scale), glm::vec4(1.0f));
         }
     }
