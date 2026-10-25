@@ -1,6 +1,6 @@
 // Dumps every block, item, recipe and mob drop as JSON, straight from the
 // game's own tables (item.h, mining.h, recipes.h, mob_drops.h), so the item
-// wiki can't drift from the code. scripts/item_wiki.py turns it into
+// wiki can't drift from the code. `uv run scripts/item_wiki.py` turns it into
 // docs/wiki/Items.md (and optionally an HTML page).
 //
 //   g++ -std=c++20 -I include -I Libraries/include scripts/item_wiki.cpp -o scripts/item_wiki
