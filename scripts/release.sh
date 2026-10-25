@@ -35,7 +35,7 @@ git tag "v${VERSION}"
 git push origin main --tags
 
 echo "Deploying to server..."
-rsync -az build_web/minecraft.{html,js,wasm,data} build_web/favicon.png tallec-net:~/minecraft-web/
+rsync -az build_web/minecraft.{html,js,wasm,data} build_web/sounds.{js,data} build_web/favicon.png tallec-net:~/minecraft-web/
 
 echo ""
 echo "=== v${VERSION} released ==="

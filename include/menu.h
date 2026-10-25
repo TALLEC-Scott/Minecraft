@@ -77,6 +77,9 @@ class Menu {
     void muteAll() {
         if (audioInitialized) ma_engine_set_volume(&audioEngine, 0.0f);
     }
+    // Loads click + music. Called once the sound files exist (see
+    // loadSoundsWhenReady in main.cpp); music asked for earlier starts then.
+    void loadSounds();
     void startMusic();
     void stopMusic();
     void startMenuMusic();
@@ -97,6 +100,10 @@ class Menu {
     bool musicPlaying = false;
     bool menuMusicLoaded = false;
     bool menuMusicPlaying = false;
+    // Requested state, kept while the music files may not be loaded yet.
+    bool musicWanted = false;
+    bool menuMusicWanted = false;
+    float musicVolume = 1.0f;
     void playClick();
 
     // All widget drawing / mouse / keyboard routing lives in Widgets. See
