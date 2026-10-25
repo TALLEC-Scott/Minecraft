@@ -115,7 +115,7 @@ void ParticleSystem::update(float dt) {
     }
 }
 
-void ParticleSystem::render(const Shader& billboardShader, glm::vec3 cameraPos, glm::vec3 cameraFront) {
+void ParticleSystem::render(const Shader& billboardShader, glm::vec3 cameraPos, glm::vec3 cameraFront, bool viewSpace) {
     if (!glReady) init();
     (void)cameraFront;
 
@@ -139,7 +139,7 @@ void ParticleSystem::render(const Shader& billboardShader, glm::vec3 cameraPos, 
 
     glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
     for (auto& p : pool) {
-        if (!p.alive) continue;
+        if (!p.alive || p.viewSpace != viewSpace) continue;
         glm::vec3 toCam = glm::normalize(cameraPos - p.pos);
         glm::vec3 right = glm::cross(worldUp, toCam);
         if (glm::dot(right, right) < 1e-5f) right = glm::vec3(1, 0, 0);
@@ -182,7 +182,8 @@ void ParticleSystem::render(const Shader& billboardShader, glm::vec3 cameraPos, 
     if (batches.empty()) return;
 
     billboardShader.setMat4("model", glm::mat4(1.0f));
-    billboardShader.setFloat("glowMode", 0.0f);
+    // The hand's flame is a soft glow (radial falloff) rather than a smoke puff.
+    billboardShader.setFloat("glowMode", viewSpace ? 1.0f : 0.0f);
 
     glBindVertexArray(vao);
     for (auto& b : batches) {
@@ -324,6 +325,31 @@ void ParticleSystem::spawnTorchFlame(glm::vec3 tip) {
     s.maxLife = 0.8f + rand01() * 0.6f;
     s.size = 0.05f;
     s.growth = 0.1f;
+    s.alive = true;
+}
+
+void ParticleSystem::spawnHeldTorchFlame(glm::vec3 tipView, bool withSmoke) {
+    // View units: the held torch is ~0.35 tall, so everything is small.
+    Particle& f = allocParticle();
+    f.pos = tipView + glm::vec3((rand01() - 0.5f) * 0.015f, 0.0f, (rand01() - 0.5f) * 0.015f);
+    f.velocity = glm::vec3((rand01() - 0.5f) * 0.01f, 0.05f + rand01() * 0.04f, 0.0f);
+    f.tint = glm::vec3(1.0f, 0.7f + rand01() * 0.25f, 0.25f);
+    f.maxLife = 0.15f + rand01() * 0.15f;
+    f.size = 0.02f + rand01() * 0.012f;
+    f.growth = -0.03f;
+    f.buoyant = false;
+    f.viewSpace = true;
+    f.alive = true;
+    if (!withSmoke) return;
+    Particle& s = allocParticle();
+    s.pos = tipView + glm::vec3(0.0f, 0.02f, 0.0f);
+    s.velocity = glm::vec3((rand01() - 0.5f) * 0.02f, 0.12f + rand01() * 0.06f, 0.0f);
+    s.tint = glm::vec3(0.3f);
+    s.maxLife = 0.5f + rand01() * 0.3f;
+    s.size = 0.015f;
+    s.growth = 0.04f;
+    s.buoyant = false;
+    s.viewSpace = true;
     s.alive = true;
 }
 
