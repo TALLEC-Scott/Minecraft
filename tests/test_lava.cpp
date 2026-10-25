@@ -89,6 +89,8 @@ TEST(LavaTest, SourceNextToWaterBecomesObsidian) {
     s.run(3);
     EXPECT_EQ(typeAt(s.world, 8, LavaScene::Y, 8), OBSIDIAN);
     EXPECT_EQ(typeAt(s.world, 9, LavaScene::Y, 8), WATER);
+    ASSERT_EQ(s.sim.fizzes.size(), 1u) << "one hiss for the hardening";
+    EXPECT_EQ(s.sim.fizzes[0], glm::ivec3(8, LavaScene::Y, 8));
 }
 
 TEST(LavaTest, FlowingLavaNextToWaterBecomesCobblestone) {
@@ -109,6 +111,15 @@ TEST(LavaTest, LavaPouringOntoWaterMakesStone) {
     s.place(LAVA, 8, LavaScene::Y + 1, 8, WATER_FALLING_FLAG);
     s.run(1);
     EXPECT_EQ(typeAt(s.world, 8, LavaScene::Y, 8), STONE);
+    ASSERT_EQ(s.sim.fizzes.size(), 1u);
+    EXPECT_EQ(s.sim.fizzes[0], glm::ivec3(8, LavaScene::Y, 8));
+}
+
+TEST(LavaTest, LavaOnItsOwnMakesNoHiss) {
+    LavaScene s;
+    s.place(LAVA, 8, LavaScene::Y, 8);
+    s.run(20);
+    EXPECT_TRUE(s.sim.fizzes.empty());
 }
 
 TEST(LavaTest, RulesMatchMinecraft) {

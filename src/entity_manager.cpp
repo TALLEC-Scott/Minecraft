@@ -8,6 +8,7 @@
 
 #include "entity_cube_renderer.h"
 #include "inventory_model.h"
+#include "lava_effects.h"
 #include "shader.h"
 #include "world.h"
 #include "world_resolver.h"
@@ -105,7 +106,10 @@ void EntityManager::tickItems(World* world) {
         glm::ivec3 b = glm::ivec3(glm::floor(e.pos + glm::vec3(0.5f, 0.5f + ItemEntity::HEIGHT * 0.5f, 0.5f)));
         if (world && b.y >= 0 && b.y < CHUNK_HEIGHT) {
             auto loc = resolver.local(b.x, b.z);
-            if (loc.chunk && loc.chunk->getBlockType(loc.lx, b.y, loc.lz) == LAVA) e.removed = true;
+            if (loc.chunk && loc.chunk->getBlockType(loc.lx, b.y, loc.lz) == LAVA) {
+                e.removed = true;
+                if (world->lavaEffects) world->lavaEffects->fizz(*world, e.pos);
+            }
         }
     }
     // Merge neighbouring stacks of the same item, then hand reachable ones

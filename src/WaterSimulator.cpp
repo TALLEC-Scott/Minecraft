@@ -134,6 +134,7 @@ bool WaterSimulator::hardenLava(const WaterTickCell& cell) {
     if (!touchesWater) return false;
     world->setBlock(x, y, z, waterIsSource(cell.raw) ? OBSIDIAN : COBBLESTONE, 0);
     activateNeighbors(x, y, z);
+    fizzes.emplace_back(x, y, z);
     return true;
 }
 
@@ -236,6 +237,7 @@ bool WaterSimulator::tickChannel(Channel& ch) {
             if (isLava && belowType == WATER) {
                 world->setBlock(x, y - 1, z, STONE, 0);
                 activateNeighbors(x, y - 1, z);
+                fizzes.emplace_back(x, y - 1, z);
                 anyChanged = true;
                 continue;
             }

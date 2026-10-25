@@ -70,7 +70,7 @@ https://github.com/user-attachments/assets/c95a33fa-b7e2-41ac-b8ba-79bb7edf997f
 ### Simulation
 - Cellular-automaton water at 4 ticks/sec (FPS-agnostic, wall-clock timed) - gravity, horizontal spread, infinite source cloning, falling decay; sloped surfaces with corner-averaged heights across diagonal chunks
 - Flowing water pushes the player horizontally along the flow gradient; waterfalls push vertically down
-- Lava: glows (light 15), flows 3 blocks every 1.5 s with no infinite sources (Minecraft's overworld rules), fills cave space at y ≤ 10, hardens where it meets water (source → obsidian, flowing → cobblestone, poured onto water → stone); hurts and sets players and mobs on fire for 15 s (water puts it out), burns dropped items, orange fog when your head is in it
+- Lava: glows (light 15), flows 3 blocks every 1.5 s with no infinite sources (Minecraft's overworld rules), fills cave space at y ≤ 10, hardens where it meets water (source → obsidian, flowing → cobblestone, poured onto water → stone); hurts and sets players and mobs on fire for 15 s (water puts it out), burns dropped items, orange fog when your head is in it; bubbles and pops embers (Minecraft's lava sounds), and hisses with smoke where it meets water
 - Swim physics (asymmetric vertical drag), underwater ambience, enter/exit splashes, bubble emission
 - Primed TNT as a separate entity (not a block): 4 s fuse default, 10–30 tick random fuse for chain reactions, gravity + voxel collision, visual flashing, 40-particle white smoke plume on detonation, 4 rotating explosion sound samples, isotropic camera shake
 

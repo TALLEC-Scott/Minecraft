@@ -1,6 +1,7 @@
 #include "world.h"
 #include "entity_manager.h"
 #include "frustum.h"
+#include "lava_effects.h"
 #include "light_data.h"
 #include "light_propagation.h"
 #include "mob_manager.h"
@@ -19,6 +20,7 @@ World::World(unsigned int seed) : seed(seed) {
     this->waterSimulator = new WaterSimulator(this);
     this->entityManager = new EntityManager();
     this->particles = new ParticleSystem();
+    this->lavaEffects = new LavaEffects();
     this->mobManager = new MobManager(this, seed);
 }
 
@@ -140,6 +142,7 @@ void World::placeBlock(glm::ivec3 position, block_type type) const {
 
 World::~World() {
     delete this->mobManager;
+    delete this->lavaEffects;
     delete this->particles;
     delete this->entityManager;
     delete this->waterSimulator;
@@ -312,6 +315,10 @@ void World::update(glm::vec3 cameraPosition, float dt, double now) const {
     {
         ZoneScopedN("Water::updateAmbient");
         this->waterSimulator->updateAmbient(cameraPosition);
+    }
+    {
+        ZoneScopedN("Lava::effects");
+        this->lavaEffects->update(*this, cameraPosition, dt);
     }
     {
         ZoneScopedN("Entities::tick");

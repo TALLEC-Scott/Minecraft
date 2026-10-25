@@ -86,6 +86,7 @@ Particle& ParticleSystem::allocParticle() {
     // explosions to clip particles, which is fine for gameplay.
     Particle& p = pool[nextIdx];
     nextIdx = (nextIdx + 1) % POOL_SIZE;
+    p = Particle{}; // a recycled slot must not keep the last owner's tint / gravity
     return p;
 }
 
@@ -102,7 +103,8 @@ void ParticleSystem::update(float dt) {
         // clumps, not fast streamers. Inert motes skip buoyancy so they
         // hang in the water column.
         if (p.buoyant) p.velocity.y += 0.25f * dt;
-        float drag = std::exp(p.buoyant ? -2.5f * dt : -0.6f * dt);
+        p.velocity.y -= p.gravity * dt;
+        float drag = std::exp(p.buoyant ? -2.5f * dt : (p.gravity > 0.0f ? -0.3f : -0.6f) * dt);
         p.velocity *= drag;
         p.pos += p.velocity * dt;
         // Growth tapers off: most expansion happens in the first 40% of
@@ -257,6 +259,49 @@ void ParticleSystem::spawnUnderwaterDrift(glm::vec3 cameraPos, glm::vec3 cameraF
         p.size = 0.012f + rand01() * 0.015f;
         p.growth = 0.0f;
         p.buoyant = false;
+        p.alive = true;
+    }
+}
+
+void ParticleSystem::spawnLavaEmber(glm::vec3 surfacePos) {
+    Particle& p = allocParticle();
+    p.pos = surfacePos;
+    // Minecraft LavaParticle: up 0.05..0.45 blocks/tick under 0.75 × 0.04
+    // gravity; per second that's 1..9 up against 12 down. Capped a bit
+    // lower so embers hop ~1 block rather than shooting off.
+    float angle = rand01() * 6.2831853f;
+    float horiz = rand01() * 0.8f;
+    p.velocity = glm::vec3(std::cos(angle) * horiz, 2.0f + rand01() * 3.0f, std::sin(angle) * horiz);
+    p.gravity = 12.0f;
+    p.buoyant = false;
+    p.tint = glm::vec3(1.0f, 0.45f + rand01() * 0.2f, 0.08f);
+    p.life = 0.0f;
+    p.maxLife = 2.0f * p.velocity.y / p.gravity + 0.15f; // gone about when it lands back
+    p.size = 0.05f + rand01() * 0.03f;
+    p.growth = -0.04f; // shrinks as it cools
+    p.alive = true;
+
+    Particle& smoke = allocParticle();
+    smoke.pos = surfacePos + glm::vec3(0.0f, 0.1f, 0.0f);
+    smoke.velocity = glm::vec3((rand01() - 0.5f) * 0.2f, 0.4f, (rand01() - 0.5f) * 0.2f);
+    smoke.tint = glm::vec3(0.35f);
+    smoke.life = 0.0f;
+    smoke.maxLife = 0.8f + rand01() * 0.4f;
+    smoke.size = 0.08f;
+    smoke.growth = 0.15f;
+    smoke.alive = true;
+}
+
+void ParticleSystem::spawnFizzSmoke(glm::vec3 blockTop) {
+    for (int i = 0; i < 8; ++i) {
+        Particle& p = allocParticle();
+        p.pos = blockTop + glm::vec3(rand01() - 0.5f, 0.2f + rand01() * 0.2f, rand01() - 0.5f);
+        p.velocity = glm::vec3((rand01() - 0.5f) * 0.3f, 0.6f + rand01() * 0.6f, (rand01() - 0.5f) * 0.3f);
+        p.tint = glm::vec3(0.55f + rand01() * 0.15f);
+        p.life = 0.0f;
+        p.maxLife = 1.0f + rand01() * 0.8f;
+        p.size = 0.15f + rand01() * 0.1f;
+        p.growth = 0.35f;
         p.alive = true;
     }
 }
