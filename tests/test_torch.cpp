@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include "held_light.h"
 #include "mining.h"
 #include "recipes.h"
 #include "torch.h"
@@ -66,4 +67,22 @@ TEST(TorchTest, WallTorchLeansIntoItsWall) {
     // Flowers ignore the state byte.
     crossQuadCorners(DANDELION, s, 0, 0, 0, a, b);
     EXPECT_FLOAT_EQ(a[0][0], -0.5f);
+}
+
+TEST(HeldLightTest, WhatGlowsInHand) {
+    EXPECT_EQ(heldItemLight(blockItem(TORCH)), 14);
+    EXPECT_EQ(heldItemLight(blockItem(GLOWSTONE)), 15);
+    EXPECT_EQ(heldItemLight(blockItem(STONE)), 0);
+    EXPECT_EQ(heldItemLight(ITEM_STICK), 0);
+    EXPECT_EQ(heldItemLight(ITEM_EMPTY), 0);
+}
+
+TEST(HeldLightTest, FallsOffOnePerBlockLikeAPlacedTorch) {
+    std::vector<HeldLight> lights{{glm::vec3(0.0f), 14.0f}};
+    EXPECT_FLOAT_EQ(heldLightLevelAt(lights, glm::vec3(0.0f)), 14.0f);
+    EXPECT_FLOAT_EQ(heldLightLevelAt(lights, glm::vec3(3.0f, 0.0f, 0.0f)), 11.0f);
+    EXPECT_FLOAT_EQ(heldLightLevelAt(lights, glm::vec3(0.0f, 20.0f, 0.0f)), 0.0f);
+    EXPECT_FLOAT_EQ(heldLightLevelAt({}, glm::vec3(0.0f)), 0.0f) << "empty hands";
+    lights.push_back({glm::vec3(10.0f, 0.0f, 0.0f), 15.0f});
+    EXPECT_FLOAT_EQ(heldLightLevelAt(lights, glm::vec3(8.0f, 0.0f, 0.0f)), 13.0f) << "the brighter holder wins";
 }

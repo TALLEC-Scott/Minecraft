@@ -22,6 +22,22 @@ uniform int materialType; // 0 = solid, 1 = water
 uniform int fancyLeaves;
 uniform float entityTint; // 1.0 for chunks; >1.0 flashes primed-TNT entities
 uniform vec3 entityColor; // (1,1,1) for chunks; tints remote-player body parts
+// Lights carried in hand (held_light.h): xyz = holder, w = level (0..15).
+uniform int heldLightCount;
+uniform vec4 heldLights[4];
+
+// Block light from held lights: level minus distance, like a placed
+// torch's falloff, skipping faces turned away from the holder.
+float heldLightAt(vec3 p, vec3 n) {
+    float best = 0.0;
+    for (int i = 0; i < 4; i++) {
+        if (i >= heldLightCount) break;
+        vec3 d = heldLights[i].xyz - p;
+        if (dot(n, d) < 0.0) continue;
+        best = max(best, heldLights[i].w - length(d));
+    }
+    return clamp(best / 15.0, 0.0, 1.0);
+}
 
 void main() {
     float isWater = float(materialType);
@@ -97,7 +113,8 @@ void main() {
     vec3 litColor = sunLit + moonLit + texColor.rgb * 0.08 * ao;
 
     // Block light: warm-tinted emission, independent of sun/moon
-    vec3 blockLit = texColor.rgb * blockLight * ao * vec3(1.0, 0.9, 0.75);
+    float bl = max(blockLight, heldLightAt(FragPos, norm));
+    vec3 blockLit = texColor.rgb * bl * ao * vec3(1.0, 0.9, 0.75);
     litColor = max(litColor, blockLit);
 
     // Lava lights itself: full texture brightness whatever the sky.

@@ -66,6 +66,7 @@
 #include "chat_history.h"
 #include "held_item_model.h"
 #include "held_item_pose.h"
+#include "held_light.h"
 #include "day_cycle.h"
 #include "net/net_session.h"
 #include "net/multiplayer_menu.h"
@@ -2185,17 +2186,32 @@ int main(int argc, char* argv[]) {
             float sunH = std::max(sunDir.y, 0.0f);
             glm::vec3 sunColor = glm::vec3(1.0f) * std::min(sunH * 1.5f, 1.0f);
 
+            // Lights carried in hand (held_light.h): ours at chest height,
+            // and other players' at the pose they're drawn at.
+            std::vector<HeldLight> heldLights;
+            if (int level = heldItemLight(player.getSelectedItem()); level > 0 && !player.isDead())
+                heldLights.push_back({player.getPosition() - glm::vec3(0.0f, 0.5f, 0.0f), (float)level});
+            if (netSession.connected()) {
+                double renderTime = glfwGetTime() - RENDER_DELAY;
+                for (const auto& r : netSession.remotes()) {
+                    int level = heldItemLight(r.heldItem);
+                    if (level <= 0 || r.dead || (int)heldLights.size() >= MAX_HELD_LIGHTS) continue;
+                    heldLights.push_back({r.sample(renderTime).pos - glm::vec3(0.0f, 0.5f, 0.0f), (float)level});
+                }
+            }
+
             // Light at a world point for things drawn outside the chunk mesh
             // (first-person arm, other players and what they hold):
             // x = sky level, y = block level; open sky if the chunk isn't loaded.
             auto lightLevelsAt = [&](glm::vec3 p) {
+                int held = (int)heldLightLevelAt(heldLights, p);
                 int bx = (int)std::floor(p.x + 0.5f), by = (int)std::floor(p.y + 0.5f);
                 int bz = (int)std::floor(p.z + 0.5f);
                 int cx = worldToChunk(bx), cz = worldToChunk(bz);
                 Chunk* chunk = w->chunkManager->getChunk(cx, cz);
-                if (!chunk || by < 0 || by >= CHUNK_HEIGHT) return glm::ivec2(15, 0);
+                if (!chunk || by < 0 || by >= CHUNK_HEIGHT) return glm::ivec2(15, held);
                 int lx = worldToLocal(bx, cx), lz = worldToLocal(bz, cz);
-                return glm::ivec2(chunk->getSkyLight(lx, by, lz), chunk->getBlockLight(lx, by, lz));
+                return glm::ivec2(chunk->getSkyLight(lx, by, lz), std::max<int>(chunk->getBlockLight(lx, by, lz), held));
             };
             // RGB multiplier for those levels, matching frag.shd's sun/moon
             // terms, plus block light (glowstone) so lit caves aren't black.
@@ -2237,6 +2253,10 @@ int main(int argc, char* argv[]) {
                 fogColor = LAVA_FOG;
             }
             shaderProgram.setVec3("cameraPos", cameraPos);
+            shaderProgram.setInt("heldLightCount", (int)heldLights.size());
+            for (size_t i = 0; i < heldLights.size(); ++i)
+                shaderProgram.setVec4("heldLights[" + std::to_string(i) + "]",
+                                      glm::vec4(heldLights[i].pos, heldLights[i].level));
             shaderProgram.setFloat("fogStart", fogStart);
             shaderProgram.setFloat("fogEnd", fogEnd);
             shaderProgram.setVec3("fogColor", fogColor);
