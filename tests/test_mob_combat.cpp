@@ -257,3 +257,50 @@ TEST(ProjectileTest, ArcsUnderGravity) {
     EXPECT_LT(p.pos.y, 50.0f);
     EXPECT_LT(p.velocity.y, 0.0f);
 }
+
+// --- Fire (lava) -------------------------------------------------------------
+
+TEST(MobFireTest, LavaSetsAnyMobOnFireAndItKeepsBurning) {
+    MobHarness h;
+    h.floor();
+    h.blocks.fill(-1, 1, -1, 1, 1, 1, LAVA);
+    Pig pig;
+    pig.health = pig.maxHealth = 100.0f; // survive long enough to watch the fire
+    pig.pos = pig.prevPos = glm::vec3(0, 0.5f, 0);
+    h.run(pig, 1);
+    ASSERT_TRUE(pig.inLava);
+    EXPECT_TRUE(pig.burning());
+    EXPECT_FLOAT_EQ(pig.health, 100.0f - Mob::LAVA_DAMAGE);
+
+    pig.pos = pig.prevPos = glm::vec3(8, 0.5f, 0); // out of the lava
+    h.run(pig, Mob::INVULNERABLE_TICKS);
+    float out = pig.health;
+    h.run(pig, Mob::BURN_INTERVAL);
+    EXPECT_TRUE(pig.burning()) << "fire lingers after leaving the lava";
+    EXPECT_FLOAT_EQ(pig.health, out - Mob::BURN_DAMAGE);
+    h.run(pig, Mob::LAVA_FIRE_TICKS);
+    EXPECT_FALSE(pig.burning());
+}
+
+TEST(MobFireTest, WaterPutsTheFireOut) {
+    MobHarness h;
+    h.floor();
+    h.blocks.fill(-2, 1, -2, 2, 2, 2, WATER);
+    Pig pig;
+    pig.pos = pig.prevPos = glm::vec3(0, 0.5f, 0);
+    pig.setOnFire(100);
+    h.run(pig, 1);
+    EXPECT_FALSE(pig.burning());
+    EXPECT_FLOAT_EQ(pig.health, pig.maxHealth);
+}
+
+TEST(MobFireTest, FlamesHugTheHitbox) {
+    Pig pig;
+    for (const Mob::FlameBox& f : pig.flameBoxes(0.5f)) {
+        EXPECT_LE(std::abs(f.center.x), pig.halfWidth);
+        EXPECT_LE(std::abs(f.center.z), pig.halfWidth);
+        EXPECT_GE(f.center.y, 0.0f);
+        EXPECT_LE(f.center.y, pig.height * 1.1f);
+        EXPECT_GT(f.halfSize.y, 0.0f);
+    }
+}

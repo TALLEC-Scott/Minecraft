@@ -161,9 +161,19 @@ void MobRenderer::drawMob(const Shader& shader, const Mob& mob, float partialTic
     root = glm::rotate(root, glm::radians(90.0f - mob.renderYaw(partialTick)), glm::vec3(0, 1, 0));
     float death = mob.deathProgress(partialTick);
     if (death > 0.0f) root = glm::rotate(root, death * glm::half_pi<float>(), glm::vec3(0, 0, 1));
+    glm::mat4 flameRoot = root; // hitbox-sized, so not the model's scale
     root = glm::scale(root, pose.scale);
     glm::vec3 tint = (mob.hurtTicks > 0 || mob.dying) ? HURT_TINT : glm::vec3(1.0f);
     drawModel(shader, mob.model(), pose, root, tint, packedLight);
+
+    if (!mob.burning()) return;
+    // Flames keep the mob's sky light but glow at block light 15.
+    float emissiveLight = std::floor(packedLight / 16.0f) * 16.0f + 15.0f;
+    float twist = (static_cast<float>(mob.ageTicks) + partialTick) * 0.24f;
+    for (const Mob::FlameBox& f : mob.flameBoxes(partialTick)) {
+        glm::mat4 m = glm::rotate(glm::translate(flameRoot, f.center), twist, glm::vec3(0, 1, 0));
+        drawBox(shader, glm::scale(m, f.halfSize * 2.0f), f.color, emissiveLight);
+    }
 }
 
 void MobRenderer::drawBox(const Shader& shader, const glm::mat4& boxMatrix, glm::vec3 color, float packedLight,
