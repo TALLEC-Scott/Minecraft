@@ -501,7 +501,7 @@ void processInput(GLFWwindow* window) {
     if (pauseDown && !escKeyPressed) {
         if (inventory.isOpen()) {
             // Close inventory instead of pausing
-            inventory.close(player);
+            inventory.close(player, w);
             glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
             player.resetMouseState();
         } else {
@@ -527,7 +527,7 @@ void processInput(GLFWwindow* window) {
     // Inventory toggle: 'E' key (edge-triggered)
     bool eKeyDown = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
     if (eKeyDown && !eKeyPressed) {
-        inventory.toggle(player);
+        inventory.toggle(player, w);
         if (inventory.isOpen()) {
             glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
         } else {
@@ -997,6 +997,17 @@ int main(int argc, char* argv[]) {
             world.emplace(seed);
             world->chunkManager->setWorldSave(&*worldSave);
             if (g_soundsLoaded) loadWorldSounds(*world, menuObj.getAudioEngine());
+            // Dropped items the local player can reach go into their
+            // inventory (Minecraft: the 0.6×1.8 hitbox grown by 1 block
+            // sideways and 0.5 up and down).
+            world->entityManager->setPickupHandler([](const ItemEntity& item) -> int {
+                if (player.isDead()) return 0;
+                glm::vec3 feet = player.getFeetPosition();
+                float dx = item.pos.x - feet.x, dz = item.pos.z - feet.z;
+                if (std::max(std::abs(dx), std::abs(dz)) > 0.3f + 1.0f + ItemEntity::HALF_WIDTH) return 0;
+                if (item.pos.y + ItemEntity::HEIGHT < feet.y - 0.5f || item.pos.y > feet.y + 1.8f + 0.5f) return 0;
+                return item.count - player.getInventory().add(item.id, item.count);
+            });
             world->mobManager->setDamagePlayerCallback(
                 [](float amount, glm::vec3 from) { player.hurt(amount, from); });
             world->chunkManager->setRenderDistance(gameSettings.renderDistance);
@@ -2388,6 +2399,40 @@ int main(int argc, char* argv[]) {
                 shaderProgram.setMat4("model", glm::mat4(1.0f));
                 shaderProgram.setFloat("entityTint", 1.0f);
             }
+            // Dropped items, bobbing and spinning just above the ground:
+            // blocks as small cubes, everything else (and plants) as the
+            // extruded sprite.
+            if (w->entityManager && !w->entityManager->items().empty()) {
+                float pt = w->entityManager->partialTick();
+                float t = (float)glfwGetTime();
+                for (const ItemEntity& item : w->entityManager->items()) {
+                    glm::vec3 p = item.renderPos(pt);
+                    if (glm::distance(p, cameraPos) > 64.0f) continue;
+                    float spin = t * 1.5f + item.spinPhase;
+                    float bob = 0.1f + 0.05f * std::sin(t * 2.5f + item.spinPhase);
+                    glm::vec3 centre = p + glm::vec3(0.0f, ItemEntity::HEIGHT * 0.5f + bob, 0.0f);
+                    glm::ivec2 light = lightLevelsAt(centre);
+                    glm::mat4 m = glm::rotate(glm::translate(glm::mat4(1.0f), centre), spin, glm::vec3(0, 1, 0));
+                    block_type bt = itemBlock(item.id);
+                    if (bt != AIR && !hasFlag(bt, BF_CROSS) && !hasFlag(bt, BF_LIQUID)) {
+                        shaderProgram.setVec2("leafSway", glm::vec2(0.0f));
+                        entityCubes.drawBlock(shaderProgram, glm::scale(m, glm::vec3(0.25f)), bt,
+                                              (float)(light.x * 16 + light.y));
+                        continue;
+                    }
+                    const char* sprite = bt != AIR ? TextureArray::layerPath(TextureArray::layerForType(bt))
+                                                   : itemIconPath(item.id);
+                    if (!sprite) continue;
+                    HeldItemModel& model = itemModel(sprite);
+                    if (!model.load(sprite)) continue;
+                    m = glm::scale(m, glm::vec3(0.03f)); // 16 px ≈ half a block
+                    m = glm::translate(m, glm::vec3(-8.0f, -8.0f, -0.5f));
+                    model.draw(viewProjection, m,
+                               ItemShading{lightTintFor(light), sunDir, cameraPos, fogColor, fogStart, fogEnd});
+                    shaderProgram.use();
+                }
+                shaderProgram.setMat4("model", glm::mat4(1.0f));
+            }
             // Mobs + projectiles (MobRenderer restores model/tint/color).
             if (w->mobManager) w->mobManager->render(shaderProgram, viewProjection, player.getPosition());
 
@@ -2854,7 +2899,9 @@ int main(int argc, char* argv[]) {
             static double deathTime = 0.0;
             bool deadNow = currentState == GameState::Playing && player.isDead();
             if (deadNow && !wasDead) {
-                if (inventory.isOpen()) inventory.close(player);
+                if (inventory.isOpen()) inventory.close(player, w);
+                // Survival deaths spill everything, as in Minecraft.
+                if (player.isSurvival()) player.spillInventory(w);
                 glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
                 deathTime = glfwGetTime();
             }

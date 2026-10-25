@@ -54,6 +54,10 @@ class Player {
     // Block the selected slot places (AIR for tools / empty hand).
     block_type getSelectedBlockType() const { return itemBlock(getSelectedItem()); }
     PlayerInventory& getInventory() { return inventory; }
+    // Throws one of the selected item (or the whole stack) forward.
+    void dropSelected(World* world, bool wholeStack);
+    // Throws every stack out in random directions and empties the inventory.
+    void spillInventory(World* world);
     const PlayerInventory& getInventory() const { return inventory; }
 
     bool isWalkMode() const { return camera.isWalkMode(); }
@@ -156,6 +160,8 @@ class Player {
     glm::ivec3 lastPlacedPos = glm::ivec3(0);
     double placeAnimStart = -1.0;
     static constexpr double PLACE_ANIM_DURATION = 0.22;
+
+    bool qWasPressed = false;
 
     // Double-tap space detection
     bool spaceWasPressed = false;

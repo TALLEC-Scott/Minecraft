@@ -1,5 +1,7 @@
 #include "inventory.h"
 #include "texture_array.h"
+#include "world.h"
+#include "entity_manager.h"
 
 const char* Inventory::itemName(ItemId id) {
     if (const ItemInfo* info = itemInfo(id)) return info->name;
@@ -61,10 +63,13 @@ static void drawStack(UIRenderer& ui, const ItemStack& stack, float x, float y, 
     }
 }
 
-void Inventory::close(Player& player) {
+void Inventory::close(Player& player, World* world) {
     open = false;
-    // Whatever doesn't fit back is lost for now (no item drops yet).
-    if (!cursor.empty()) player.getInventory().add(cursor.id, cursor.count);
+    if (!cursor.empty()) {
+        int left = player.getInventory().add(cursor.id, cursor.count);
+        if (left > 0 && world && world->entityManager)
+            world->entityManager->throwItem(cursor.id, left, player.getPosition(), player.getFront());
+    }
     cursor.clear();
 }
 

@@ -115,6 +115,10 @@ GLuint TextureArray::itemIcon(ItemId id) {
     return getLayerTexture2D(itemIconLayer(id));
 }
 
+const char* TextureArray::layerPath(int layer) {
+    return (layer >= 0 && layer < NUM_LAYERS) ? TEXTURE_PATHS[layer] : nullptr;
+}
+
 GLuint TextureArray::getLayerTexture2D(int layer) {
     if (layer < 0 || layer >= NUM_LAYERS) return 0;
     return layerTextures2D[layer];

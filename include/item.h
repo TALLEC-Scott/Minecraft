@@ -137,6 +137,12 @@ inline const char* itemIconPath(ItemId id) {
     return info ? info->iconPath : nullptr;
 }
 
+// What something drops when broken or killed (count 0 = nothing).
+struct ItemDrop {
+    ItemId id = ITEM_EMPTY;
+    int count = 0;
+};
+
 inline MeleeStats meleeStats(ItemId id) {
     const ItemInfo* info = itemInfo(id);
     return info ? info->melee : FIST_MELEE;
