@@ -2091,7 +2091,7 @@ int main(int argc, char* argv[]) {
             glm::vec3 DEEP_BLUE = DEEP_BLUE_DAY * daylight;
             // The camera counts lava as liquid too; its fog is orange, not blue.
             bool inLavaView = player.eyesInLava();
-            bool underwater = player.getCamera().areEyesInWater() && !inLavaView;
+            bool underwater = player.eyesInWater();
             const glm::vec3 LAVA_FOG(0.75f, 0.22f, 0.02f);
             float waterDepthFactor = 0.0f;
             if (underwater) {
