@@ -4,6 +4,7 @@
 #include <cstring>
 #include <random>
 
+#include "item.h"
 #include "net/net_protocol.h"
 #include "player.h"
 #include "world.h"
@@ -597,6 +598,7 @@ void NetSession::handleMessage(const uint8_t* data, std::size_t len, double now)
         if (!netp::decodePlayerState(data, len, m)) return;
         RemotePlayer& r = upsertRemote(m.peerId, now);
         r.pushSample(m.pos, m.yaw, m.pitch, now);
+        r.heldItem = isValidItem(m.heldItem) ? m.heldItem : ITEM_EMPTY;
         break;
     }
     case netp::Op::PlaceIntent: {
@@ -653,6 +655,12 @@ void NetSession::handleMessage(const uint8_t* data, std::size_t len, double now)
         if (onChat_) onChat_(m.peerId, m.text);
         break;
     }
+    case netp::Op::Hit: {
+        netp::HitMsg m;
+        if (!netp::decodeHit(data, len, m)) return;
+        if (m.targetId == selfPeerId_ && onHit_) onHit_(m.attackerId, m.damage, m.fromPos);
+        break;
+    }
     }
 }
 
@@ -699,6 +707,7 @@ void NetSession::tickBroadcast(const Player& p, double now) {
     m.pos = p.getPosition();
     m.yaw = p.getYaw();
     m.pitch = p.getPitch();
+    m.heldItem = p.getSelectedItem();
     std::vector<uint8_t> buf;
     netp::encodePlayerState(buf, m);
     sendRaw(buf);
@@ -725,6 +734,16 @@ void NetSession::notifyLocalPlace(glm::ivec3 pos, uint8_t blockType) {
         netp::PlaceIntentMsg m{pos, blockType};
         netp::encodePlaceIntent(buf, m);
     }
+    sendRaw(buf);
+}
+
+void NetSession::sendHit(uint32_t targetPeerId, float damage, glm::vec3 fromPos, double now) {
+    if (!connected()) return;
+    for (RemotePlayer& r : remotes_)
+        if (r.peerId == targetPeerId) r.hurtFlashUntil = now + HIT_FLASH_SECONDS;
+    netp::HitMsg m{selfPeerId_, targetPeerId, std::min(damage, netp::HIT_MAX_DAMAGE), fromPos};
+    std::vector<uint8_t> buf;
+    netp::encodeHit(buf, m);
     sendRaw(buf);
 }
 

@@ -55,7 +55,12 @@ void HeldItemModel::draw(const glm::mat4& projection, const glm::mat4& model, gl
     shader_->setMat4("projection", projection);
     shader_->setMat4("model", model);
     shader_->setVec3("lightTint", lightTint);
+    // The slab is wound counter-clockwise, the world pass culls with
+    // clockwise fronts: draw unculled and restore the caller's state.
+    GLboolean culling = glIsEnabled(GL_CULL_FACE);
+    glDisable(GL_CULL_FACE);
     glBindVertexArray(vao_);
     glDrawArrays(GL_TRIANGLES, 0, vertexCount_);
     glBindVertexArray(0);
+    if (culling) glEnable(GL_CULL_FACE);
 }

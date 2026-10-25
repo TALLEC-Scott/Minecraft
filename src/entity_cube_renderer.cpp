@@ -43,13 +43,13 @@ EntityCubeRenderer::~EntityCubeRenderer() {
     destroy();
 }
 
-void EntityCubeRenderer::init() {
-    if (glReady) return;
+// Cube textured with `type`'s per-face layers, full bright, full skylight.
+void EntityCubeRenderer::buildCube(block_type type, GLuint& vao, GLuint& vbo, GLuint& ebo) {
     float verts[NUM_VERTS * VERT_FLOATS];
     unsigned int indices[NUM_INDICES];
     int vi = 0;
     for (int f = 0; f < 6; ++f) {
-        float layer = static_cast<float>(TextureArray::layerForFace(TNT, FACES[f].faceIdx));
+        float layer = static_cast<float>(TextureArray::layerForFace(type, FACES[f].faceIdx));
         float normalIdx = static_cast<float>(FACES[f].faceIdx);
         for (int v = 0; v < 4; ++v) {
             verts[vi++] = FACES[f].v[v][0];
@@ -101,6 +101,11 @@ void EntityCubeRenderer::init() {
     glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, STRIDE, (void*)(8 * sizeof(float)));
     glEnableVertexAttribArray(5);
     glBindVertexArray(0);
+}
+
+void EntityCubeRenderer::init() {
+    if (glReady) return;
+    buildCube(TNT, vao, vbo, ebo);
     glReady = true;
 }
 
@@ -117,7 +122,25 @@ void EntityCubeRenderer::drawTnt(const Shader& shader, glm::mat4 /*vp*/, glm::ve
     shader.setFloat("entityTint", 1.0f);
 }
 
+void EntityCubeRenderer::drawBlock(const Shader& shader, const glm::mat4& model, block_type type) {
+    BlockMesh& mesh = blockMeshes[static_cast<size_t>(type)];
+    if (!mesh.vao) buildCube(type, mesh.vao, mesh.vbo, mesh.ebo);
+    shader.setMat4("model", model);
+    shader.setFloat("entityTint", 1.0f);
+    shader.setInt("materialType", 0);
+    glBindVertexArray(mesh.vao);
+    glDrawElements(GL_TRIANGLES, NUM_INDICES, GL_UNSIGNED_INT, nullptr);
+    glBindVertexArray(0);
+}
+
 void EntityCubeRenderer::destroy() {
+    for (BlockMesh& mesh : blockMeshes) {
+        if (!mesh.vao) continue;
+        glDeleteVertexArrays(1, &mesh.vao);
+        glDeleteBuffers(1, &mesh.vbo);
+        glDeleteBuffers(1, &mesh.ebo);
+        mesh = {};
+    }
     if (!glReady) return;
     glDeleteVertexArrays(1, &vao);
     glDeleteBuffers(1, &vbo);

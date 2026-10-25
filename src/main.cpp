@@ -236,6 +236,15 @@ static GLuint highlightVAO, highlightVBO;
 static GLuint armVAO, armVBO, armEBO;
 static GLuint heldBlockVAO, heldBlockVBO, heldBlockEBO;
 static block_type lastHeldBlock = AIR; // track when to rebuild held block mesh
+
+// The one tool model (the sword), shared by first person and other players'
+// hands. Loaded from the tool's sprite on first draw.
+static HeldItemModel& heldToolModel() {
+    static HeldItemModel model;
+    return model;
+}
+// Grip pixel of a tool sprite (sprite coords): where the hand holds it.
+static const glm::vec3 TOOL_GRIP(2.5f, 2.5f, 0.0f);
 static double lastTime = 0, lastFrameTime = 0;
 static int nbFrames = 0, chunksRendered = 0;
 
@@ -1010,6 +1019,12 @@ int main(int argc, char* argv[]) {
         player.setNetSession(&netSession);
         netSession.setOnChat([](uint32_t peerId, const std::string& text) {
             if (g_chat) g_chat->pushRemoteMessage(peerId, text);
+        });
+        // PvP: the attacker's client decided the hit; apply it like a mob hit
+        // (hearts, i-frames, red flash, knockback away from the attacker).
+        // Pausing doesn't protect you, as in Minecraft multiplayer.
+        netSession.setOnHit([](uint32_t /*attackerId*/, float damage, glm::vec3 fromPos) {
+            if (!player.isDead()) player.hurt(damage, fromPos);
         });
 
 #ifdef __EMSCRIPTEN__
@@ -2295,7 +2310,29 @@ int main(int argc, char* argv[]) {
                     // The wire carries the peer's eye/camera position; Steve's
                     // feet are PLAYER_HEIGHT below that.
                     glm::vec3 feetPos = pose.pos - glm::vec3(0.0f, PLAYER_HEIGHT, 0.0f);
-                    playerRenderer.draw(shaderProgram, feetPos, pose.yaw, pose.pitch);
+                    // Same red as a hurt mob while our hit flash lasts.
+                    glm::vec3 tint = renderNow < r.hurtFlashUntil ? glm::vec3(1.0f, 0.45f, 0.45f) : glm::vec3(1.0f);
+                    playerRenderer.draw(shaderProgram, feetPos, pose.yaw, pose.pitch, tint);
+
+                    // What they hold, in the right fist (third person).
+                    glm::mat4 hand = PlayerRenderer::rightHandFrame(feetPos, pose.yaw);
+                    if (const char* spritePath = toolIconPath(r.heldItem)) {
+                        // Tool: sprite slab standing in the arm's forward
+                        // plane, blade angled forward and up (sprite +X -> +Z).
+                        if (heldToolModel().load(spritePath)) {
+                            glm::mat4 m = glm::rotate(hand, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+                            m = glm::scale(m, glm::vec3(0.045f)); // 16 px ≈ 0.72 blocks
+                            m = glm::translate(m, -TOOL_GRIP);
+                            heldToolModel().draw(viewProjection, m, glm::vec3(std::max(daylight, 0.3f)));
+                            shaderProgram.use();
+                        }
+                    } else if (r.heldItem != ITEM_EMPTY) {
+                        // Block: a small cube in front of the fist.
+                        glm::mat4 m = glm::translate(hand, glm::vec3(0.0f, -0.05f, 0.12f));
+                        m = glm::rotate(m, glm::radians(45.0f), glm::vec3(0, 1, 0));
+                        m = glm::scale(m, glm::vec3(0.3f));
+                        entityCubes.drawBlock(shaderProgram, m, itemBlock(r.heldItem));
+                    }
                 }
                 shaderProgram.setMat4("model", glm::mat4(1.0f));
                 shaderProgram.setFloat("entityTint", 1.0f);
@@ -2532,10 +2569,9 @@ int main(int argc, char* argv[]) {
                     // side toward the camera, blade leaning toward the
                     // crosshair. Attacks play Minecraft's swing about the
                     // hand; the arm runs from the hand to a fixed shoulder.
-                    static HeldItemModel swordModel;
+                    HeldItemModel& swordModel = heldToolModel();
                     if (swordModel.load(spritePath)) {
-                        constexpr float ITEM_SCALE = 0.04f;          // sprite pixels -> view units
-                        const glm::vec3 ITEM_GRIP(2.5f, 2.5f, 0.0f); // handle pixel, sprite coords
+                        constexpr float ITEM_SCALE = 0.04f; // sprite pixels -> view units
                         const glm::vec3 HAND_REST(0.28f * aspect, -0.4f, -0.7f);
                         const glm::vec3 SHOULDER = HAND_REST + glm::vec3(0.3f, -0.45f, 0.3f); // off-screen
                         constexpr float ARM_HALF_WIDTH = 0.07f;
@@ -2555,7 +2591,7 @@ int main(int argc, char* argv[]) {
                         m = glm::rotate(m, glm::radians(-30.0f), glm::vec3(1, 0, 0)); // blade leans away
                         m = glm::rotate(m, glm::radians(70.0f), glm::vec3(0, 0, 1));  // diagonal sprite upright
                         m = glm::scale(m, glm::vec3(ITEM_SCALE));
-                        m = glm::translate(m, -ITEM_GRIP);
+                        m = glm::translate(m, -TOOL_GRIP);
                         swordModel.draw(projection, m, armTint);
                         billboardShader.use(); // restore for the rest of this pass
                     }
