@@ -13,6 +13,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # AudioAssetsTest decodes every sound, so they must be real files, not
+      # LFS pointers. Pull only assets/Sounds (~2.5 MB), not the screenshots.
+      - name: Fetch LFS sounds
+        run: git lfs pull --include="assets/Sounds/**"
+
       - name: Install dependencies
         run: |
           sudo apt-get update
