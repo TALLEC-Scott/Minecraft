@@ -18,6 +18,25 @@ static const char* TEXTURE_PATHS[] = {
 };
 static constexpr int NUM_LAYERS = TextureArray::NUM_LAYERS;
 static GLuint layerTextures2D[NUM_LAYERS] = {};
+static GLuint toolIcons[LAST_TOOL_ITEM - FIRST_TOOL_ITEM + 1] = {};
+
+// RGBA 2D texture with nearest filtering (pixel-art UI icons). 0 on failure.
+static GLuint loadUiTexture(const char* path) {
+    int w, h, channels;
+    unsigned char* data = stbi_load(path, &w, &h, &channels, 4);
+    if (!data) {
+        std::cerr << "TextureArray: failed to load " << path << std::endl;
+        return 0;
+    }
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    stbi_image_free(data);
+    return tex;
+}
 
 void TextureArray::initialize() {
     stbi_set_flip_vertically_on_load(true);
@@ -78,7 +97,14 @@ void TextureArray::initLayerTextures() {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         stbi_image_free(data);
     }
+    for (ItemId id = FIRST_TOOL_ITEM; id <= LAST_TOOL_ITEM; ++id)
+        if (const char* path = toolIconPath(id)) toolIcons[id - FIRST_TOOL_ITEM] = loadUiTexture(path);
     stbi_set_flip_vertically_on_load(true); // restore for GL textures
+}
+
+GLuint TextureArray::itemIcon(ItemId id) {
+    if (!isBlockItem(id)) return id <= LAST_TOOL_ITEM ? toolIcons[id - FIRST_TOOL_ITEM] : 0;
+    return getLayerTexture2D(itemIconLayer(id));
 }
 
 GLuint TextureArray::getLayerTexture2D(int layer) {
@@ -92,5 +118,9 @@ void TextureArray::destroyLayerTextures() {
             glDeleteTextures(1, &layerTextures2D[i]);
             layerTextures2D[i] = 0;
         }
+    }
+    for (GLuint& tex : toolIcons) {
+        if (tex) glDeleteTextures(1, &tex);
+        tex = 0;
     }
 }
