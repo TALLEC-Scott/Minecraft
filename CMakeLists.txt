@@ -56,6 +56,7 @@ set(COMMON_SOURCES
     src/entity_manager.cpp
     src/entity_cube_renderer.cpp
     src/particle_system.cpp
+    src/lava_effects.cpp
     src/player_renderer.cpp
     src/mob.cpp
     src/mob_ai.cpp

@@ -56,6 +56,7 @@
 #include "world_directory.h"
 #include "entity_cube_renderer.h"
 #include "entity_manager.h"
+#include "lava_effects.h"
 #include "mob_manager.h"
 #include "mob_registry.h"
 #include "particle_system.h"
@@ -283,6 +284,7 @@ static bool g_soundsLoaded = false;
 
 static void loadWorldSounds(World& world, ma_engine* engine) {
     world.waterSimulator->initAudio(engine);
+    world.lavaEffects->initAudio(engine);
     world.entityManager->initAudio(engine);
     world.mobManager->initAudio(engine);
 }

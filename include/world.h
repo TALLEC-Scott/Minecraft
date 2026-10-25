@@ -11,6 +11,7 @@
 using WorldResolver = WorldResolverT<ChunkManager, Chunk>;
 
 class EntityManager;
+class LavaEffects;
 class MobManager;
 class ParticleSystem;
 
@@ -42,6 +43,7 @@ class World {
     EntityManager* entityManager;
     MobManager* mobManager; // living mobs + projectiles, 20 TPS (see mob_manager.h)
     ParticleSystem* particles;
+    LavaEffects* lavaEffects; // lava bubbling / pops / hiss (sound + particles)
 
     // Camera-shake magnitude set by explode(); main.cpp decays it per-frame
     // and offsets the view. Mutable because the World pointer is shared via

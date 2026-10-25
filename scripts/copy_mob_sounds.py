@@ -1,6 +1,7 @@
 """Copy the user's local Minecraft mob sounds into the game's layout:
 assets/Sounds/mob/<name>/<event>N.ogg (Minecraft's own OGG Vorbis files,
-unchanged, N = 1..4).
+unchanged, N = 1..4), plus the lava sounds (LIQUID_SOUNDS) at their
+Minecraft paths under assets/Sounds/.
 
 usage: copy_mob_sounds.py <.minecraft dir> <project dir>
 """
@@ -75,4 +76,13 @@ for mob, events in MAPPING.items():
             ogg = os.path.join(MC, "assets/objects", h[:2], h)
             shutil.copyfile(ogg, os.path.join(out_dir, f"{event}{n}.ogg"))
             written += 1
+
+# Lava bubbling, lava pop and the lava-meets-water hiss (LavaEffects).
+LIQUID_SOUNDS = ["liquid/lava", "liquid/lavapop", "random/fizz"]
+for src in LIQUID_SOUNDS:
+    h = index["minecraft/sounds/" + src + ".ogg"]["hash"]
+    dst = os.path.join(PROJECT, "assets/Sounds", src + ".ogg")
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    shutil.copyfile(os.path.join(MC, "assets/objects", h[:2], h), dst)
+    written += 1
 print("wrote", written, "files")
