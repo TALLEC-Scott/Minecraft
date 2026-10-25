@@ -168,11 +168,11 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
     buttonRows = 4;
 #endif
 
-    // Item wiki: a small square under the buttons, the crafting-table top as
-    // its logo. Opens in the browser (open_url.h).
+    // Item wiki: a small square under the buttons' bottom-right corner, the
+    // crafting-table top as its logo. Opens in the browser (open_url.h).
     {
         float size = btnH;
-        float wx = cx - size / 2.0f;
+        float wx = btnX + btnW - size;
         float wy = startY + gap * buttonRows;
         if (widgets.button(ui, "", wx, wy, size, size, WidgetOpts{/*enabled=*/true, /*tooltip=*/"Item wiki"}))
             openWebPage("wiki.html", "https://tallec.freeboxos.fr:7862/wiki.html");
