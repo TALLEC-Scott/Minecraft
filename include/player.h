@@ -106,8 +106,9 @@ class Player {
     glm::vec3 getFeetPosition() const { return camera.getPosition() - glm::vec3(0.0f, PLAYER_HEIGHT, 0.0f); }
     // Damage from a world position (mob, explosion). Knockback pushes away
     // from `fromPos` horizontally. Respects the invulnerability window; a
-    // no-op in Creative.
-    void hurt(float amount, glm::vec3 fromPos, bool knockback = true);
+    // no-op in Creative. `exhausting`: costs hunger, as damage armor could
+    // block does in Minecraft (hits, explosions) — not falls or starving.
+    void hurt(float amount, glm::vec3 fromPos, bool knockback = true, bool exhausting = true);
     // Full health, zero motion, camera (eye) at `eyePos`.
     void respawn(glm::vec3 eyePos);
     float getHurtFlash() const;

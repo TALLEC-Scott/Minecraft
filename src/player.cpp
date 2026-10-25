@@ -303,15 +303,17 @@ void Player::updateHunger(double now) {
     lastUpdateTime = now;
     if (health.isDead()) return;
 
-    // Moving costs: sprinting on land, swimming (walking is free).
+    // Moving costs: swimming counts every direction, sprinting on land
+    // only the horizontal distance (walking is free).
     glm::vec3 p = camera.getPosition();
-    float moved = glm::length(glm::vec2(p.x - lastExhaustPos.x, p.z - lastExhaustPos.z));
+    float moved3d = glm::length(p - lastExhaustPos);
+    float movedFlat = glm::length(glm::vec2(p.x - lastExhaustPos.x, p.z - lastExhaustPos.z));
     lastExhaustPos = p;
-    if (moved < 2.0f) { // ignore teleports / respawns
+    if (moved3d < 2.0f) { // ignore teleports / respawns
         if (camera.isInWater())
-            hunger.addExhaustion(moved * PlayerHunger::EXHAUST_SWIM_PER_BLOCK);
+            hunger.addExhaustion(moved3d * PlayerHunger::EXHAUST_SWIM_PER_BLOCK);
         else if (sprinting && camera.isOnGround())
-            hunger.addExhaustion(moved * PlayerHunger::EXHAUST_SPRINT_PER_BLOCK);
+            hunger.addExhaustion(movedFlat * PlayerHunger::EXHAUST_SPRINT_PER_BLOCK);
     }
 
     hungerAccumulator += dt;
@@ -319,7 +321,7 @@ void Player::updateHunger(double now) {
         hungerAccumulator -= 0.05;
         float change = hunger.tick(health.health, PlayerHealth::MAX_HEALTH);
         if (change > 0.0f) health.heal(change);
-        if (change < 0.0f) hurt(-change, p, false); // starving
+        if (change < 0.0f) hurt(-change, p, false, false); // starving
     }
 }
 
@@ -490,9 +492,9 @@ void Player::setGameMode(GameMode mode) {
     if (isSurvival()) camera.setWalkMode(true);
 }
 
-void Player::hurt(float amount, glm::vec3 fromPos, bool knockback) {
+void Player::hurt(float amount, glm::vec3 fromPos, bool knockback, bool exhausting) {
     if (!isSurvival() || !health.hurt(amount, glfwGetTime())) return;
-    hunger.addExhaustion(PlayerHunger::EXHAUST_HURT);
+    if (exhausting) hunger.addExhaustion(PlayerHunger::EXHAUST_HURT);
     if (knockback) {
         glm::vec3 p = camera.getPosition();
         glm::vec2 away(p.x - fromPos.x, p.z - fromPos.z);
@@ -563,7 +565,7 @@ void Player::update(World* world) {
     // Health: fall damage on landing (walk mode only — Camera doesn't track
     // falls while flying or in water), then slow regeneration.
     float fallDmg = PlayerHealth::fallDamage(camera.takeLandingFall());
-    if (fallDmg > 0.0f) hurt(fallDmg, camera.getPosition(), false);
+    if (fallDmg > 0.0f) hurt(fallDmg, camera.getPosition(), false, false);
     // Survival heals (and starves) through the food bar; Creative can't be
     // hurt, so its timer-based regen never matters there.
     if (isSurvival())
