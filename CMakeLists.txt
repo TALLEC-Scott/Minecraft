@@ -49,6 +49,7 @@ set(COMMON_SOURCES
     src/inventory.cpp
     src/world_save.cpp
     src/level_data.cpp
+    src/open_url.cpp
     src/world_directory.cpp
     src/light_propagation.cpp
     src/tnt_entity.cpp
