@@ -236,6 +236,15 @@ static GLuint highlightVAO, highlightVBO;
 static GLuint armVAO, armVBO, armEBO;
 static GLuint heldBlockVAO, heldBlockVBO, heldBlockEBO;
 static block_type lastHeldBlock = AIR; // track when to rebuild held block mesh
+
+// The one tool model (the sword), shared by first person and other players'
+// hands. Loaded from the tool's sprite on first draw.
+static HeldItemModel& heldToolModel() {
+    static HeldItemModel model;
+    return model;
+}
+// Grip pixel of a tool sprite (sprite coords): where the hand holds it.
+static const glm::vec3 TOOL_GRIP(2.5f, 2.5f, 0.0f);
 static double lastTime = 0, lastFrameTime = 0;
 static int nbFrames = 0, chunksRendered = 0;
 
@@ -1011,6 +1020,12 @@ int main(int argc, char* argv[]) {
         netSession.setOnChat([](uint32_t peerId, const std::string& text) {
             if (g_chat) g_chat->pushRemoteMessage(peerId, text);
         });
+        // PvP: the attacker's client decided the hit; apply it like a mob hit
+        // (hearts, i-frames, red flash, knockback away from the attacker).
+        // The session is polled while paused too, so pausing doesn't
+        // protect you, as in Minecraft multiplayer.
+        netSession.setOnHit(
+            [](uint32_t /*attackerId*/, float damage, glm::vec3 fromPos) { player.hurt(damage, fromPos); });
 
 #ifdef __EMSCRIPTEN__
         static
@@ -1996,6 +2011,30 @@ int main(int argc, char* argv[]) {
             // Light color: warm orange near horizon, white at noon, fades to dark at night
             float sunH = std::max(sunDir.y, 0.0f);
             glm::vec3 sunColor = glm::vec3(1.0f) * std::min(sunH * 1.5f, 1.0f);
+
+            // Light at a world point for things drawn outside the chunk mesh
+            // (first-person arm, other players and what they hold):
+            // x = sky level, y = block level; open sky if the chunk isn't loaded.
+            auto lightLevelsAt = [&](glm::vec3 p) {
+                int bx = (int)std::floor(p.x + 0.5f), by = (int)std::floor(p.y + 0.5f);
+                int bz = (int)std::floor(p.z + 0.5f);
+                int cx = worldToChunk(bx), cz = worldToChunk(bz);
+                Chunk* chunk = w->chunkManager->getChunk(cx, cz);
+                if (!chunk || by < 0 || by >= CHUNK_HEIGHT) return glm::ivec2(15, 0);
+                int lx = worldToLocal(bx, cx), lz = worldToLocal(bz, cz);
+                return glm::ivec2(chunk->getSkyLight(lx, by, lz), chunk->getBlockLight(lx, by, lz));
+            };
+            // RGB multiplier for those levels, matching frag.shd's sun/moon
+            // terms, plus block light (glowstone) so lit caves aren't black.
+            auto lightTintFor = [&](glm::ivec2 levels) {
+                float skyFactor = 0.15f + 0.85f * (static_cast<float>(levels.x) / 15.0f);
+                float sunContrib = std::min(0.35f * sunH + 0.65f * sunH, 1.0f);
+                glm::vec3 sunLit = sunColor * sunContrib * skyFactor;
+                float moonIntensity = std::max(-sunDir.y, 0.0f);
+                glm::vec3 moonLit = glm::vec3(0.6f, 0.7f, 1.0f) * 0.25f * moonIntensity * skyFactor;
+                glm::vec3 skyTint = sunLit + moonLit + glm::vec3(0.08f);
+                return glm::max(skyTint, glm::vec3(0.9f * static_cast<float>(levels.y) / 15.0f));
+            };
             shaderProgram.setVec3("lightColor", sunColor);
 
             player.defineLookAt(shaderProgram);
@@ -2026,12 +2065,19 @@ int main(int argc, char* argv[]) {
             float gameTime = (float)glfwGetTime();
             shaderProgram.setFloat("time", gameTime);
             shaderProgram.setInt("fancyLeaves", g_fancyLeaves ? 1 : 0);
-            shaderProgram.setVec2("leafSway",
-                                  glm::vec2(std::sin(gameTime * 2.0f) * 0.06f, std::cos(gameTime * 1.5f) * 0.04f));
+            const glm::vec2 leafSway(std::sin(gameTime * 2.0f) * 0.06f, std::cos(gameTime * 1.5f) * 0.04f);
+            shaderProgram.setVec2("leafSway", leafSway);
 
             // Targeting handled by player.update()
 
             TextureArray::bind();
+            // Multiplayer keeps running while paused (hits, block edits, the
+            // other player moving) — only the local simulation stops.
+            if (currentState == GameState::Playing || currentState == GameState::Paused) {
+                double netNow = glfwGetTime();
+                netSession.poll(netNow);
+                netSession.tickBroadcast(player, netNow);
+            }
             if (currentState == GameState::Playing) {
                 // Mobs read the player + time of day during this update.
                 MobManager::PlayerState mobView;
@@ -2041,9 +2087,6 @@ int main(int argc, char* argv[]) {
                 w->mobManager->setPlayer(mobView);
                 w->mobManager->setSunHeight(std::sin(timeValue));
                 w->update(player.getPosition(), dt, glfwGetTime());
-                double netNow = glfwGetTime();
-                netSession.poll(netNow);
-                netSession.tickBroadcast(player, netNow);
                 if (g_chat) {
                     std::string outgoing;
                     if (g_chat->takePendingSend(outgoing)) {
@@ -2295,7 +2338,37 @@ int main(int argc, char* argv[]) {
                     // The wire carries the peer's eye/camera position; Steve's
                     // feet are PLAYER_HEIGHT below that.
                     glm::vec3 feetPos = pose.pos - glm::vec3(0.0f, PLAYER_HEIGHT, 0.0f);
-                    playerRenderer.draw(shaderProgram, feetPos, pose.yaw, pose.pitch);
+                    // Same red as a hurt mob while our hit flash lasts.
+                    glm::vec3 tint = renderNow < r.hurtFlashUntil ? glm::vec3(1.0f, 0.45f, 0.45f) : glm::vec3(1.0f);
+                    // Lit by the light at their chest, like mobs.
+                    glm::ivec2 light = lightLevelsAt(feetPos + glm::vec3(0.0f, 1.0f, 0.0f));
+                    auto packedLight = static_cast<float>(light.x * 16 + light.y);
+                    playerRenderer.draw(shaderProgram, feetPos, pose.yaw, pose.pitch, tint, packedLight);
+
+                    // What they hold, in the right fist (third person).
+                    glm::mat4 hand = PlayerRenderer::rightHandFrame(feetPos, pose.yaw);
+                    if (const char* spritePath = toolIconPath(r.heldItem)) {
+                        // Tool: sprite slab standing in the arm's forward
+                        // plane, blade angled forward and up (sprite +X -> +Z).
+                        if (heldToolModel().load(spritePath)) {
+                            glm::mat4 m = glm::rotate(hand, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+                            m = glm::scale(m, glm::vec3(0.045f)); // 16 px ≈ 0.72 blocks
+                            m = glm::translate(m, -TOOL_GRIP);
+                            ItemShading shading{lightTintFor(light), sunDir, cameraPos, fogColor, fogStart, fogEnd};
+                            heldToolModel().draw(viewProjection, m, shading);
+                            shaderProgram.use();
+                        }
+                    } else if (block_type held = itemBlock(r.heldItem);
+                               held != AIR && !hasFlag(held, BF_CROSS) && !hasFlag(held, BF_LIQUID)) {
+                        // Solid block: a small cube in front of the fist. Plants
+                        // and water have no cube form, so nothing is drawn.
+                        glm::mat4 m = glm::translate(hand, glm::vec3(0.0f, -0.05f, 0.12f));
+                        m = glm::rotate(m, glm::radians(45.0f), glm::vec3(0, 1, 0));
+                        m = glm::scale(m, glm::vec3(0.3f));
+                        shaderProgram.setVec2("leafSway", glm::vec2(0.0f)); // held leaves don't sway
+                        entityCubes.drawBlock(shaderProgram, m, held, packedLight);
+                        shaderProgram.setVec2("leafSway", leafSway);
+                    }
                 }
                 shaderProgram.setMat4("model", glm::mat4(1.0f));
                 shaderProgram.setFloat("entityTint", 1.0f);
@@ -2488,28 +2561,7 @@ int main(int argc, char* argv[]) {
                 glm::mat4 armModel = player.getArmModelMatrix();
 
                 // Sample sky light at player eye position
-                glm::vec3 armTint(1.0f);
-                {
-                    int bx = (int)std::floor(cameraPos.x + 0.5f);
-                    int bz = (int)std::floor(cameraPos.z + 0.5f);
-                    int by = (int)std::floor(cameraPos.y + 0.5f);
-                    int cx = worldToChunk(bx);
-                    int cz = worldToChunk(bz);
-                    Chunk* chunk = w->chunkManager->getChunk(cx, cz);
-                    float skyFactor = 1.0f;
-                    if (chunk) {
-                        uint8_t sl = chunk->getSkyLight(worldToLocal(bx, cx), by, worldToLocal(bz, cz));
-                        skyFactor = 0.15f + 0.85f * (sl / 15.0f);
-                    }
-                    // Sun contribution (matches frag.shd: sunContrib * lightColor)
-                    float sunContrib = std::min(0.35f * sunH + 0.65f * sunH, 1.0f);
-                    glm::vec3 sunLit = sunColor * sunContrib * skyFactor;
-                    // Moon contribution (matches frag.shd: 0.25 * moonIntensity * blue tint)
-                    float moonIntensity = std::max(-sunDir.y, 0.0f);
-                    glm::vec3 moonLit = glm::vec3(0.6f, 0.7f, 1.0f) * 0.25f * moonIntensity * skyFactor;
-                    // Base ambient
-                    armTint = sunLit + moonLit + glm::vec3(0.08f);
-                }
+                glm::vec3 armTint = lightTintFor(lightLevelsAt(cameraPos));
 
                 glClear(GL_DEPTH_BUFFER_BIT);
                 billboardShader.use();
@@ -2532,10 +2584,9 @@ int main(int argc, char* argv[]) {
                     // side toward the camera, blade leaning toward the
                     // crosshair. Attacks play Minecraft's swing about the
                     // hand; the arm runs from the hand to a fixed shoulder.
-                    static HeldItemModel swordModel;
+                    HeldItemModel& swordModel = heldToolModel();
                     if (swordModel.load(spritePath)) {
-                        constexpr float ITEM_SCALE = 0.04f;          // sprite pixels -> view units
-                        const glm::vec3 ITEM_GRIP(2.5f, 2.5f, 0.0f); // handle pixel, sprite coords
+                        constexpr float ITEM_SCALE = 0.04f; // sprite pixels -> view units
                         const glm::vec3 HAND_REST(0.28f * aspect, -0.4f, -0.7f);
                         const glm::vec3 SHOULDER = HAND_REST + glm::vec3(0.3f, -0.45f, 0.3f); // off-screen
                         constexpr float ARM_HALF_WIDTH = 0.07f;
@@ -2555,8 +2606,8 @@ int main(int argc, char* argv[]) {
                         m = glm::rotate(m, glm::radians(-30.0f), glm::vec3(1, 0, 0)); // blade leans away
                         m = glm::rotate(m, glm::radians(70.0f), glm::vec3(0, 0, 1));  // diagonal sprite upright
                         m = glm::scale(m, glm::vec3(ITEM_SCALE));
-                        m = glm::translate(m, -ITEM_GRIP);
-                        swordModel.draw(projection, m, armTint);
+                        m = glm::translate(m, -TOOL_GRIP);
+                        swordModel.draw(projection, m, ItemShading{armTint});
                         billboardShader.use(); // restore for the rest of this pass
                     }
                 } else if (heldType == AIR) {

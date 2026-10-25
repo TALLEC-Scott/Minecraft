@@ -1,6 +1,7 @@
 #include "net/net_protocol.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace netp {
@@ -68,7 +69,7 @@ inline double getF64LE(const uint8_t* p) {
 }
 
 constexpr std::size_t HELLO_LEN = 1 + 1 + 4;
-constexpr std::size_t PLAYER_STATE_LEN = 1 + 4 + 4 * 3 + 4 + 4;
+constexpr std::size_t PLAYER_STATE_LEN = 1 + 4 + 4 * 3 + 4 + 4 + 2 + 1;
 constexpr std::size_t PLACE_INTENT_LEN = 1 + 4 * 3 + 1;
 constexpr std::size_t DESTROY_INTENT_LEN = 1 + 4 * 3;
 constexpr std::size_t PLACE_APPLY_LEN = 1 + 4 * 3 + 1;
@@ -76,6 +77,7 @@ constexpr std::size_t DESTROY_APPLY_LEN = 1 + 4 * 3;
 constexpr std::size_t BYE_LEN = 1 + 4;
 constexpr std::size_t TIME_SYNC_LEN = 1 + 8;
 constexpr std::size_t CHAT_HEADER_LEN = 1 + 4 + 2;
+constexpr std::size_t HIT_LEN = 1 + 4 + 4 + 4 + 4 * 3;
 
 } // namespace
 
@@ -95,6 +97,8 @@ void encodePlayerState(std::vector<uint8_t>& out, const PlayerStateMsg& m) {
     putF32LE(out, m.pos.z);
     putF32LE(out, m.yaw);
     putF32LE(out, m.pitch);
+    putU16LE(out, m.heldItem);
+    putU8(out, m.flags);
 }
 
 void encodePlaceIntent(std::vector<uint8_t>& out, const PlaceIntentMsg& m) {
@@ -145,6 +149,16 @@ void encodeChat(std::vector<uint8_t>& out, const ChatMsg& m) {
     out.insert(out.end(), m.text.begin(), m.text.begin() + static_cast<std::ptrdiff_t>(n));
 }
 
+void encodeHit(std::vector<uint8_t>& out, const HitMsg& m) {
+    putU8(out, static_cast<uint8_t>(Op::Hit));
+    putU32LE(out, m.attackerId);
+    putU32LE(out, m.targetId);
+    putF32LE(out, m.damage);
+    putF32LE(out, m.fromPos.x);
+    putF32LE(out, m.fromPos.y);
+    putF32LE(out, m.fromPos.z);
+}
+
 // --- Decoders ---
 
 bool decodeOp(const uint8_t* buf, std::size_t len, Op& outOp) {
@@ -168,6 +182,8 @@ bool decodePlayerState(const uint8_t* buf, std::size_t len, PlayerStateMsg& out)
     out.pos.z = getF32LE(buf + 13);
     out.yaw = getF32LE(buf + 17);
     out.pitch = getF32LE(buf + 21);
+    out.heldItem = getU16LE(buf + 25);
+    out.flags = buf[27];
     return true;
 }
 
@@ -225,6 +241,19 @@ bool decodeChat(const uint8_t* buf, std::size_t len, ChatMsg& out) {
     if (len != CHAT_HEADER_LEN + textLen) return false;
     out.peerId = peerId;
     out.text.assign(reinterpret_cast<const char*>(buf + CHAT_HEADER_LEN), textLen);
+    return true;
+}
+
+bool decodeHit(const uint8_t* buf, std::size_t len, HitMsg& out) {
+    if (len != HIT_LEN || buf[0] != static_cast<uint8_t>(Op::Hit)) return false;
+    HitMsg m;
+    m.attackerId = getU32LE(buf + 1);
+    m.targetId = getU32LE(buf + 5);
+    m.damage = getF32LE(buf + 9);
+    m.fromPos = {getF32LE(buf + 13), getF32LE(buf + 17), getF32LE(buf + 21)};
+    if (!std::isfinite(m.damage) || m.damage < 0.0f || m.damage > HIT_MAX_DAMAGE) return false;
+    if (!std::isfinite(m.fromPos.x) || !std::isfinite(m.fromPos.y) || !std::isfinite(m.fromPos.z)) return false;
+    out = m;
     return true;
 }
 

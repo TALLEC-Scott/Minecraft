@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <limits>
+
 #include "net/net_protocol.h"
+#include "net/net_session.h"
 
 using namespace netp;
 
@@ -23,6 +26,8 @@ TEST(NetProtocol, PlayerStateRoundtrip) {
     in.pos = glm::vec3(123.5f, -7.25f, 1024.0f);
     in.yaw = -45.75f;
     in.pitch = 30.125f;
+    in.heldItem = 256; // iron sword
+    in.flags = PLAYER_FLAG_DEAD;
 
     std::vector<uint8_t> buf;
     encodePlayerState(buf, in);
@@ -37,6 +42,8 @@ TEST(NetProtocol, PlayerStateRoundtrip) {
     EXPECT_FLOAT_EQ(out.pos.z, in.pos.z);
     EXPECT_FLOAT_EQ(out.yaw, in.yaw);
     EXPECT_FLOAT_EQ(out.pitch, in.pitch);
+    EXPECT_EQ(out.heldItem, in.heldItem);
+    EXPECT_EQ(out.flags, in.flags);
 }
 
 TEST(NetProtocol, PlaceIntentRoundtrip) {
@@ -174,4 +181,43 @@ TEST(NetProtocol, ChatOversizedLengthPrefixRejected) {
     buf.resize(buf.size() + overCap, 'x');
     ChatMsg out{};
     EXPECT_FALSE(decodeChat(buf.data(), buf.size(), out));
+}
+
+TEST(NetProtocol, HitRoundtrip) {
+    HitMsg in{0x11112222u, 0x33334444u, 9.0f, {1.5f, 70.25f, -3.0f}};
+    std::vector<uint8_t> buf;
+    encodeHit(buf, in);
+    EXPECT_EQ(buf.size(), 25u);
+    Op op;
+    ASSERT_TRUE(decodeOp(buf.data(), buf.size(), op));
+    EXPECT_EQ(op, Op::Hit);
+    EXPECT_GE(static_cast<int>(Op::Hit), 0x20) << "new features claim opcodes 0x20+";
+    HitMsg out{};
+    ASSERT_TRUE(decodeHit(buf.data(), buf.size(), out));
+    EXPECT_EQ(out.attackerId, in.attackerId);
+    EXPECT_EQ(out.targetId, in.targetId);
+    EXPECT_FLOAT_EQ(out.damage, 9.0f);
+    EXPECT_FLOAT_EQ(out.fromPos.y, 70.25f);
+}
+
+TEST(NetProtocol, HitRejectsTruncatedAndBogusDamage) {
+    std::vector<uint8_t> buf;
+    encodeHit(buf, HitMsg{1, 2, 6.0f, {0, 0, 0}});
+    HitMsg out{};
+    EXPECT_FALSE(decodeHit(buf.data(), buf.size() - 1, out));
+    for (float bad : {-1.0f, HIT_MAX_DAMAGE + 1.0f, std::numeric_limits<float>::quiet_NaN()}) {
+        std::vector<uint8_t> b;
+        encodeHit(b, HitMsg{1, 2, bad, {0, 0, 0}});
+        EXPECT_FALSE(decodeHit(b.data(), b.size(), out)) << bad;
+    }
+}
+
+TEST(NetPvp, HitsLandOutsideTheTargetsInvulnerabilityOnly) {
+    RemotePlayer r;
+    EXPECT_TRUE(pvpHitWouldLand(r, 10.0)) << "never hit before";
+    r.lastHitLanded = 10.0;
+    EXPECT_FALSE(pvpHitWouldLand(r, 10.25)) << "fist spam inside the 0.5 s window";
+    EXPECT_TRUE(pvpHitWouldLand(r, 10.0 + PVP_INVULNERABLE_SECONDS));
+    r.dead = true;
+    EXPECT_FALSE(pvpHitWouldLand(r, 20.0)) << "dead players can't be hit";
 }

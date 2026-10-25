@@ -2,6 +2,9 @@
 
 #include <glm/glm.hpp>
 
+#include <array>
+
+#include "cube.h"
 #include "gl_header.h"
 
 class Shader;
@@ -23,9 +26,22 @@ class EntityCubeRenderer {
     // colour (1.0 = normal, >1.0 = whitened flash).
     void drawTnt(const Shader& shader, glm::mat4 viewProjection, glm::vec3 worldPos, float flashBrightness);
 
+    // Draw a block of `type` with its per-face textures (held blocks on
+    // remote players). `model` places a 1×1×1 cube; scale it down to shrink.
+    // `packedLight` = sky * 16 + block at the holder. Meshes are built per
+    // type on first use; out-of-range types draw nothing.
+    void drawBlock(const Shader& shader, const glm::mat4& model, block_type type, float packedLight);
+
     void destroy();
 
   private:
     GLuint vao = 0, vbo = 0, ebo = 0;
     bool glReady = false;
+
+    struct BlockMesh {
+        GLuint vao = 0, vbo = 0, ebo = 0;
+    };
+    std::array<BlockMesh, BLOCK_TYPE_COUNT> blockMeshes{};
+
+    static void buildCube(block_type type, GLuint& vao, GLuint& vbo, GLuint& ebo);
 };

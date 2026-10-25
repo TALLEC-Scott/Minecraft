@@ -2,10 +2,12 @@
 
 namespace {
 
-// One quad as two triangles; corners counter-clockwise seen from `normal`.
+// One quad as two triangles. Corners are listed counter-clockwise seen
+// from `normal`; triangles are emitted clockwise to match the world pass
+// (glFrontFace(GL_CW) with back-face culling).
 void pushQuad(std::vector<ItemMeshVertex>& out, glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 d, glm::vec3 normal,
               glm::vec3 color) {
-    for (glm::vec3 p : {a, b, c, c, d, a}) out.push_back({p, normal, color});
+    for (glm::vec3 p : {a, c, b, a, d, c}) out.push_back({p, normal, color});
 }
 
 } // namespace

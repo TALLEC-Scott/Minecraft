@@ -20,8 +20,15 @@ class PlayerRenderer {
 
     // `feetPos` is the world position of the player's feet (not the
     // camera). `yaw` rotates the whole body around Y so it faces the
-    // peer's look direction. `pitch` tilts the head only.
-    void draw(const Shader& shader, glm::vec3 feetPos, float yaw, float pitch);
+    // peer's look direction. `pitch` tilts the head only. `tint` multiplies
+    // every part's color (red while the player flashes from a hit).
+    // `packedLight` = sky * 16 + block at the player (240 = open sky).
+    void draw(const Shader& shader, glm::vec3 feetPos, float yaw, float pitch, glm::vec3 tint = glm::vec3(1.0f),
+              float packedLight = 240.0f);
+
+    // Frame at the bottom of the right fist (body space: +Z forward, +Y up)
+    // for drawing what the player holds.
+    static glm::mat4 rightHandFrame(glm::vec3 feetPos, float yaw);
 
     void destroy();
 

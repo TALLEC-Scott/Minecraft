@@ -30,6 +30,14 @@ struct RemotePlayer {
     double prevTime = 0.0;
     double currTime = 0.0;
     double lastSeen = 0.0;
+    // What they hold (ItemId from the latest PlayerState; drawn in their hand).
+    uint16_t heldItem = 0;
+    bool dead = false; // on their death screen (PLAYER_FLAG_DEAD)
+    // Local clock time until which this player flashes red (we hit them).
+    double hurtFlashUntil = -1.0;
+    // When our last hit on them landed: mirrors their invulnerability window
+    // so we don't send (or show feedback for) hits they'd ignore.
+    double lastHitLanded = -100.0;
 
     struct Pose {
         glm::vec3 pos{0.0f};
@@ -45,12 +53,29 @@ struct RemotePlayer {
     // it. Falls back to the latest sample if only one is available or
     // `renderTime` exceeds it.
     Pose sample(double renderTime) const;
+    // Feet position at `renderTime` (the wire carries the eye position).
+    glm::vec3 feetAt(double renderTime) const;
 };
 
 // Render one network interval behind the latest sample so lerp always
 // has a valid pair. 10 Hz updates → 100 ms; a bit of slack swallows
 // network jitter without turning into perceptible lag.
 inline constexpr double RENDER_DELAY = 0.12;
+// How long a remote player we hit flashes red (Minecraft's hurt tint is
+// 10 ticks).
+inline constexpr double HIT_FLASH_SECONDS = 0.5;
+// Seconds a player ignores further hits after one lands (PlayerHealth's
+// Minecraft 10-tick invulnerability); attackers mirror it per target.
+inline constexpr double PVP_INVULNERABLE_SECONDS = 0.5;
+// Remote-player hitbox: Minecraft's 0.6 × 1.8.
+inline constexpr float PVP_HALF_WIDTH = 0.3f;
+inline constexpr float PVP_HEIGHT = 1.8f;
+
+// Would a hit on `r` at `now` be applied by its client? Not while it is
+// dead or still invulnerable from our previous landed hit.
+inline bool pvpHitWouldLand(const RemotePlayer& r, double now) {
+    return !r.dead && now - r.lastHitLanded >= PVP_INVULNERABLE_SECONDS;
+}
 
 // MVP WebRTC session. Web builds (Emscripten) wire this up to a real
 // RTCPeerConnection + DataChannel; desktop builds compile a stub whose
@@ -131,6 +156,19 @@ class NetSession {
     // channel. `sendChat` no-ops when disconnected so callers don't need
     // to gate on connected().
     void sendChat(const std::string& text);
+
+    // PvP. `raycastRemote` returns the nearest living remote whose hitbox
+    // (where we draw them, RENDER_DELAY in the past) the ray enters within
+    // `maxDist`. `sendHit` tells the target it took `damage` from a swing at
+    // `fromPos` and flashes it red — unless it is dead or still inside the
+    // invulnerability window of our previous hit, in which case nothing is
+    // sent and it returns false (so callers give no hit feedback).
+    // `setOnHit` fires when a peer's hit targets us.
+    const RemotePlayer* raycastRemote(glm::vec3 origin, glm::vec3 dir, float maxDist, double now, float& outDist) const;
+    bool sendHit(uint32_t targetPeerId, float damage, glm::vec3 fromPos, double now);
+    void setOnHit(std::function<void(uint32_t attackerId, float damage, glm::vec3 fromPos)> cb) {
+        onHit_ = std::move(cb);
+    }
     void setOnChat(std::function<void(uint32_t peerId, const std::string& text)> cb) { onChat_ = std::move(cb); }
 
     const std::vector<RemotePlayer>& remotes() const { return remotes_; }
@@ -148,6 +186,7 @@ class NetSession {
     std::vector<RemotePlayer> remotes_;
     World* world_ = nullptr;
     std::function<void(uint32_t, const std::string&)> onChat_;
+    std::function<void(uint32_t, float, glm::vec3)> onHit_;
 
     // Web-only: handle into the JS side's RTCPeerConnection registry.
     // Unused on desktop builds (kept to keep the struct layout identical
