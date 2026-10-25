@@ -26,6 +26,10 @@ struct PlayerSaveData {
     PlayerInventory inventory = defaultCreativeInventory();
     int selectedSlot = 0;
     GameMode gameMode = GameMode::Creative; // no key = a pre-game-mode world
+    // Survival vitals (half-hearts / half-drumsticks). Defaults = full.
+    float health = 20.0f;
+    int food = 20;
+    float saturation = 5.0f;
 };
 
 struct LevelData {

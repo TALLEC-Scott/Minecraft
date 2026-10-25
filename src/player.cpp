@@ -154,8 +154,11 @@ void Player::handleInput(GLFWwindow* window, World* world) {
             }
         }
         if (spaceDown) {
-            if (camera.isWalkMode())
-                camera.jump();  // onGround-gated, so auto-repeats on landing
+            if (camera.isWalkMode()) {
+                if (isSurvival() && camera.isOnGround() && !camera.isInWater())
+                    hunger.addExhaustion(sprinting ? PlayerHunger::EXHAUST_SPRINT_JUMP : PlayerHunger::EXHAUST_JUMP);
+                camera.jump(); // onGround-gated, so auto-repeats on landing
+            }
             else
                 camera.up();
         }
@@ -177,6 +180,8 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     // Sprint — Shift in walk mode, R always, or double-tap W latch.
     bool sprint = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS || sprintLatched;
     if (camera.isWalkMode()) sprint = sprint || glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
+    if (isSurvival() && !hunger.canSprint()) sprint = false; // too hungry
+    sprinting = sprint;
     if (sprint)
         camera.speedUp();
     else
@@ -212,7 +217,8 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     // Right click: interact with a mob (shear) if one is in front, else
     // ignite TNT if targeted, otherwise place block
     bool rightDown = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
-    bool rightPressed = rightDown && !rightClickHeld && world;
+    if (isSurvival()) updateEating(rightDown, now);
+    bool rightPressed = rightDown && !rightClickHeld && world && !eating;
     if (rightPressed && tryInteractMob(world)) {
         isPunching = true;
         punchStartTime = glfwGetTime();
@@ -261,6 +267,7 @@ void Player::breakTargeted(World* world, block_type type, ItemId tool) {
     if (netSession) netSession->notifyLocalDestroy(targeted);
     world->destroyBlock(glm::vec3(targeted));
     if (!isSurvival() || !world->entityManager) return;
+    hunger.addExhaustion(PlayerHunger::EXHAUST_BREAK_BLOCK);
     static std::mt19937 dropRng(std::random_device{}());
     ItemDrop drop = blockDrop(type, tool, std::uniform_real_distribution<float>(0.0f, 1.0f)(dropRng));
     if (drop.count > 0) world->entityManager->dropFromBlock(drop.id, drop.count, targeted);
@@ -272,6 +279,65 @@ void Player::dropSelected(World* world, bool wholeStack) {
     int n = wholeStack ? stack.count : 1;
     world->entityManager->throwItem(stack.id, n, camera.getPosition(), camera.getFront());
     inventory.take(selectedSlot, n);
+}
+
+void Player::setVitals(float healthValue, int food, float saturation) {
+    health.health = std::clamp(healthValue, 1.0f, PlayerHealth::MAX_HEALTH);
+    hunger.food = std::clamp(food, 0, PlayerHunger::MAX_FOOD);
+    hunger.saturation = std::clamp(saturation, 0.0f, (float)hunger.food);
+}
+
+void Player::updateHunger(double now) {
+    double dt = lastUpdateTime < 0.0 ? 0.0 : std::min(now - lastUpdateTime, 0.25);
+    lastUpdateTime = now;
+    if (health.isDead()) return;
+
+    // Moving costs: sprinting on land, swimming (walking is free).
+    glm::vec3 p = camera.getPosition();
+    float moved = glm::length(glm::vec2(p.x - lastExhaustPos.x, p.z - lastExhaustPos.z));
+    lastExhaustPos = p;
+    if (moved < 2.0f) { // ignore teleports / respawns
+        if (camera.isInWater())
+            hunger.addExhaustion(moved * PlayerHunger::EXHAUST_SWIM_PER_BLOCK);
+        else if (sprinting && camera.isOnGround())
+            hunger.addExhaustion(moved * PlayerHunger::EXHAUST_SPRINT_PER_BLOCK);
+    }
+
+    hungerAccumulator += dt;
+    while (hungerAccumulator >= 0.05) {
+        hungerAccumulator -= 0.05;
+        float change = hunger.tick(health.health, PlayerHealth::MAX_HEALTH);
+        if (change > 0.0f) health.heal(change);
+        if (change < 0.0f) hurt(-change, p, false); // starving
+    }
+}
+
+void Player::updateEating(bool rightDown, double now) {
+    ItemId held = getSelectedItem();
+    bool canStart = rightDown && isFood(held) && hunger.canEat();
+    if (eating && (!rightDown || selectedSlot != eatSlot || held != eatItem)) eating = false; // let go / switched
+    if (!eating) {
+        if (!canStart || rightClickHeld) return; // a fresh press starts eating
+        eating = true;
+        eatStart = now;
+        eatSlot = selectedSlot;
+        eatItem = held;
+    }
+    // Chewing: the hand bobs a few times a second.
+    if (!isPunching || now - punchStartTime > 0.25) {
+        isPunching = true;
+        punchStartTime = now;
+    }
+    if (now - eatStart < EAT_SECONDS) return;
+    hunger.eat(foodStats(eatItem));
+    inventory.take(eatSlot, 1);
+    // Still holding the button with food left: start on the next one.
+    eatStart = now;
+    if (!hunger.canEat() || getSelectedItem() != eatItem) eating = false;
+}
+
+float Player::getEatProgress() const {
+    return eating ? std::clamp((float)((glfwGetTime() - eatStart) / EAT_SECONDS), 0.0f, 1.0f) : -1.0f;
 }
 
 void Player::spillInventory(World* world) {
@@ -357,6 +423,7 @@ bool Player::tryAttack(World* world, float strength) {
     // Minecraft-style critical: a charged hit while falling.
     bool falling = camera.isWalkMode() && !camera.isOnGround() && !camera.isInWater() && camera.getVelocityY() < 0.0f;
     float dmg = melee::damage(meleeStats(getSelectedItem()).damage, strength, falling);
+    if (isSurvival()) hunger.addExhaustion(PlayerHunger::EXHAUST_ATTACK);
     if (remote && remoteDist < mobDist) {
         // Swings inside their invulnerability window (or at a dead player)
         // send nothing and give no feedback — only real hits sound.
@@ -405,6 +472,7 @@ void Player::setGameMode(GameMode mode) {
 
 void Player::hurt(float amount, glm::vec3 fromPos, bool knockback) {
     if (!isSurvival() || !health.hurt(amount, glfwGetTime())) return;
+    hunger.addExhaustion(PlayerHunger::EXHAUST_HURT);
     if (knockback) {
         glm::vec3 p = camera.getPosition();
         glm::vec2 away(p.x - fromPos.x, p.z - fromPos.z);
@@ -416,6 +484,8 @@ void Player::hurt(float amount, glm::vec3 fromPos, bool knockback) {
 
 void Player::respawn(glm::vec3 eyePos) {
     health.respawn(glfwGetTime());
+    hunger.reset();
+    eating = false;
     camera.setPosition(eyePos);
     camera.resetMotion();
 }
@@ -473,7 +543,12 @@ void Player::update(World* world) {
     // falls while flying or in water), then slow regeneration.
     float fallDmg = PlayerHealth::fallDamage(camera.takeLandingFall());
     if (fallDmg > 0.0f) hurt(fallDmg, camera.getPosition(), false);
-    health.update(glfwGetTime());
+    // Survival heals (and starves) through the food bar; Creative can't be
+    // hurt, so its timer-based regen never matters there.
+    if (isSurvival())
+        updateHunger(glfwGetTime());
+    else
+        health.update(glfwGetTime());
 
     // Movement sounds: swim sounds when any body part in water, footsteps on land
     bool inWater = camera.isInWater();

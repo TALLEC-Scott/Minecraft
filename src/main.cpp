@@ -199,6 +199,43 @@ static void drawHearts(UIRenderer& ui, float x, float y, float health, float fla
     }
 }
 
+// Pixel drumstick (9x9) for the food bar. X = outline, M = meat,
+// W = highlight, B = bone.
+static const char* const FOOD_PIXELS[9] = {
+    ".....XXX.", "....XMMMX", "...XMWMMX", "...XMMMMX", "..XMMMMX.",
+    ".XBXXXX..", "XBBX.....", "XBX......", ".X.......",
+};
+
+// Ten drumsticks (20 half points) right-aligned so the rightmost sits at
+// x + width. They shake when saturation has run out, as in Minecraft.
+static void drawFood(UIRenderer& ui, float rightX, float y, int food, float saturation, double now) {
+    constexpr float PX = 2.0f;
+    constexpr float STEP = 9 * PX + 2.0f;
+    const glm::vec4 MEAT(0.70f, 0.40f, 0.18f, 1.0f);
+    const glm::vec4 SHINE(0.93f, 0.66f, 0.42f, 1.0f);
+    const glm::vec4 BONE(0.94f, 0.91f, 0.84f, 1.0f);
+    const glm::vec4 EMPTY(0.16f, 0.10f, 0.06f, 0.85f);
+    const glm::vec4 OUTLINE(0.0f, 0.0f, 0.0f, 1.0f);
+    for (int i = 0; i < 10; ++i) {
+        float fx = rightX - (i + 1) * STEP + 2.0f; // i = 0 is the rightmost
+        float fy = y;
+        if (saturation <= 0.0f) fy += std::round(std::sin(now * 23.0 + i * 2.3) * 1.5);
+        int value = food - i * 2; // >= 2 full, 1 half (right half), <= 0 empty
+        for (int r = 0; r < 9; ++r) {
+            for (int c = 0; c < 9; ++c) {
+                char p = FOOD_PIXELS[r][c];
+                if (p == '.') continue;
+                glm::vec4 col = OUTLINE;
+                if (p != 'X') {
+                    bool filled = value >= 2 || (value == 1 && c >= 4);
+                    col = filled ? (p == 'W' ? SHINE : (p == 'B' ? BONE : MEAT)) : EMPTY;
+                }
+                ui.drawRect(fx + c * PX, fy + r * PX, PX, PX, col);
+            }
+        }
+    }
+}
+
 // Loading-state tracking: the chunk the player will spawn in, plus a start
 // time used to render progress (and enforce a safety timeout).
 int g_loadingSpawnCx = 0;
@@ -877,6 +914,9 @@ int main(int argc, char* argv[]) {
             pd.inventory = player.getInventory();
             pd.selectedSlot = player.getSelectedSlot();
             pd.gameMode = player.getGameMode();
+            pd.health = player.getHealth().health;
+            pd.food = player.getHunger().food;
+            pd.saturation = player.getHunger().saturation;
             return pd;
         };
 
@@ -1029,8 +1069,9 @@ int main(int argc, char* argv[]) {
             player.getInventory() = loaded.inventory;
             // After the walk-mode restore: Survival forces walking.
             player.setGameMode(loaded.gameMode);
-            // Fresh health + motion for every world entered (health isn't saved).
+            // Fresh motion for every world entered, then the saved vitals.
             player.respawn(player.getPosition());
+            if (hadSave && !skipPlayerRestore) player.setVitals(loaded.health, loaded.food, loaded.saturation);
 
             // Persist so the new world shows up in listWorlds() immediately.
             // The player position has been restored to the saved (x, y, z,
@@ -2875,6 +2916,9 @@ int main(int argc, char* argv[]) {
                 if (player.isSurvival()) {
                     drawHearts(uiRenderer, barX, barY - 22.0f, player.getHealth().health, player.getHurtFlash(),
                                glfwGetTime());
+                    // Food: 10 drumsticks above the hotbar's right edge.
+                    drawFood(uiRenderer, barX + totalW, barY - 22.0f, player.getHunger().food,
+                             player.getHunger().saturation, glfwGetTime());
                 }
                 // Debug-spawner toast, fading out over 2 s.
                 double toastAge = glfwGetTime() - g_toastTime;

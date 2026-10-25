@@ -6,6 +6,7 @@
 #include "inventory_model.h"
 #include "item.h"
 #include "player_health.h"
+#include "player_hunger.h"
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -88,6 +89,11 @@ class Player {
     static constexpr float HURT_KNOCKBACK = 8.0f; // blocks / second, decays in Camera
 
     const PlayerHealth& getHealth() const { return health; }
+    const PlayerHunger& getHunger() const { return hunger; }
+    // Restores saved health/food (after respawn() on world load).
+    void setVitals(float healthValue, int food, float saturation);
+    // 0..1 through eating the held food (< 0 when not eating).
+    float getEatProgress() const;
     bool isDead() const { return health.isDead(); }
     glm::vec3 getFeetPosition() const { return camera.getPosition() - glm::vec3(0.0f, PLAYER_HEIGHT, 0.0f); }
     // Damage from a world position (mob, explosion). Knockback pushes away
@@ -194,6 +200,19 @@ class Player {
     void playHitSound();
 
     PlayerHealth health;
+    PlayerHunger hunger;
+    double hungerAccumulator = 0.0; // 20 TPS hunger ticks (Survival)
+    double lastUpdateTime = -1.0;
+    glm::vec3 lastExhaustPos = glm::vec3(0.0f);
+    bool sprinting = false;
+    // Eating: hold right-click with food for EAT_SECONDS (Survival).
+    static constexpr double EAT_SECONDS = 1.6; // 32 ticks
+    bool eating = false;
+    double eatStart = 0.0;
+    int eatSlot = -1;
+    ItemId eatItem = ITEM_EMPTY;
+    void updateEating(bool rightDown, double now);
+    void updateHunger(double now);
     // Every left-click swing restarts the attack charge (Minecraft resets
     // it on misses too); far in the past = fully charged on spawn.
     double lastSwingTime = -100.0;
