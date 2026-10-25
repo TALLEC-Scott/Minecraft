@@ -21,6 +21,11 @@ bool MobContext::isWater(int x, int y, int z) const {
     return blocks->blockAt(x, y, z) == WATER;
 }
 
+bool MobContext::isLava(int x, int y, int z) const {
+    if (y < 0 || y >= CHUNK_HEIGHT) return false;
+    return blocks->blockAt(x, y, z) == LAVA;
+}
+
 int MobContext::lightAt(int x, int y, int z) const {
     if (y >= CHUNK_HEIGHT) return std::max(0, 15 - skyDarken);
     if (y < 0) return 0;
@@ -118,6 +123,8 @@ void Mob::tick(MobContext& ctx) {
     lookedThisTick = false;
 
     updateWater(ctx);
+    // Lava: 4 damage per hit; the 10-tick invulnerability paces it.
+    if (inLava && !dying) damage(LAVA_DAMAGE, pos, 0.0f);
 
     if (!dying) {
         aiTick(ctx);
@@ -182,6 +189,7 @@ void Mob::updateWater(MobContext& ctx) {
     glm::ivec3 feet = MobContext::blockAtPos(pos + glm::vec3(0.0f, 0.1f, 0.0f));
     glm::ivec3 mid = MobContext::blockAtPos(center());
     inWater = ctx.isWater(feet.x, feet.y, feet.z) || ctx.isWater(mid.x, mid.y, mid.z);
+    inLava = ctx.isLava(feet.x, feet.y, feet.z) || ctx.isLava(mid.x, mid.y, mid.z);
     if (inWater) fallDistance = 0.0f;
 }
 
@@ -191,7 +199,9 @@ bool Mob::dropAhead(MobContext& ctx, glm::vec3 dir) const {
     int feetY = MobContext::blockAtPos(pos).y;
     // Solid at feet level = a ledge to step onto, not a drop.
     if (ctx.isSolid(b.x, feetY, b.z)) return false;
+    if (ctx.isLava(b.x, feetY, b.z)) return true; // lava ahead: treat like a cliff
     for (int y = feetY - 1; y >= feetY - 4; --y) {
+        if (ctx.isLava(b.x, y, b.z)) return true;
         if (ctx.isWater(b.x, y, b.z)) return true;
         if (ctx.isSolid(b.x, y, b.z)) return (feetY - 1 - y) > 3;
     }

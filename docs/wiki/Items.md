@@ -37,6 +37,8 @@ more than three times longer.
 | <img src="../../assets/Textures/planks.png" width="16"> | Oak Planks | 18 | 2 | axe | 3 s | 1.5 s | 0.75 s | Oak Planks | solid |
 | <img src="../../assets/Textures/cobblestone.png" width="16"> | Cobblestone | 19 | 2 | pickaxe (needs tool) | 10 s | 1.5 s | 0.75 s | Cobblestone | solid |
 | <img src="../../assets/Textures/crafting_table_top.png" width="16"> | Crafting Table | 20 | 2.5 | axe | 3.75 s | 1.9 s | 0.95 s | Crafting Table | solid |
+| <img src="../../assets/Textures/lava.png" width="16"> | Lava | 21 | – | any | unbreakable | unbreakable | unbreakable | nothing | liquid, light 15 |
+| <img src="../../assets/Textures/obsidian.png" width="16"> | Obsidian | 22 | 50 | pickaxe (needs tool) | 250 s | 125 s | 62.5 s | nothing | solid |
 
 ## Tools and weapons
 

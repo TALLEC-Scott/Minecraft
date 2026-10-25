@@ -132,7 +132,7 @@ void World::placeBlock(glm::ivec3 position, block_type type) const {
     // Wake the water simulator so placed water sources spread, and so that
     // any adjacent water reacts to a newly-placed solid block (it may now
     // be blocked off from flowing). destroyBlock has the symmetric call.
-    if (type == WATER) {
+    if (hasFlag(type, BF_LIQUID)) {
         waterSimulator->activate(bx, by, bz);
     }
     waterSimulator->activateNeighbors(bx, by, bz);
@@ -366,7 +366,7 @@ void World::explode(glm::vec3 center, float power, double now) const {
                 block_type t = b->getType();
                 if (t == AIR) continue;
                 if (t == BEDROCK) continue; // indestructible
-                if (t == WATER) continue;   // don't consume liquid
+                if (hasFlag(t, BF_LIQUID)) continue; // don't consume water or lava
                 if (t == TNT) {
                     // Chain reaction — replace with a short-fused primed entity.
                     // Mirror igniteTnt()'s full transition: light flood +
@@ -434,7 +434,7 @@ bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::i
                 int lx = worldToLocal(pos.x, chunkX);
                 int lz = worldToLocal(pos.z, chunkZ);
                 Cube* block = chunk->getBlock(lx, pos.y, lz);
-                if (block && block->getType() != AIR && block->getType() != WATER) {
+                if (block && block->getType() != AIR && !hasFlag(block->getType(), BF_LIQUID)) {
                     hitPos = pos;
                     prevPos = prev;
                     return true;

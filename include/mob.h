@@ -73,6 +73,8 @@ class Mob {
     float halfWidth, height;
     bool onGround = false;
     bool inWater = false;
+    bool inLava = false;
+    static constexpr float LAVA_DAMAGE = 4.0f;
     bool horizontalCollision = false;
     float fallDistance = 0.0f;
 
