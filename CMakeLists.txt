@@ -263,6 +263,7 @@ else()
         tests/test_level_data.cpp
         tests/test_game_mode.cpp
         tests/test_mining.cpp
+        tests/test_item_entity.cpp
         tests/test_inventory.cpp
         tests/test_tnt.cpp
         tests/test_block_light.cpp

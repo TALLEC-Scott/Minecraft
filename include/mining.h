@@ -76,14 +76,9 @@ inline int breakTicks(block_type t, ItemId held) {
     return static_cast<int>(std::ceil(1.0f / perTick - 1e-4f));
 }
 
-struct BlockDrop {
-    ItemId id = ITEM_EMPTY;
-    int count = 0;
-};
-
 // What breaking `t` with `held` drops. `roll` is a uniform [0, 1) random
 // number for chance drops (leaves → apple 1 in 200).
-inline BlockDrop blockDrop(block_type t, ItemId held, float roll) {
+inline ItemDrop blockDrop(block_type t, ItemId held, float roll) {
     if (!canHarvest(t, held) || blockMining(t).hardness < 0.0f) return {};
     switch (t) {
     case GRASS:
@@ -93,7 +88,7 @@ inline BlockDrop blockDrop(block_type t, ItemId held, float roll) {
     case COAL_ORE:
         return {ITEM_COAL, 1};
     case LEAVES:
-        return roll < 0.005f ? BlockDrop{ITEM_APPLE, 1} : BlockDrop{};
+        return roll < 0.005f ? ItemDrop{ITEM_APPLE, 1} : ItemDrop{};
     case TALL_GRASS:
         return {};
     default:

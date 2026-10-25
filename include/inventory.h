@@ -8,6 +8,8 @@
 #include <GLFW/glfw3.h>
 #include <string>
 
+class World;
+
 // The E screen. Creative: a palette of every item; clicking one puts it in
 // the selected hotbar slot. Survival: the player's 40 slots, moved around
 // with a stack carried on the cursor (Minecraft's click rules, see
@@ -15,14 +17,15 @@
 class Inventory {
   public:
     bool isOpen() const { return open; }
-    void toggle(Player& player) {
+    void toggle(Player& player, World* world) {
         if (open)
-            close(player);
+            close(player, world);
         else
             open = true;
     }
-    // Puts a stack still carried on the cursor back into the inventory.
-    void close(Player& player);
+    // Puts a stack still carried on the cursor back into the inventory;
+    // what doesn't fit is thrown on the ground.
+    void close(Player& player, World* world);
 
     // Draw the inventory overlay and handle mouse interaction.
     void draw(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window, Player& player);

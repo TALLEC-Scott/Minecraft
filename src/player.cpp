@@ -1,6 +1,7 @@
 #include "player.h"
 #include "melee.h"
 #include "mining.h"
+#include "entity_manager.h"
 #include "collision.h"
 #include "mob_manager.h"
 #include "mobs/sheep.h"
@@ -162,9 +163,16 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     }
 
     // Down (fly mode only) — Shift or Q
-    if (!camera.isWalkMode() &&
-        (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS))
-        camera.down();
+    bool qDown = glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS;
+    if (!camera.isWalkMode() && (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || qDown)) camera.down();
+    // Survival never flies, so Q is free for Minecraft's "drop item" (with
+    // Ctrl: the whole stack).
+    if (isSurvival() && qDown && !qWasPressed) {
+        bool ctrl = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                    glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+        dropSelected(world, ctrl);
+    }
+    qWasPressed = qDown;
 
     // Sprint — Shift in walk mode, R always, or double-tap W latch.
     bool sprint = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS || sprintLatched;
@@ -252,11 +260,32 @@ void Player::breakTargeted(World* world, block_type type, ItemId tool) {
     // "free" until we add host-side rejects.
     if (netSession) netSession->notifyLocalDestroy(targeted);
     world->destroyBlock(glm::vec3(targeted));
-    if (!isSurvival()) return;
+    if (!isSurvival() || !world->entityManager) return;
     static std::mt19937 dropRng(std::random_device{}());
-    BlockDrop drop = blockDrop(type, tool, std::uniform_real_distribution<float>(0.0f, 1.0f)(dropRng));
-    // Straight into the inventory; anything that doesn't fit is lost.
-    if (drop.count > 0) inventory.add(drop.id, drop.count);
+    ItemDrop drop = blockDrop(type, tool, std::uniform_real_distribution<float>(0.0f, 1.0f)(dropRng));
+    if (drop.count > 0) world->entityManager->dropFromBlock(drop.id, drop.count, targeted);
+}
+
+void Player::dropSelected(World* world, bool wholeStack) {
+    ItemStack& stack = inventory.slots[selectedSlot];
+    if (stack.empty() || !world || !world->entityManager) return;
+    int n = wholeStack ? stack.count : 1;
+    world->entityManager->throwItem(stack.id, n, camera.getPosition(), camera.getFront());
+    inventory.take(selectedSlot, n);
+}
+
+void Player::spillInventory(World* world) {
+    if (world && world->entityManager) {
+        static std::mt19937 rng(std::random_device{}());
+        std::uniform_real_distribution<float> angle(0.0f, 6.2831853f), speed(0.1f, 0.6f);
+        for (const ItemStack& stack : inventory.slots) {
+            if (stack.empty()) continue;
+            float a = angle(rng), s = speed(rng);
+            world->entityManager->throwItem(stack.id, stack.count, camera.getPosition(),
+                                            glm::vec3(std::cos(a) * s, 0.2f, std::sin(a) * s));
+        }
+    }
+    inventory.clear();
 }
 
 void Player::updateMining(World* world, bool active, double now) {
