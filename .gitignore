@@ -26,6 +26,7 @@ terrain_map*.png
 # Tool binaries
 scripts/mapgen
 scripts/check_biomes
+scripts/item_wiki
 mapgen
 build_win/
 build_win*/

@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "open_url.h"
+
 void Menu::init() {
     dirtTexture = UIRenderer::loadTexture("assets/Textures/dirt.png", true);
 
@@ -172,6 +174,10 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
         ui.drawTextRotated("By Sc077y", px, py, pulse, -25.0f, glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
     }
     ui.drawTextShadow("v0.9.1", 4.0f, (float)windowH - 12.0f, 1.0f, glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
+
+    // Small link to the item wiki, just above the version number.
+    if (widgets.button(ui, "Wiki", 6.0f, (float)windowH - 50.0f, 88.0f, 32.0f))
+        openWebPage("wiki.html", "https://tallec.freeboxos.fr:7862/wiki.html");
 
     // Background sound download (web): small bar near the bottom, same
     // colors as the world loading bar, gone once the sounds are loaded.
