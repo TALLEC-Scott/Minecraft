@@ -173,7 +173,7 @@ GameState Menu::drawMainMenu(UIRenderer& ui, int windowW, int windowH, GLFWwindo
         float py = (float)windowH - 80.0f;
         ui.drawTextRotated("By Sc077y", px, py, pulse, -25.0f, glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
     }
-    ui.drawTextShadow("v0.9.1", 4.0f, (float)windowH - 12.0f, 1.0f, glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
+    ui.drawTextShadow("v0.9.2", 4.0f, (float)windowH - 12.0f, 1.0f, glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
 
     // Small link to the item wiki, just above the version number.
     if (widgets.button(ui, "Wiki", 6.0f, (float)windowH - 50.0f, 88.0f, 32.0f))
