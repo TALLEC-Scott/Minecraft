@@ -55,6 +55,13 @@ class Player {
     // Block the selected slot places (AIR for tools / empty hand).
     block_type getSelectedBlockType() const { return itemBlock(getSelectedItem()); }
     PlayerInventory& getInventory() { return inventory; }
+    // True once after the player right-clicked a crafting table (main.cpp
+    // then opens the 3×3 crafting screen).
+    bool takeCraftingTableRequest() {
+        bool r = craftingTableRequested;
+        craftingTableRequested = false;
+        return r;
+    }
     // Throws one of the selected item (or the whole stack) forward.
     void dropSelected(World* world, bool wholeStack);
     // Throws every stack out in random directions and empties the inventory.
@@ -168,6 +175,7 @@ class Player {
     static constexpr double PLACE_ANIM_DURATION = 0.22;
 
     bool qWasPressed = false;
+    bool craftingTableRequested = false;
 
     // Double-tap space detection
     bool spaceWasPressed = false;

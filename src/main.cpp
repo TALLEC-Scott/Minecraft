@@ -147,15 +147,17 @@ static bool isSolidAt(int x, int y, int z) {
     return c && hasFlag(c->getType(), BF_SOLID);
 }
 
-// Respawn point: top of the column at the world spawn (15, 15). Falls back
-// to a high fly-mode spawn when that chunk isn't loaded (player died far
-// away) so the player can't drop through an unloaded column.
+// Respawn point: top of the column at the world spawn (15, 15), on the
+// water surface if the column is sea (not the sea floor). Falls back to a
+// high fly-mode spawn when that chunk isn't loaded (player died far away)
+// so the player can't drop through an unloaded column.
 static glm::vec3 worldSpawnEye(bool& loaded) {
     constexpr int SPAWN_X = 15, SPAWN_Z = 15;
     loaded = w && w->chunkManager->getChunk(worldToChunk(SPAWN_X), worldToChunk(SPAWN_Z)) != nullptr;
     if (loaded) {
         for (int y = CHUNK_HEIGHT - 1; y >= 0; --y) {
-            if (isSolidAt(SPAWN_X, y, SPAWN_Z))
+            Cube* c = w->getBlock(SPAWN_X, y, SPAWN_Z);
+            if (isSolidAt(SPAWN_X, y, SPAWN_Z) || (c && c->getType() == WATER))
                 return glm::vec3(SPAWN_X, static_cast<float>(y) + 0.5f + PLAYER_HEIGHT + 0.01f, SPAWN_Z);
         }
     }
@@ -235,6 +237,11 @@ static void drawFood(UIRenderer& ui, float rightX, float y, int food, float satu
         }
     }
 }
+
+// A brand-new world: once the spawn chunks have loaded, stand the player on
+// the ground at the spawn column instead of dropping them from y = 90
+// (which costs hearts in Survival).
+static bool g_placeAtSpawn = false;
 
 // Loading-state tracking: the chunk the player will spawn in, plus a start
 // time used to render progress (and enforce a safety timeout).
@@ -589,6 +596,10 @@ void processInput(GLFWwindow* window) {
 
     // Player input
     player.handleInput(window, w);
+    if (player.takeCraftingTableRequest()) {
+        inventory.openCraftingTable();
+        glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
+    }
 
 #ifndef __EMSCRIPTEN__
     // Debug mob spawner (desktop only): F7 cycles the mob type, F6 spawns
@@ -1053,6 +1064,7 @@ int main(int argc, char* argv[]) {
             world->chunkManager->setRenderDistance(gameSettings.renderDistance);
             w = &*world;
 
+            g_placeAtSpawn = false;
             if (hadSave && !skipPlayerRestore) {
                 player.getCamera().setPosition(loaded.position);
                 player.setYawPitch(loaded.yaw, loaded.pitch);
@@ -1062,6 +1074,7 @@ int main(int argc, char* argv[]) {
                 player.getCamera().setPosition(glm::vec3(15, 90, 15));
                 player.setYawPitch(-90.0f, 0.0f);
                 player.getCamera().setWalkMode(false);
+                g_placeAtSpawn = !skipPlayerRestore;
             }
             // A new Survival world starts with nothing; otherwise the saved
             // inventory (or the creative default for a new Creative world).
@@ -1985,6 +1998,15 @@ int main(int argc, char* argv[]) {
                 bool timedOut = (glfwGetTime() - g_loadingStartTime) > 10.0;
                 menu.drawLoadingScreen(uiRenderer, windowWidth, windowHeight, progress, g_loadingWorldName);
                 if (ready >= 9 || timedOut || !w) {
+                    if (g_placeAtSpawn) {
+                        bool spawnLoaded = false;
+                        glm::vec3 eye = worldSpawnEye(spawnLoaded);
+                        if (spawnLoaded) {
+                            player.getCamera().setPosition(eye);
+                            player.getCamera().resetMotion();
+                        }
+                        g_placeAtSpawn = false;
+                    }
                     glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
                     player.resetMouseState();
                     player.consumeMouseButtons();
