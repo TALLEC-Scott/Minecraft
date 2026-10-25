@@ -18,6 +18,9 @@ void writeLevelData(std::ostream& f, const LevelData& data) {
     f << "pitch=" << player.pitch << "\n";
     f << "walkMode=" << (player.walkMode ? 1 : 0) << "\n";
     f << "selectedSlot=" << player.selectedSlot << "\n";
+    f << "health=" << player.health << "\n";
+    f << "food=" << player.food << "\n";
+    f << "saturation=" << player.saturation << "\n";
     f << "inventory=";
     for (int i = 0; i < PlayerInventory::SIZE; i++) {
         const ItemStack& stack = player.inventory.slots[i];
@@ -53,6 +56,12 @@ static void readLine(const std::string& key, const std::string& val, LevelData& 
         player.pitch = std::stof(val);
     else if (key == "walkMode")
         player.walkMode = (std::stoi(val) != 0);
+    else if (key == "health")
+        player.health = std::clamp(std::stof(val), 1.0f, 20.0f);
+    else if (key == "food")
+        player.food = std::clamp(std::stoi(val), 0, 20);
+    else if (key == "saturation")
+        player.saturation = std::clamp(std::stof(val), 0.0f, 20.0f);
     else if (key == "selectedSlot")
         player.selectedSlot = std::clamp(std::stoi(val), 0, PlayerInventory::HOTBAR_SIZE - 1);
     else if (key == "hotbar") { // pre-stack files: one of each

@@ -25,6 +25,9 @@ TEST(LevelDataTest, RoundTrip) {
     in.player.inventory.slots[0] = {ITEM_IRON_SWORD, 1};
     in.player.inventory.slots[25] = {DIRT, 42};
     in.player.gameMode = GameMode::Survival;
+    in.player.health = 7.5f;
+    in.player.food = 12;
+    in.player.saturation = 2.25f;
 
     LevelData out = roundTrip(in);
     EXPECT_EQ(out.seed, 42u);
@@ -40,6 +43,9 @@ TEST(LevelDataTest, RoundTrip) {
     EXPECT_EQ(out.player.inventory.slots[25].count, 42);
     EXPECT_TRUE(out.player.inventory.slots[1].empty());
     EXPECT_EQ(out.player.gameMode, GameMode::Survival);
+    EXPECT_FLOAT_EQ(out.player.health, 7.5f);
+    EXPECT_EQ(out.player.food, 12);
+    EXPECT_FLOAT_EQ(out.player.saturation, 2.25f);
 }
 
 TEST(LevelDataTest, OldFileWithoutGameModeIsCreative) {
