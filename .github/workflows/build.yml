@@ -11,7 +11,7 @@ jobs:
     name: Linux build + tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # AudioAssetsTest decodes every sound, so they must be real files, not
       # LFS pointers. Pull only assets/Sounds (~2.5 MB), not the screenshots.
@@ -26,11 +26,7 @@ jobs:
       - name: Configure
         # clang-tidy is disabled in CI for robustness across toolchain versions;
         # re-enable locally with a plain cmake configure (it defaults to ON).
-        # -Werror=array-bounds is downgraded to a warning: GCC 13+ reports a
-        # false positive on std::vector::resize in tests/test_net_protocol.cpp
-        # (the test deliberately crafts an oversized packet). The project's
-        # -Werror policy stays in force for everything else.
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_CLANG_TIDY=OFF -DCMAKE_CXX_FLAGS="-Wno-error=array-bounds"
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_CLANG_TIDY=OFF
 
       - name: Build
         run: cmake --build build -j$(nproc)
@@ -42,13 +38,15 @@ jobs:
     name: WebAssembly build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # sounds.data packages assets/Sounds; real files, not LFS pointers.
       - name: Fetch LFS sounds
         run: git lfs pull --include="assets/Sounds/**"
 
-      - uses: mymindstorm/setup-emsdk@v14
+      - uses: emscripten-core/setup-emsdk@v16
+        with:
+          version: 5.0.5 # match the local SDK so CI and releases build alike
 
       - name: Configure
         run: emcmake cmake -B build_web -DCMAKE_BUILD_TYPE=Release
@@ -57,7 +55,7 @@ jobs:
         run: cmake --build build_web -j$(nproc)
 
       - name: Upload web build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: minecraft-web
           path: |
