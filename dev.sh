@@ -110,11 +110,11 @@ case "$cmd" in
         $WIN_PS "$WIN_RUN --benchmark '$label' --headless 2>&1" | tail -40
         ;;
     serve)
-        python3 -m http.server -d build_web 8080
+        python3 serve_web.py 8080
         ;;
     dev-web)
         ./build_web.sh
-        python3 -m http.server -d build_web 8080
+        python3 serve_web.py 8080
         ;;
     release|bump)
         arg="${1:-}"

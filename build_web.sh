@@ -20,5 +20,5 @@ echo "=== Build complete ==="
 echo "Output files:"
 ls -lh build_web/minecraft.{html,js,wasm,data} 2>/dev/null
 echo ""
-echo "To run: python3 -m http.server -d build_web 8080"
+echo "To run: python3 serve_web.py 8080   # sends the COOP/COEP headers pthreads need"
 echo "Then open: http://localhost:8080/minecraft.html"
