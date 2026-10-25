@@ -2,6 +2,7 @@
 
 #include "cube.h"
 #include "inventory_model.h"
+#include "recipes.h"
 #include "item.h"
 #include "ui_renderer.h"
 #include "player.h"
@@ -13,17 +14,28 @@ class World;
 // The E screen. Creative: a palette of every item; clicking one puts it in
 // the selected hotbar slot. Survival: the player's 40 slots, moved around
 // with a stack carried on the cursor (Minecraft's click rules, see
-// clickSlot in inventory_model.h).
+// clickSlot in inventory_model.h), and a 2×2 crafting grid. A crafting
+// table opens the same screen with a 3×3 grid, in either mode.
 class Inventory {
   public:
     bool isOpen() const { return open; }
     void toggle(Player& player, World* world) {
-        if (open)
+        if (open) {
             close(player, world);
-        else
+        } else {
             open = true;
+            tableMode = false;
+            craft.size = 2;
+            ignoreHeldButtons();
+        }
     }
-    // Puts a stack still carried on the cursor back into the inventory;
+    void openCraftingTable() {
+        open = true;
+        tableMode = true;
+        craft.size = 3;
+        ignoreHeldButtons(); // the right-click that opened it isn't a slot click
+    }
+    // Puts a carried stack and the crafting grid back into the inventory;
     // what doesn't fit is thrown on the ground.
     void close(Player& player, World* world);
 
@@ -33,11 +45,17 @@ class Inventory {
     static const char* itemName(ItemId id);
 
   private:
+    void ignoreHeldButtons() {
+        leftWasPressed = true;
+        rightWasPressed = true;
+    }
     bool open = false;
     bool leftWasPressed = false;
     bool rightWasPressed = false;
     int hoveredBlock = -1;
     ItemStack cursor; // stack being carried (Survival)
+    CraftingGrid craft;
+    bool tableMode = false; // opened from a crafting table (3×3)
 
     void drawCreative(UIRenderer& ui, int windowW, int windowH, double mx, double my, bool clicked, Player& player);
     void drawSurvival(UIRenderer& ui, int windowW, int windowH, double mx, double my, bool leftClick,

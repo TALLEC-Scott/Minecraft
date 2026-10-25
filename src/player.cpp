@@ -224,10 +224,14 @@ void Player::handleInput(GLFWwindow* window, World* world) {
         punchStartTime = glfwGetTime();
     } else if (rightPressed && hasHighlight) {
         Cube* targetBlock = world->getBlock(targeted.x, targeted.y, targeted.z);
+        bool sneaking = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
         if (targetBlock && targetBlock->getType() == TNT) {
             world->igniteTnt(targeted, glfwGetTime());
             isPunching = true;
             punchStartTime = glfwGetTime();
+        } else if (targetBlock && targetBlock->getType() == CRAFTING_TABLE && !sneaking) {
+            // Shift-click still places against the table, as in Minecraft.
+            craftingTableRequested = true;
         } else if (getSelectedBlockType() != AIR) {
             glm::vec3 camPos = camera.getPosition();
             int px = (int)std::floor(camPos.x);

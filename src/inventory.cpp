@@ -65,12 +65,15 @@ static void drawStack(UIRenderer& ui, const ItemStack& stack, float x, float y, 
 
 void Inventory::close(Player& player, World* world) {
     open = false;
+    std::vector<ItemStack> leftovers = craft.returnTo(player.getInventory());
     if (!cursor.empty()) {
         int left = player.getInventory().add(cursor.id, cursor.count);
-        if (left > 0 && world && world->entityManager)
-            world->entityManager->throwItem(cursor.id, left, player.getPosition(), player.getFront());
+        if (left > 0) leftovers.push_back({cursor.id, left});
     }
     cursor.clear();
+    if (world && world->entityManager)
+        for (const ItemStack& s : leftovers)
+            world->entityManager->throwItem(s.id, s.count, player.getPosition(), player.getFront());
 }
 
 void Inventory::draw(UIRenderer& ui, int windowW, int windowH, GLFWwindow* window, Player& player) {
@@ -88,7 +91,7 @@ void Inventory::draw(UIRenderer& ui, int windowW, int windowH, GLFWwindow* windo
     ui.begin(windowW, windowH);
     // Dark overlay
     ui.drawRect(0, 0, (float)windowW, (float)windowH, glm::vec4(0.0f, 0.0f, 0.0f, 0.6f));
-    if (player.isSurvival())
+    if (player.isSurvival() || tableMode)
         drawSurvival(ui, windowW, windowH, mx, my, leftClick, rightClick, shift, player);
     else
         drawCreative(ui, windowW, windowH, mx, my, leftClick, player);
@@ -167,53 +170,90 @@ void Inventory::drawSurvival(UIRenderer& ui, int windowW, int windowH, double mx
     constexpr float CELL_PAD = 4.0f;
     constexpr float PANEL_PAD = 16.0f;
     constexpr float TITLE_H = 30.0f;
+    constexpr float SECTION_GAP = 16.0f;
     constexpr float HOTBAR_GAP = 12.0f;
     constexpr float NAME_H = 18.0f;
+    constexpr float STEP = CELL_SIZE + CELL_PAD;
     constexpr int COLS = PlayerInventory::HOTBAR_SIZE;
     constexpr int STORAGE_ROWS = PlayerInventory::STORAGE_SIZE / COLS;
+    const int n = craft.size;
 
-    float gridW = COLS * (CELL_SIZE + CELL_PAD) - CELL_PAD;
-    float storageH = STORAGE_ROWS * (CELL_SIZE + CELL_PAD) - CELL_PAD;
+    float gridW = COLS * STEP - CELL_PAD;
+    float craftH = n * STEP - CELL_PAD;
+    float storageH = STORAGE_ROWS * STEP - CELL_PAD;
     float panelW = gridW + PANEL_PAD * 2;
-    float panelH = TITLE_H + storageH + HOTBAR_GAP + CELL_SIZE + NAME_H + PANEL_PAD * 2;
+    float panelH = TITLE_H + craftH + SECTION_GAP + storageH + HOTBAR_GAP + CELL_SIZE + NAME_H + PANEL_PAD * 2;
     float panelX = (windowW - panelW) / 2.0f;
     float panelY = (windowH - panelH) / 2.0f;
     float gridX = panelX + PANEL_PAD;
-    float storageY = panelY + PANEL_PAD + TITLE_H;
+    float craftY = panelY + PANEL_PAD + TITLE_H;
+    float storageY = craftY + craftH + SECTION_GAP;
     float hotbarY = storageY + storageH + HOTBAR_GAP;
 
     ui.drawRect(panelX, panelY, panelW, panelH, glm::vec4(0.12f, 0.12f, 0.12f, 0.9f));
     float titleScale = 2.0f;
-    std::string title = "Inventory";
+    std::string title = tableMode ? "Crafting" : "Inventory";
     ui.drawTextShadow(title, panelX + (panelW - ui.textWidth(title, titleScale)) / 2.0f, panelY + PANEL_PAD,
                       titleScale);
 
+    auto cell = [&](float cx, float cy, const ItemStack& stack) {
+        bool over = mx >= cx && mx < cx + CELL_SIZE && my >= cy && my < cy + CELL_SIZE;
+        ui.drawRect(cx, cy, CELL_SIZE, CELL_SIZE,
+                    over ? glm::vec4(0.5f, 0.5f, 0.5f, 0.6f) : glm::vec4(0.25f, 0.25f, 0.25f, 0.6f));
+        drawStack(ui, stack, cx, cy, CELL_SIZE);
+        return over;
+    };
+
+    // Crafting: the grid, an arrow, the output (centred in the panel).
+    float craftRowW = n * STEP + CELL_SIZE * 1.5f + CELL_SIZE;
+    float craftX = panelX + (panelW - craftRowW) / 2.0f;
+    int hoveredCraft = -1;
+    for (int i = 0; i < n * n; i++)
+        if (cell(craftX + (i % n) * STEP, craftY + (i / n) * STEP, craft.cells[i])) hoveredCraft = i;
+    std::string arrow = "->";
+    float arrowX = craftX + n * STEP + (CELL_SIZE * 1.5f - ui.textWidth(arrow, 2.0f)) / 2.0f;
+    float outY = craftY + (craftH - CELL_SIZE) / 2.0f;
+    ui.drawTextShadow(arrow, arrowX, outY + (CELL_SIZE - ui.textHeight(2.0f)) / 2.0f, 2.0f);
+    ItemDrop out = craft.result();
+    float outX = craftX + n * STEP + CELL_SIZE * 1.5f;
+    bool overOutput = cell(outX, outY, out.count > 0 ? ItemStack{out.id, out.count} : ItemStack{});
+
+    // Storage rows, then the hotbar row (as in Minecraft).
     PlayerInventory& inv = player.getInventory();
     int hovered = -1;
-    // Storage rows on top, the hotbar row below (as in Minecraft).
     for (int i = 0; i < PlayerInventory::SIZE; i++) {
         bool hotbar = i < PlayerInventory::HOTBAR_SIZE;
         int col = hotbar ? i : (i - PlayerInventory::HOTBAR_SIZE) % COLS;
         int row = hotbar ? 0 : (i - PlayerInventory::HOTBAR_SIZE) / COLS;
-        float cx = gridX + col * (CELL_SIZE + CELL_PAD);
-        float cy = hotbar ? hotbarY : storageY + row * (CELL_SIZE + CELL_PAD);
-        bool over = mx >= cx && mx < cx + CELL_SIZE && my >= cy && my < cy + CELL_SIZE;
-        if (over) hovered = i;
-        ui.drawRect(cx, cy, CELL_SIZE, CELL_SIZE,
-                    over ? glm::vec4(0.5f, 0.5f, 0.5f, 0.6f) : glm::vec4(0.25f, 0.25f, 0.25f, 0.6f));
-        drawStack(ui, inv.slots[i], cx, cy, CELL_SIZE);
+        if (cell(gridX + col * STEP, hotbar ? hotbarY : storageY + row * STEP, inv.slots[i])) hovered = i;
     }
 
-    if (hovered >= 0) {
-        if (leftClick && shift && cursor.empty())
-            inv.quickMove(hovered);
-        else if (leftClick || rightClick)
-            clickSlot(inv.slots[hovered], cursor, rightClick);
+    if (leftClick || rightClick) {
+        if (overOutput) {
+            if (shift && leftClick)
+                craft.craftAll(inv);
+            else
+                craft.takeResult(cursor);
+        } else if (hoveredCraft >= 0) {
+            clickSlot(craft.cells[hoveredCraft], cursor, rightClick);
+        } else if (hovered >= 0) {
+            if (leftClick && shift && cursor.empty())
+                inv.quickMove(hovered);
+            else
+                clickSlot(inv.slots[hovered], cursor, rightClick);
+        }
     }
 
     // Name of the hovered item, under the grid.
-    if (hovered >= 0 && cursor.empty() && !inv.slots[hovered].empty()) {
-        const char* name = itemName(inv.slots[hovered].id);
+    const ItemStack* named = nullptr;
+    if (cursor.empty()) {
+        if (hovered >= 0) named = &inv.slots[hovered];
+        if (hoveredCraft >= 0) named = &craft.cells[hoveredCraft];
+    }
+    ItemStack outStack{out.id, out.count};
+    if (cursor.empty() && overOutput && out.count > 0) named = &outStack;
+    if (named && !named->empty()) {
+        const char* name = itemName(named->id);
         ui.drawTextShadow(name, panelX + (panelW - ui.textWidth(name, 1.0f)) / 2.0f, hotbarY + CELL_SIZE + 6.0f,
                           1.0f);
     }
