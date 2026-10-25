@@ -1,5 +1,7 @@
 #pragma once
 
+#include "game_mode.h"
+
 #include "game_state.h"
 #include "net/multiplayer_menu.h"
 #include "ui_renderer.h"
@@ -16,6 +18,7 @@ struct CreateWorldResult {
     bool create = false;
     std::string name;
     std::string seed;
+    GameMode gameMode = GameMode::Survival;
 };
 
 struct WorldListResult {
@@ -128,6 +131,7 @@ class Menu {
     TextInput createNameInput;
     TextInput createSeedInput;
     bool createShowAdvanced = false;
+    GameMode createGameMode = GameMode::Survival;
     bool createInitialized = false;
 
     // Multiplayer panel state — SDP buffers, active panel (choose/host/join).

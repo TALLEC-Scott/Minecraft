@@ -49,64 +49,27 @@ void WorldSave::saveLevelData(unsigned int seed, const PlayerSaveData& player) {
     std::ofstream f(basePath + "/level.dat");
     if (!f.is_open()) return;
     lastPlayed = std::time(nullptr);
-    f << "seed=" << seed << "\n";
-    if (!displayName.empty()) f << "worldName=" << displayName << "\n";
-    f << "lastPlayed=" << static_cast<long long>(lastPlayed) << "\n";
-    f << "posX=" << player.position.x << "\n";
-    f << "posY=" << player.position.y << "\n";
-    f << "posZ=" << player.position.z << "\n";
-    f << "yaw=" << player.yaw << "\n";
-    f << "pitch=" << player.pitch << "\n";
-    f << "walkMode=" << (player.walkMode ? 1 : 0) << "\n";
-    f << "selectedSlot=" << player.selectedSlot << "\n";
-    f << "hotbar=";
-    for (int i = 0; i < Player::HOTBAR_SIZE; i++) {
-        if (i > 0) f << ",";
-        f << (int)player.hotbar[i];
-    }
-    f << "\n";
+    LevelData data;
+    data.seed = seed;
+    data.worldName = displayName;
+    data.lastPlayed = lastPlayed;
+    data.player = player;
+    writeLevelData(f, data);
 }
 
 bool WorldSave::loadLevelData(unsigned int& seed, PlayerSaveData& player) {
     std::ifstream f(basePath + "/level.dat");
     if (!f.is_open()) return false;
-    std::string line;
-    while (std::getline(f, line)) {
-        auto eq = line.find('=');
-        if (eq == std::string::npos) continue;
-        std::string key = line.substr(0, eq);
-        std::string val = line.substr(eq + 1);
-        if (key == "seed")
-            seed = (unsigned int)std::stoul(val);
-        else if (key == "worldName")
-            displayName = val;
-        else if (key == "lastPlayed")
-            lastPlayed = static_cast<std::time_t>(std::stoll(val));
-        else if (key == "posX")
-            player.position.x = std::stof(val);
-        else if (key == "posY")
-            player.position.y = std::stof(val);
-        else if (key == "posZ")
-            player.position.z = std::stof(val);
-        else if (key == "yaw")
-            player.yaw = std::stof(val);
-        else if (key == "pitch")
-            player.pitch = std::stof(val);
-        else if (key == "walkMode")
-            player.walkMode = (std::stoi(val) != 0);
-        else if (key == "selectedSlot")
-            player.selectedSlot = std::clamp(std::stoi(val), 0, Player::HOTBAR_SIZE - 1);
-        else if (key == "hotbar") {
-            std::istringstream iss(val);
-            std::string token;
-            int i = 0;
-            while (std::getline(iss, token, ',') && i < Player::HOTBAR_SIZE) {
-                int id = std::stoi(token);
-                bool valid = id >= 0 && id <= 0xFFFF && isValidItem(static_cast<ItemId>(id));
-                player.hotbar[i++] = valid ? static_cast<ItemId>(id) : ITEM_EMPTY;
-            }
-        }
-    }
+    LevelData data;
+    data.seed = seed;
+    data.worldName = displayName;
+    data.lastPlayed = lastPlayed;
+    data.player = player;
+    readLevelData(f, data);
+    seed = data.seed;
+    displayName = data.worldName;
+    lastPlayed = data.lastPlayed;
+    player = data.player;
     return true;
 }
 

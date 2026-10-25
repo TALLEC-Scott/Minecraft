@@ -5,20 +5,11 @@
 #include <unordered_set>
 #include <glm/glm.hpp>
 #include "cube.h"
-#include "player.h"
+#include "level_data.h"
 
 struct ChunkData;
 class Chunk;
 class TerrainGenerator;
-
-struct PlayerSaveData {
-    glm::vec3 position = glm::vec3(15, 90, 15);
-    float yaw = -90.0f;
-    float pitch = 0.0f;
-    bool walkMode = false;
-    ItemId hotbar[Player::HOTBAR_SIZE] = {AIR, GRASS, DIRT, STONE, WOOD, SAND, WATER, GLOWSTONE, LEAVES, SNOW};
-    int selectedSlot = 0;
-};
 
 class WorldSave {
   public:

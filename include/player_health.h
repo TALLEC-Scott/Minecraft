@@ -46,6 +46,10 @@ class PlayerHealth {
         }
     }
 
+    void heal(float amount) {
+        if (!isDead()) health = std::min(MAX_HEALTH, health + amount);
+    }
+
     bool isDead() const { return health <= 0.0f; }
 
     void respawn(double now) {

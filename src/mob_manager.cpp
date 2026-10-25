@@ -7,7 +7,9 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "entity_manager.h"
 #include "frustum.h"
+#include "mob_drops.h"
 #include "mob_spawn.h"
 #include "shader.h"
 #include "tracy_shim.h"
@@ -147,6 +149,12 @@ void MobManager::tickOnce() {
         }
         m->tick(ctx);
         flushSounds(*m);
+        // A death animation just ended: drop the mob's loot where it fell.
+        if (m->removed && m->dying && world->entityManager) {
+            ItemDrop drop = mobDrop(m->type, std::uniform_real_distribution<float>(0.0f, 1.0f)(rng));
+            if (drop.count > 0)
+                world->entityManager->spawnItem(drop.id, drop.count, m->pos, glm::vec3(0.0f, 0.2f, 0.0f));
+        }
     }
 
     size_t np = projectileList.size();

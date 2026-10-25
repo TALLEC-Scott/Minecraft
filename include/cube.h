@@ -50,10 +50,13 @@ enum block_type : uint8_t {
     TNT,
     TALL_GRASS,
     DANDELION,
-    POPPY
+    POPPY,
+    PLANKS,
+    COBBLESTONE,
+    CRAFTING_TABLE
 };
-// Number of block_type values; keep POPPY (the last one) in sync.
-inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(POPPY) + 1;
+// Number of block_type values; keep CRAFTING_TABLE (the last one) in sync.
+inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(CRAFTING_TABLE) + 1;
 
 enum Biome { BIOME_OCEAN, BIOME_BEACH, BIOME_PLAINS, BIOME_FOREST, BIOME_DESERT, BIOME_TUNDRA, BIOME_COUNT };
 
@@ -114,6 +117,9 @@ inline uint32_t getBlockFlags(block_type t) {
         /* TALL_GRASS*/ BF_TRANSPARENT | BF_CROSS,
         /* DANDELION */ BF_TRANSPARENT | BF_CROSS,
         /* POPPY     */ BF_TRANSPARENT | BF_CROSS,
+        /* PLANKS    */ BF_SOLID | BF_OPAQUE,
+        /* COBBLESTONE */ BF_SOLID | BF_OPAQUE,
+        /* CRAFTING_TABLE */ BF_SOLID | BF_OPAQUE,
     };
     // clang-format on
     int idx = static_cast<int>(t);
@@ -171,6 +177,9 @@ inline StepSound getStepSound(block_type t) {
         /* TALL_GRASS*/ STEP_GRASS,
         /* DANDELION */ STEP_GRASS,
         /* POPPY     */ STEP_GRASS,
+        /* PLANKS    */ STEP_WOOD,
+        /* COBBLESTONE */ STEP_STONE,
+        /* CRAFTING_TABLE */ STEP_WOOD,
     };
     // clang-format on
     int idx = static_cast<int>(t);

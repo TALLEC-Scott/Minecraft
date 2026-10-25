@@ -29,9 +29,11 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <random>
 #include <thread>
+#include <unordered_map>
 
 #include "profiler.h"
 #include "tracy_shim.h"
@@ -145,15 +147,17 @@ static bool isSolidAt(int x, int y, int z) {
     return c && hasFlag(c->getType(), BF_SOLID);
 }
 
-// Respawn point: top of the column at the world spawn (15, 15). Falls back
-// to a high fly-mode spawn when that chunk isn't loaded (player died far
-// away) so the player can't drop through an unloaded column.
+// Respawn point: top of the column at the world spawn (15, 15), on the
+// water surface if the column is sea (not the sea floor). Falls back to a
+// high fly-mode spawn when that chunk isn't loaded (player died far away)
+// so the player can't drop through an unloaded column.
 static glm::vec3 worldSpawnEye(bool& loaded) {
     constexpr int SPAWN_X = 15, SPAWN_Z = 15;
     loaded = w && w->chunkManager->getChunk(worldToChunk(SPAWN_X), worldToChunk(SPAWN_Z)) != nullptr;
     if (loaded) {
         for (int y = CHUNK_HEIGHT - 1; y >= 0; --y) {
-            if (isSolidAt(SPAWN_X, y, SPAWN_Z))
+            Cube* c = w->getBlock(SPAWN_X, y, SPAWN_Z);
+            if (isSolidAt(SPAWN_X, y, SPAWN_Z) || (c && c->getType() == WATER))
                 return glm::vec3(SPAWN_X, static_cast<float>(y) + 0.5f + PLAYER_HEIGHT + 0.01f, SPAWN_Z);
         }
     }
@@ -196,6 +200,49 @@ static void drawHearts(UIRenderer& ui, float x, float y, float health, float fla
         }
     }
 }
+
+// Pixel drumstick (9x9) for the food bar. X = outline, M = meat,
+// W = highlight, B = bone.
+static const char* const FOOD_PIXELS[9] = {
+    ".....XXX.", "....XMMMX", "...XMWMMX", "...XMMMMX", "..XMMMMX.",
+    ".XBXXXX..", "XBBX.....", "XBX......", ".X.......",
+};
+
+// Ten drumsticks (20 half points) right-aligned so the rightmost sits at
+// x + width. They shake when saturation has run out, as in Minecraft.
+static void drawFood(UIRenderer& ui, float rightX, float y, int food, float saturation, double now) {
+    constexpr float PX = 2.0f;
+    constexpr float STEP = 9 * PX + 2.0f;
+    const glm::vec4 MEAT(0.70f, 0.40f, 0.18f, 1.0f);
+    const glm::vec4 SHINE(0.93f, 0.66f, 0.42f, 1.0f);
+    const glm::vec4 BONE(0.94f, 0.91f, 0.84f, 1.0f);
+    const glm::vec4 EMPTY(0.16f, 0.10f, 0.06f, 0.85f);
+    const glm::vec4 OUTLINE(0.0f, 0.0f, 0.0f, 1.0f);
+    for (int i = 0; i < 10; ++i) {
+        float fx = rightX - (i + 1) * STEP + 2.0f; // i = 0 is the rightmost
+        float fy = y;
+        if (saturation <= 0.0f) fy += std::round(std::sin(now * 23.0 + i * 2.3) * 1.5);
+        int value = food - i * 2; // >= 2 full, 1 half (right half), <= 0 empty
+        for (int r = 0; r < 9; ++r) {
+            for (int c = 0; c < 9; ++c) {
+                char p = FOOD_PIXELS[r][c];
+                if (p == '.') continue;
+                glm::vec4 col = OUTLINE;
+                if (p != 'X') {
+                    bool filled = value >= 2 || (value == 1 && c >= 4);
+                    col = filled ? (p == 'W' ? SHINE : (p == 'B' ? BONE : MEAT)) : EMPTY;
+                }
+                ui.drawRect(fx + c * PX, fy + r * PX, PX, PX, col);
+            }
+        }
+    }
+}
+
+// A brand-new world, or a respawn while the spawn chunk was unloaded: once
+// the spawn chunk has loaded, stand the player on the ground at the spawn
+// column instead of dropping them from y = 90 (which costs hearts in
+// Survival).
+static bool g_placeAtSpawn = false;
 
 // Loading-state tracking: the chunk the player will spawn in, plus a start
 // time used to render progress (and enforce a safety timeout).
@@ -278,11 +325,13 @@ static GLuint armVAO, armVBO, armEBO;
 static GLuint heldBlockVAO, heldBlockVBO, heldBlockEBO;
 static block_type lastHeldBlock = AIR; // track when to rebuild held block mesh
 
-// The one tool model (the sword), shared by first person and other players'
-// hands. Loaded from the tool's sprite on first draw.
-static HeldItemModel& heldToolModel() {
-    static HeldItemModel model;
-    return model;
+// One extruded model per item sprite, shared by first person, other
+// players' hands and dropped items. Each loads on its first draw.
+static HeldItemModel& itemModel(const char* spritePath) {
+    static std::unordered_map<std::string, std::unique_ptr<HeldItemModel>> models;
+    auto& model = models[spritePath];
+    if (!model) model = std::make_unique<HeldItemModel>();
+    return *model;
 }
 // Grip pixel of a tool sprite (sprite coords): where the hand holds it.
 static const glm::vec3 TOOL_GRIP(2.5f, 2.5f, 0.0f);
@@ -497,7 +546,7 @@ void processInput(GLFWwindow* window) {
     if (pauseDown && !escKeyPressed) {
         if (inventory.isOpen()) {
             // Close inventory instead of pausing
-            inventory.close();
+            inventory.close(player, w);
             glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
             player.resetMouseState();
         } else {
@@ -523,7 +572,7 @@ void processInput(GLFWwindow* window) {
     // Inventory toggle: 'E' key (edge-triggered)
     bool eKeyDown = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
     if (eKeyDown && !eKeyPressed) {
-        inventory.toggle();
+        inventory.toggle(player, w);
         if (inventory.isOpen()) {
             glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
         } else {
@@ -548,6 +597,10 @@ void processInput(GLFWwindow* window) {
 
     // Player input
     player.handleInput(window, w);
+    if (player.takeCraftingTableRequest()) {
+        inventory.openCraftingTable();
+        glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
+    }
 
 #ifndef __EMSCRIPTEN__
     // Debug mob spawner (desktop only): F7 cycles the mob type, F6 spawns
@@ -870,8 +923,12 @@ int main(int argc, char* argv[]) {
             pd.yaw = player.getYaw();
             pd.pitch = player.getPitch();
             pd.walkMode = player.isWalkMode();
-            std::memcpy(pd.hotbar, player.getHotbar(), sizeof(pd.hotbar));
+            pd.inventory = player.getInventory();
             pd.selectedSlot = player.getSelectedSlot();
+            pd.gameMode = player.getGameMode();
+            pd.health = player.getHealth().health;
+            pd.food = player.getHunger().food;
+            pd.saturation = player.getHunger().saturation;
             return pd;
         };
 
@@ -967,10 +1024,11 @@ int main(int argc, char* argv[]) {
         };
 
         // Load (or create) the world at saves/<folder>. `seedOverride` forces
-        // a specific seed (new-world creation or --seed); otherwise level.dat
-        // wins when present.
+        // a specific seed (new-world creation or --seed) and `modeOverride`
+        // the game mode (new-world creation); otherwise level.dat wins when
+        // present.
         auto switchToWorld = [&](const std::string& folder, std::optional<unsigned int> seedOverride,
-                                 const std::string& displayName) {
+                                 const std::string& displayName, std::optional<GameMode> modeOverride = std::nullopt) {
             saveCurrentWorld();
             world.reset();
             worldSave.reset();
@@ -983,6 +1041,7 @@ int main(int argc, char* argv[]) {
             PlayerSaveData loaded;
             bool hadSave = worldSave->loadLevelData(seed, loaded);
             if (seedOverride.has_value()) seed = *seedOverride;  // creation overrides stored seed
+            if (modeOverride.has_value()) loaded.gameMode = *modeOverride;
             if (!displayName.empty()) worldSave->setDisplayName(displayName);
 
             std::cout << "World: " << folder << "  seed: " << seed << std::endl;
@@ -990,24 +1049,45 @@ int main(int argc, char* argv[]) {
             world.emplace(seed);
             world->chunkManager->setWorldSave(&*worldSave);
             if (g_soundsLoaded) loadWorldSounds(*world, menuObj.getAudioEngine());
+            // Dropped items the local player can reach go into their
+            // inventory (Minecraft: the 0.6×1.8 hitbox grown by 1 block
+            // sideways and 0.5 up and down).
+            world->entityManager->setPickupHandler([](const ItemEntity& item) -> int {
+                if (player.isDead()) return 0;
+                glm::vec3 feet = player.getFeetPosition();
+                float dx = item.pos.x - feet.x, dz = item.pos.z - feet.z;
+                if (std::max(std::abs(dx), std::abs(dz)) > 0.3f + 1.0f + ItemEntity::HALF_WIDTH) return 0;
+                if (item.pos.y + ItemEntity::HEIGHT < feet.y - 0.5f || item.pos.y > feet.y + 1.8f + 0.5f) return 0;
+                int taken = item.count - player.getInventory().add(item.id, item.count);
+                if (taken > 0) player.playPickupSound();
+                return taken;
+            });
             world->mobManager->setDamagePlayerCallback(
                 [](float amount, glm::vec3 from) { player.hurt(amount, from); });
             world->chunkManager->setRenderDistance(gameSettings.renderDistance);
             w = &*world;
 
+            g_placeAtSpawn = false;
             if (hadSave && !skipPlayerRestore) {
                 player.getCamera().setPosition(loaded.position);
                 player.setYawPitch(loaded.yaw, loaded.pitch);
                 player.getCamera().setWalkMode(loaded.walkMode);
-                for (int i = 0; i < Player::HOTBAR_SIZE; i++) player.setHotbarSlot(i, loaded.hotbar[i]);
                 player.setSelectedSlot(loaded.selectedSlot);
             } else {
                 player.getCamera().setPosition(glm::vec3(15, 90, 15));
                 player.setYawPitch(-90.0f, 0.0f);
                 player.getCamera().setWalkMode(false);
+                g_placeAtSpawn = !skipPlayerRestore;
             }
-            // Fresh health + motion for every world entered (health isn't saved).
+            // A new Survival world starts with nothing; otherwise the saved
+            // inventory (or the creative default for a new Creative world).
+            if (!hadSave && loaded.gameMode == GameMode::Survival) loaded.inventory.clear();
+            player.getInventory() = loaded.inventory;
+            // After the walk-mode restore: Survival forces walking.
+            player.setGameMode(loaded.gameMode);
+            // Fresh motion for every world entered, then the saved vitals.
             player.respawn(player.getPosition());
+            if (hadSave && !skipPlayerRestore) player.setVitals(loaded.health, loaded.food, loaded.saturation);
 
             // Persist so the new world shows up in listWorlds() immediately.
             // The player position has been restored to the saved (x, y, z,
@@ -1145,6 +1225,17 @@ int main(int argc, char* argv[]) {
                 out.emplace_back(std::string("Game rule showcoordinates set to ") + (on ? "true" : "false"));
             });
 
+        chatCommands.add("gamemode", "<survival|creative>", "Switch between survival and creative",
+                         [](const ChatCommands::Args& args, ChatCommands::Reply& out) {
+                             std::optional<GameMode> mode = args.empty() ? std::nullopt : parseGameMode(args[0]);
+                             if (!mode) {
+                                 out.emplace_back("Usage: /gamemode <survival|creative>");
+                                 return;
+                             }
+                             player.setGameMode(*mode);
+                             out.emplace_back(std::string("Set own game mode to ") + gameModeName(*mode));
+                         });
+
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
         glFrontFace(GL_CW);
@@ -1214,12 +1305,13 @@ int main(int argc, char* argv[]) {
             glBindVertexArray(0);
         }
 
-        // Wireframe highlight cube (12 edges = 24 line vertices)
+        // Wireframe highlight cube (12 edges = 24 line vertices); also holds
+        // the crack overlay (6 faces = 36 triangle vertices).
         glGenVertexArrays(1, &highlightVAO);
         glGenBuffers(1, &highlightVBO);
         glBindVertexArray(highlightVAO);
         glBindBuffer(GL_ARRAY_BUFFER, highlightVBO);
-        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(24 * 10) * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(36 * 10) * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
         constexpr int HL_STRIDE = 10 * sizeof(float);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, HL_STRIDE, nullptr);
         glEnableVertexAttribArray(0);
@@ -1874,7 +1966,7 @@ int main(int argc, char* argv[]) {
                     std::string displayName = sanitizeWorldName(res.name);
                     std::string folder = uniqueFolderName(displayName);
                     unsigned int seed = resolveSeed(res.seed);
-                    switchToWorld(folder, std::optional<unsigned int>(seed), displayName);
+                    switchToWorld(folder, std::optional<unsigned int>(seed), displayName, res.gameMode);
                     glm::vec3 p = player.getPosition();
                     g_loadingSpawnCx = (int)std::floor(p.x / (float)CHUNK_SIZE);
                     g_loadingSpawnCz = (int)std::floor(p.z / (float)CHUNK_SIZE);
@@ -1909,6 +2001,15 @@ int main(int argc, char* argv[]) {
                 bool timedOut = (glfwGetTime() - g_loadingStartTime) > 10.0;
                 menu.drawLoadingScreen(uiRenderer, windowWidth, windowHeight, progress, g_loadingWorldName);
                 if (ready >= 9 || timedOut || !w) {
+                    if (g_placeAtSpawn) {
+                        bool spawnLoaded = false;
+                        glm::vec3 eye = worldSpawnEye(spawnLoaded);
+                        if (spawnLoaded) {
+                            player.getCamera().setPosition(eye);
+                            player.getCamera().resetMotion();
+                        }
+                        g_placeAtSpawn = false;
+                    }
                     glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
                     player.resetMouseState();
                     player.consumeMouseButtons();
@@ -2022,6 +2123,17 @@ int main(int argc, char* argv[]) {
             // Dead players are frozen behind the death screen while the
             // world keeps running.
             if (currentState == GameState::Playing && !player.isDead()) {
+                // A respawn into an unloaded spawn chunk: place the player on
+                // the ground as soon as it has streamed in.
+                if (g_placeAtSpawn && w) {
+                    bool spawnLoaded = false;
+                    glm::vec3 eye = worldSpawnEye(spawnLoaded);
+                    if (spawnLoaded) {
+                        player.getCamera().setPosition(eye);
+                        player.getCamera().resetMotion();
+                        g_placeAtSpawn = false;
+                    }
+                }
                 player.update(w);
             }
             nbFrames++;
@@ -2123,7 +2235,8 @@ int main(int argc, char* argv[]) {
                 MobManager::PlayerState mobView;
                 mobView.feet = player.getFeetPosition();
                 mobView.eye = player.getPosition();
-                mobView.targetable = !player.isDead();
+                // Mobs ignore creative players, as in Minecraft.
+                mobView.targetable = !player.isDead() && player.isSurvival();
                 w->mobManager->setPlayer(mobView);
                 w->mobManager->setSunHeight(std::sin(timeValue));
                 w->update(player.getPosition(), dt, glfwGetTime());
@@ -2363,6 +2476,40 @@ int main(int argc, char* argv[]) {
                 shaderProgram.setMat4("model", glm::mat4(1.0f));
                 shaderProgram.setFloat("entityTint", 1.0f);
             }
+            // Dropped items, bobbing and spinning just above the ground:
+            // blocks as small cubes, everything else (and plants) as the
+            // extruded sprite.
+            if (w->entityManager && !w->entityManager->items().empty()) {
+                float pt = w->entityManager->partialTick();
+                float t = (float)glfwGetTime();
+                for (const ItemEntity& item : w->entityManager->items()) {
+                    glm::vec3 p = item.renderPos(pt);
+                    if (glm::distance(p, cameraPos) > 64.0f) continue;
+                    float spin = t * 1.5f + item.spinPhase;
+                    float bob = 0.1f + 0.05f * std::sin(t * 2.5f + item.spinPhase);
+                    glm::vec3 centre = p + glm::vec3(0.0f, ItemEntity::HEIGHT * 0.5f + bob, 0.0f);
+                    glm::ivec2 light = lightLevelsAt(centre);
+                    glm::mat4 m = glm::rotate(glm::translate(glm::mat4(1.0f), centre), spin, glm::vec3(0, 1, 0));
+                    block_type bt = itemBlock(item.id);
+                    if (bt != AIR && !hasFlag(bt, BF_CROSS) && !hasFlag(bt, BF_LIQUID)) {
+                        shaderProgram.setVec2("leafSway", glm::vec2(0.0f));
+                        entityCubes.drawBlock(shaderProgram, glm::scale(m, glm::vec3(0.25f)), bt,
+                                              (float)(light.x * 16 + light.y));
+                        continue;
+                    }
+                    const char* sprite = bt != AIR ? TextureArray::layerPath(TextureArray::layerForType(bt))
+                                                   : itemIconPath(item.id);
+                    if (!sprite) continue;
+                    HeldItemModel& model = itemModel(sprite);
+                    if (!model.load(sprite)) continue;
+                    m = glm::scale(m, glm::vec3(0.03f)); // 16 px ≈ half a block
+                    m = glm::translate(m, glm::vec3(-8.0f, -8.0f, -0.5f));
+                    model.draw(viewProjection, m,
+                               ItemShading{lightTintFor(light), sunDir, cameraPos, fogColor, fogStart, fogEnd});
+                    shaderProgram.use();
+                }
+                shaderProgram.setMat4("model", glm::mat4(1.0f));
+            }
             // Mobs + projectiles (MobRenderer restores model/tint/color).
             if (w->mobManager) w->mobManager->render(shaderProgram, viewProjection, player.getPosition());
 
@@ -2387,15 +2534,15 @@ int main(int argc, char* argv[]) {
 
                     // What they hold, in the right fist (third person).
                     glm::mat4 hand = PlayerRenderer::rightHandFrame(feetPos, pose.yaw);
-                    if (const char* spritePath = toolIconPath(r.heldItem)) {
+                    if (const char* spritePath = itemIconPath(r.heldItem)) {
                         // Tool: sprite slab standing in the arm's forward
                         // plane, blade angled forward and up (sprite +X -> +Z).
-                        if (heldToolModel().load(spritePath)) {
+                        if (HeldItemModel& toolModel = itemModel(spritePath); toolModel.load(spritePath)) {
                             glm::mat4 m = glm::rotate(hand, glm::radians(-90.0f), glm::vec3(0, 1, 0));
                             m = glm::scale(m, glm::vec3(0.045f)); // 16 px ≈ 0.72 blocks
                             m = glm::translate(m, -TOOL_GRIP);
                             ItemShading shading{lightTintFor(light), sunDir, cameraPos, fogColor, fogStart, fogEnd};
-                            heldToolModel().draw(viewProjection, m, shading);
+                            toolModel.draw(viewProjection, m, shading);
                             shaderProgram.use();
                         }
                     } else if (block_type held = itemBlock(r.heldItem);
@@ -2538,6 +2685,59 @@ int main(int argc, char* argv[]) {
                 glEnable(GL_CULL_FACE);
             }
 
+            // Survival mining: the destroy-stage crack on the block being
+            // broken, ten stages over the break time (as in Minecraft).
+            if (float progress = player.getMiningProgress(); progress >= 0.0f) {
+                int stage = std::clamp((int)(progress * block_layers::DESTROY_STAGE_COUNT), 0,
+                                       block_layers::DESTROY_STAGE_COUNT - 1);
+                float layer = (float)(block_layers::DESTROY_STAGE_FIRST_LAYER + stage);
+                glm::vec3 c(player.getMiningPos());
+                constexpr float e = 0.501f; // just outside the block's faces
+                // Per face: the 4 corners as (axis signs), then two triangles.
+                static const int FACE_CORNERS[6][4][3] = {
+                    {{1, -1, -1}, {1, 1, -1}, {1, 1, 1}, {1, -1, 1}},     {{-1, -1, 1}, {-1, 1, 1}, {-1, 1, -1}, {-1, -1, -1}},
+                    {{-1, -1, 1}, {1, -1, 1}, {1, 1, 1}, {-1, 1, 1}},     {{1, -1, -1}, {-1, -1, -1}, {-1, 1, -1}, {1, 1, -1}},
+                    {{-1, 1, -1}, {-1, 1, 1}, {1, 1, 1}, {1, 1, -1}},     {{-1, -1, 1}, {-1, -1, -1}, {1, -1, -1}, {1, -1, 1}},
+                };
+                static const float UV[4][2] = {{0, 0}, {0, 1}, {1, 1}, {1, 0}};
+                static const int TRI[6] = {0, 1, 2, 0, 2, 3};
+                float crackVerts[36 * 10];
+                int vi = 0;
+                for (const auto& face : FACE_CORNERS) {
+                    for (int k : TRI) {
+                        crackVerts[vi++] = c.x + face[k][0] * e;
+                        crackVerts[vi++] = c.y + face[k][1] * e;
+                        crackVerts[vi++] = c.z + face[k][2] * e;
+                        crackVerts[vi++] = UV[k][0];
+                        crackVerts[vi++] = UV[k][1];
+                        crackVerts[vi++] = 0;
+                        crackVerts[vi++] = 0;
+                        crackVerts[vi++] = 0; // normal (unused)
+                        crackVerts[vi++] = layer;
+                        crackVerts[vi++] = 1; // brightness = alpha multiplier
+                    }
+                }
+                glBindBuffer(GL_ARRAY_BUFFER, highlightVBO);
+                glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(crackVerts), crackVerts);
+
+                billboardShader.use();
+                billboardShader.setMat4("projection", projection);
+                billboardShader.setMat4("view", player.getViewMatrix());
+                billboardShader.setMat4("model", glm::mat4(1.0f));
+                billboardShader.setVec3("tintColor", glm::vec3(1.0f));
+                TextureArray::bind();
+                glDisable(GL_CULL_FACE);
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                glDepthMask(GL_FALSE);
+                glBindVertexArray(highlightVAO);
+                glDrawArrays(GL_TRIANGLES, 0, 36);
+                glBindVertexArray(0);
+                glDepthMask(GL_TRUE);
+                glDisable(GL_BLEND);
+                glEnable(GL_CULL_FACE);
+            }
+
             // Block-placement "pop" — expanding white wireframe that fades out.
             // Shares highlightVAO with the targeted-block outline (re-uploaded each frame).
             {
@@ -2618,13 +2818,13 @@ int main(int argc, char* argv[]) {
 
                 block_type heldType = player.getSelectedBlockType();
                 glDisable(GL_CULL_FACE);
-                if (const char* spritePath = toolIconPath(player.getSelectedItem())) {
+                if (const char* spritePath = itemIconPath(player.getSelectedItem())) {
                     // Tool (the sword): its sprite extruded into a pixel
                     // slab held in the hand — handle in the lower right, flat
                     // side toward the camera, blade leaning toward the
                     // crosshair. Attacks play Minecraft's swing about the
                     // hand; the arm runs from the hand to a fixed shoulder.
-                    HeldItemModel& swordModel = heldToolModel();
+                    HeldItemModel& swordModel = itemModel(spritePath);
                     if (swordModel.load(spritePath)) {
                         constexpr float ITEM_SCALE = 0.04f; // sprite pixels -> view units
                         const glm::vec3 HAND_REST(0.28f * aspect, -0.4f, -0.7f);
@@ -2714,7 +2914,7 @@ int main(int argc, char* argv[]) {
                 uiRenderer.begin(windowWidth, windowHeight);
                 // Background
                 uiRenderer.drawRect(barX, barY, totalW, SLOT_SIZE + BAR_PAD * 2, glm::vec4(0.0f, 0.0f, 0.0f, 0.5f));
-                const ItemId* hotbar = player.getHotbar();
+                const PlayerInventory& inv = player.getInventory();
                 int sel = player.getSelectedSlot();
                 for (int i = 0; i < HSIZE; i++) {
                     float sx = barX + BAR_PAD + i * (SLOT_SIZE + SLOT_PAD);
@@ -2723,11 +2923,17 @@ int main(int argc, char* argv[]) {
                     glm::vec4 slotColor =
                         (i == sel) ? glm::vec4(1.0f, 1.0f, 1.0f, 0.4f) : glm::vec4(0.3f, 0.3f, 0.3f, 0.4f);
                     uiRenderer.drawRect(sx, sy, SLOT_SIZE, SLOT_SIZE, slotColor);
-                    // Item icon (block top face) — skip empty slots
-                    if (hotbar[i] != ITEM_EMPTY) {
-                        GLuint tex = TextureArray::itemIcon(hotbar[i]);
+                    // Item icon (block top face) and stack count — skip empty slots
+                    const ItemStack& stack = inv.slots[i];
+                    if (!stack.empty()) {
+                        GLuint tex = TextureArray::itemIcon(stack.id);
                         if (tex) {
                             uiRenderer.drawTexturedRect(sx + 4, sy + 4, SLOT_SIZE - 8, SLOT_SIZE - 8, tex, 0, 0, 1, 1);
+                        }
+                        if (stack.count > 1) {
+                            std::string count = std::to_string(stack.count);
+                            uiRenderer.drawTextShadow(count, sx + SLOT_SIZE - 2 - uiRenderer.textWidth(count, 1.5f),
+                                                      sy + SLOT_SIZE - 14, 1.5f);
                         }
                     }
                     // Slot number
@@ -2741,9 +2947,15 @@ int main(int argc, char* argv[]) {
                         "Position: " + std::to_string(b.x) + ", " + std::to_string(b.y) + ", " + std::to_string(b.z);
                     uiRenderer.drawTextShadow(pos, 8.0f, 8.0f, 2.0f);
                 }
-                // Health: 10 hearts just above the hotbar's left edge.
-                drawHearts(uiRenderer, barX, barY - 22.0f, player.getHealth().health, player.getHurtFlash(),
-                           glfwGetTime());
+                // Health: 10 hearts just above the hotbar's left edge
+                // (Survival only; Creative players can't be hurt).
+                if (player.isSurvival()) {
+                    drawHearts(uiRenderer, barX, barY - 22.0f, player.getHealth().health, player.getHurtFlash(),
+                               glfwGetTime());
+                    // Food: 10 drumsticks above the hotbar's right edge.
+                    drawFood(uiRenderer, barX + totalW, barY - 22.0f, player.getHunger().food,
+                             player.getHunger().saturation, glfwGetTime());
+                }
                 // Debug-spawner toast, fading out over 2 s.
                 double toastAge = glfwGetTime() - g_toastTime;
                 if (toastAge < 2.0) {
@@ -2767,7 +2979,9 @@ int main(int argc, char* argv[]) {
             static double deathTime = 0.0;
             bool deadNow = currentState == GameState::Playing && player.isDead();
             if (deadNow && !wasDead) {
-                if (inventory.isOpen()) inventory.close();
+                if (inventory.isOpen()) inventory.close(player, w);
+                // Survival deaths spill everything, as in Minecraft.
+                if (player.isSurvival()) player.spillInventory(w);
                 glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
                 deathTime = glfwGetTime();
             }
@@ -2778,7 +2992,12 @@ int main(int argc, char* argv[]) {
                 glfwGetTime() - deathTime > 1.0) {
                 bool spawnLoaded = false;
                 glm::vec3 spawnEye = worldSpawnEye(spawnLoaded);
-                if (!spawnLoaded) player.getCamera().setWalkMode(false);
+                // Spawn chunk not loaded (died far away): hover there until
+                // it streams in, then stand on the ground (g_placeAtSpawn).
+                if (!spawnLoaded) {
+                    player.getCamera().setWalkMode(false);
+                    g_placeAtSpawn = true;
+                }
                 player.respawn(spawnEye);
                 glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_DISABLED);
                 player.resetMouseState();
