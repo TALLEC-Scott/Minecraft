@@ -204,6 +204,7 @@ std::string g_loadingWorldName;
 
 bool xKeyPressed = false;
 bool wireframeMode = false;
+bool showCoordinates = false; // /gamerule showcoordinates
 
 bool f12KeyPressed = false;
 bool fullscreenMode = false;
@@ -412,6 +413,14 @@ static void buildHeldBlockMesh(block_type bt) {
     lastHeldBlock = bt;
 }
 
+#ifndef __EMSCRIPTEN__
+// X key and /wireframe. Desktop only: WebGL has no glPolygonMode.
+static void setWireframe(bool on) {
+    wireframeMode = on;
+    glPolygonMode(GL_FRONT_AND_BACK, on ? GL_LINE : GL_FILL);
+}
+#endif
+
 void processInput(GLFWwindow* window) {
     // Pause: ESC on desktop, M on web (ESC exits pointer lock in browsers
     // and TAB is intercepted by tab-stop focus cycling).
@@ -455,14 +464,7 @@ void processInput(GLFWwindow* window) {
 #ifndef __EMSCRIPTEN__
     // Enable/Disable wireframe mode
     bool xKeyDown = glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS;
-    if (xKeyDown && !xKeyPressed) {
-        wireframeMode = !wireframeMode;
-        if (wireframeMode) {
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        } else {
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        }
-    }
+    if (xKeyDown && !xKeyPressed) setWireframe(!wireframeMode);
     xKeyPressed = xKeyDown;
 #endif
 
@@ -1043,20 +1045,50 @@ int main(int argc, char* argv[]) {
                                  out.emplace_back("No world loaded.");
                                  return;
                              }
-                             bool on = !w->mobManager->cowRainEnabled();
-                             if (!args.empty()) {
-                                 if (args[0] == "on") {
-                                     on = true;
-                                 } else if (args[0] == "off") {
-                                     on = false;
-                                 } else {
-                                     out.emplace_back("Usage: /cowrain [on|off]");
-                                     return;
-                                 }
+                             bool on = false;
+                             if (!ChatCommands::parseToggle(args.empty() ? "" : args[0],
+                                                            w->mobManager->cowRainEnabled(), on)) {
+                                 out.emplace_back("Usage: /cowrain [on|off]");
+                                 return;
                              }
                              w->mobManager->setCowRain(on);
                              out.emplace_back(on ? "Cow rain: ON. Look up." : "Cow rain: off.");
                          });
+        chatCommands.add("wireframe", "[on|off]", "Toggle wireframe rendering (same as X)",
+                         [](const ChatCommands::Args& args, ChatCommands::Reply& out) {
+#ifdef __EMSCRIPTEN__
+                             (void)args;
+                             out.emplace_back("Wireframe isn't available in the browser.");
+#else
+                             bool on = false;
+                             if (!ChatCommands::parseToggle(args.empty() ? "" : args[0], wireframeMode, on)) {
+                                 out.emplace_back("Usage: /wireframe [on|off]");
+                                 return;
+                             }
+                             setWireframe(on);
+                             out.emplace_back(on ? "Wireframe: on." : "Wireframe: off.");
+#endif
+                         });
+        // Bedrock's coordinate toggle. Only this one rule exists for now.
+        chatCommands.add(
+            "gamerule", "showcoordinates [true|false]", "Show your position in the top-left corner",
+            [](const ChatCommands::Args& args, ChatCommands::Reply& out) {
+                if (args.empty() || (args[0] != "showcoordinates" && args[0] != "showCoordinates")) {
+                    out.emplace_back("Usage: /gamerule showcoordinates [true|false]");
+                    return;
+                }
+                if (args.size() == 1) {
+                    out.emplace_back(std::string("showcoordinates = ") + (showCoordinates ? "true" : "false"));
+                    return;
+                }
+                bool on = false;
+                if (!ChatCommands::parseToggle(args[1], showCoordinates, on)) {
+                    out.emplace_back("Usage: /gamerule showcoordinates [true|false]");
+                    return;
+                }
+                showCoordinates = on;
+                out.emplace_back(std::string("Game rule showcoordinates set to ") + (on ? "true" : "false"));
+            });
 
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
@@ -2576,6 +2608,13 @@ int main(int argc, char* argv[]) {
                     // Slot number
                     std::string num = std::to_string((i + 1) % 10);
                     uiRenderer.drawTextShadow(num, sx + 2, sy + 2, 1.0f);
+                }
+                if (showCoordinates) {
+                    // Block containing the feet (block N spans [N-0.5, N+0.5)).
+                    glm::ivec3 b = glm::ivec3(glm::floor(player.getFeetPosition() + glm::vec3(0.5f)));
+                    std::string pos =
+                        "Position: " + std::to_string(b.x) + ", " + std::to_string(b.y) + ", " + std::to_string(b.z);
+                    uiRenderer.drawTextShadow(pos, 8.0f, 8.0f, 2.0f);
                 }
                 // Health: 10 hearts just above the hotbar's left edge.
                 drawHearts(uiRenderer, barX, barY - 22.0f, player.getHealth().health, player.getHurtFlash(),

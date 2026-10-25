@@ -74,3 +74,20 @@ TEST(DayCycleTest, NoonIsSunHighAndMidnightSunLow) {
     EXPECT_NEAR(std::sin(daycycle::NOON), 1.0, 1e-12);
     EXPECT_NEAR(std::sin(daycycle::MIDNIGHT), -1.0, 1e-12);
 }
+
+TEST(ChatCommandsTest, ParseToggle) {
+    bool out = false;
+    ASSERT_TRUE(ChatCommands::parseToggle("", false, out));
+    EXPECT_TRUE(out) << "no argument flips";
+    ASSERT_TRUE(ChatCommands::parseToggle("", true, out));
+    EXPECT_FALSE(out);
+    ASSERT_TRUE(ChatCommands::parseToggle("ON", false, out));
+    EXPECT_TRUE(out);
+    ASSERT_TRUE(ChatCommands::parseToggle("true", false, out));
+    EXPECT_TRUE(out);
+    ASSERT_TRUE(ChatCommands::parseToggle("off", true, out));
+    EXPECT_FALSE(out);
+    ASSERT_TRUE(ChatCommands::parseToggle("false", true, out));
+    EXPECT_FALSE(out);
+    EXPECT_FALSE(ChatCommands::parseToggle("maybe", false, out));
+}
