@@ -21,10 +21,13 @@
 //               (0 = +X, 90 = +Z). Models face +Z; the renderer rotates.
 //   headPitch — degrees, + = looking up
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 
 #include <glm/glm.hpp>
 
+#include "fire.h"
 #include "mob_ai.h"
 #include "mob_context.h"
 #include "mob_model.h"
@@ -40,6 +43,8 @@ class Mob {
     static constexpr float AIR_SLIP = 0.91f;     // horizontal retention airborne
     static constexpr float WATER_SLIP = 0.8f;    // all-axis retention in water
     static constexpr float WATER_GRAVITY = 0.02f;
+    static constexpr float LAVA_SLIP = 0.5f;   // horizontal retention in lava (Minecraft)
+    static constexpr float LAVA_SLIP_Y = 0.8f; // vertical: swim-up still wins, slowly
     static constexpr float SWIM_UP = 0.04f;
     static constexpr float JUMP_SPEED = 0.42f; // apex ~1.25 blocks
     static constexpr float MAX_STEP_MOVE = 0.45f; // sub-step horizontal moves longer than this
@@ -73,6 +78,18 @@ class Mob {
     float halfWidth, height;
     bool onGround = false;
     bool inWater = false;
+    bool inLava = false;
+    bool inLiquid() const { return inWater || inLava; }
+    static constexpr float LAVA_DAMAGE = FireState::LAVA_DAMAGE;
+
+    // --- Fire (FireState, shared with the player: lava sets any mob
+    // alight for 15 s; burning deals 1 damage per second; water puts it out) ---
+    static constexpr int LAVA_FIRE_TICKS = FireState::LAVA_FIRE_TICKS;
+    static constexpr int BURN_INTERVAL = FireState::BURN_INTERVAL;
+    static constexpr float BURN_DAMAGE = FireState::BURN_DAMAGE;
+    FireState fire;
+    bool burning() const { return fire.burning(); }
+    void setOnFire(int ticks) { fire.ignite(ticks); }
     bool horizontalCollision = false;
     float fallDistance = 0.0f;
 
@@ -144,6 +161,13 @@ class Mob {
     float deathProgress(float partialTick) const;
     // 0..1 strength of the arm-swing attack animation.
     float armSwingProgress(float partialTick) const;
+    // Flame licks drawn around a burning mob, sized to its hitbox (feet
+    // origin, model frame: +Z forward). MobRenderer draws them emissive.
+    struct FlameBox {
+        glm::vec3 center, halfSize, color;
+    };
+    static constexpr int FLAME_COUNT = 6;
+    std::array<FlameBox, FLAME_COUNT> flameBoxes(float partialTick) const;
 
     // --- Per-type hooks ---
     virtual const MobModel& model() const = 0;
@@ -176,6 +200,8 @@ class Mob {
     float stepDistance = 0.0f;
 
     void physicsTick(MobContext& ctx);
+    // Lava ignites, water extinguishes, then the fire deals its damage.
+    void fireTick();
     // Desired horizontal velocity from the navigation target (zero if none).
     glm::vec3 steeringVelocity(MobContext& ctx);
     // Move by `delta` with collision; updates onGround / collision flags.

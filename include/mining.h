@@ -13,6 +13,7 @@ struct BlockMining {
     float hardness;     // < 0 = unbreakable
     ToolKind bestTool;  // the tool kind that speeds it up
     bool needsTool;     // drops nothing unless broken with bestTool
+    int minTier = 0;    // ... of at least this tier (obsidian: above stone)
 };
 
 inline BlockMining blockMining(block_type t) {
@@ -39,6 +40,9 @@ inline BlockMining blockMining(block_type t) {
         /* PLANKS         */ {2.0f,  ToolKind::Axe,     false},
         /* COBBLESTONE    */ {2.0f,  ToolKind::Pickaxe, true},
         /* CRAFTING_TABLE */ {2.5f,  ToolKind::Axe,     false},
+        /* LAVA           */ {-1.0f, ToolKind::None,    false},
+        // Minecraft needs a diamond pickaxe; nothing here is good enough yet.
+        /* OBSIDIAN       */ {50.0f, ToolKind::Pickaxe, true, 4},
     };
     // clang-format on
     static_assert(sizeof(table) / sizeof(table[0]) == BLOCK_TYPE_COUNT, "one row per block_type");
@@ -60,7 +64,7 @@ inline float miningSpeed(block_type t, ItemId held) {
 // Whether breaking `t` with `held` yields its drop.
 inline bool canHarvest(block_type t, ItemId held) {
     BlockMining m = blockMining(t);
-    return !m.needsTool || toolKind(held) == m.bestTool;
+    return !m.needsTool || (toolKind(held) == m.bestTool && toolTier(held) >= m.minTier);
 }
 
 // Ticks (1/20 s) to break `t` with `held`: Minecraft's

@@ -21,6 +21,11 @@ bool MobContext::isWater(int x, int y, int z) const {
     return blocks->blockAt(x, y, z) == WATER;
 }
 
+bool MobContext::isLava(int x, int y, int z) const {
+    if (y < 0 || y >= CHUNK_HEIGHT) return false;
+    return blocks->blockAt(x, y, z) == LAVA;
+}
+
 int MobContext::lightAt(int x, int y, int z) const {
     if (y >= CHUNK_HEIGHT) return std::max(0, 15 - skyDarken);
     if (y < 0) return 0;
@@ -118,6 +123,8 @@ void Mob::tick(MobContext& ctx) {
     lookedThisTick = false;
 
     updateWater(ctx);
+    // Lava: 4 damage per hit; the 10-tick invulnerability paces it.
+    if (inLava && !dying) damage(LAVA_DAMAGE, pos, 0.0f);
 
     if (!dying) {
         aiTick(ctx);
@@ -149,6 +156,7 @@ void Mob::tick(MobContext& ctx) {
     if (rel < -75.0f) yaw = wrapDegrees(headYaw + 75.0f);
 
     customTick(ctx);
+    fireTick();
 
     if (hurtTicks > 0) --hurtTicks;
     if (invulnerableTicks > 0) --invulnerableTicks;
@@ -178,11 +186,57 @@ void Mob::tick(MobContext& ctx) {
     }
 }
 
+void Mob::fireTick() {
+    if (inWater) {
+        fire.extinguish();
+    } else if (inLava && !dying) {
+        fire.ignite(LAVA_FIRE_TICKS);
+    }
+    // No knockback; i-frames from a recent hit can swallow one tick of
+    // fire damage, as in Minecraft.
+    if (float dmg = fire.tick(); dmg > 0.0f) damage(dmg, pos, 0.0f);
+}
+
+namespace {
+
+const glm::vec3 FLAME_ORANGE(1.0f, 0.50f, 0.08f);
+const glm::vec3 FLAME_YELLOW(1.0f, 0.82f, 0.22f);
+
+// Flame anchors around the hitbox, spread over front/back/sides from the
+// bottom to the top: x/z in half-widths, y as a fraction of the height.
+// The 4th component is a phase offset so the licks don't rise in sync.
+constexpr float FLAME_ANCHORS[Mob::FLAME_COUNT][4] = {
+    {-0.93f, 0.15f, 0.53f, 0.00f}, {0.87f, 0.28f, -0.60f, 0.35f}, {0.20f, 0.49f, 0.67f, 0.70f},
+    {-0.80f, 0.62f, -0.53f, 0.15f}, {0.90f, 0.74f, 0.40f, 0.55f}, {-0.17f, 0.95f, -0.33f, 0.85f},
+};
+
+constexpr float FLAME_RISE = 0.13f; // fraction of the height a lick climbs before it resets
+constexpr float FLAME_RATE = 0.12f; // cycles per tick (~2.4 / s)
+constexpr float ZOMBIE_HEIGHT = 1.95f; // flames are sized for this, shrunk for small mobs
+
+} // namespace
+
+std::array<Mob::FlameBox, Mob::FLAME_COUNT> Mob::flameBoxes(float partialTick) const {
+    std::array<FlameBox, FLAME_COUNT> out{};
+    float size = std::clamp(height / ZOMBIE_HEIGHT, 0.5f, 1.0f);
+    float t = static_cast<float>(ageTicks) + partialTick;
+    for (int i = 0; i < FLAME_COUNT; ++i) {
+        const float* a = FLAME_ANCHORS[i];
+        float cycle = t * FLAME_RATE + a[3];
+        float phase = cycle - std::floor(cycle); // 0..1 rise, then reset
+        out[i].center = {a[0] * halfWidth, (a[1] + phase * FLAME_RISE) * height, a[2] * halfWidth};
+        out[i].halfSize = glm::vec3(0.09f, 0.14f, 0.09f) * size;
+        out[i].color = (i % 2 == 0) ? FLAME_ORANGE : FLAME_YELLOW;
+    }
+    return out;
+}
+
 void Mob::updateWater(MobContext& ctx) {
     glm::ivec3 feet = MobContext::blockAtPos(pos + glm::vec3(0.0f, 0.1f, 0.0f));
     glm::ivec3 mid = MobContext::blockAtPos(center());
     inWater = ctx.isWater(feet.x, feet.y, feet.z) || ctx.isWater(mid.x, mid.y, mid.z);
-    if (inWater) fallDistance = 0.0f;
+    inLava = ctx.isLava(feet.x, feet.y, feet.z) || ctx.isLava(mid.x, mid.y, mid.z);
+    if (inLiquid()) fallDistance = 0.0f;
 }
 
 bool Mob::dropAhead(MobContext& ctx, glm::vec3 dir) const {
@@ -191,7 +245,9 @@ bool Mob::dropAhead(MobContext& ctx, glm::vec3 dir) const {
     int feetY = MobContext::blockAtPos(pos).y;
     // Solid at feet level = a ledge to step onto, not a drop.
     if (ctx.isSolid(b.x, feetY, b.z)) return false;
+    if (ctx.isLava(b.x, feetY, b.z)) return true; // lava ahead: treat like a cliff
     for (int y = feetY - 1; y >= feetY - 4; --y) {
+        if (ctx.isLava(b.x, y, b.z)) return true;
         if (ctx.isWater(b.x, y, b.z)) return true;
         if (ctx.isSolid(b.x, y, b.z)) return (feetY - 1 - y) > 3;
     }
@@ -220,14 +276,16 @@ void Mob::physicsTick(MobContext& ctx) {
     glm::vec3 desired = dying ? glm::vec3(0.0f) : steeringVelocity(ctx);
     bool moving = glm::dot(desired, desired) > 1e-8f;
 
-    if (inWater) {
-        // Half-speed swimming; float toward the surface while the body
-        // center is submerged.
-        constexpr float a = (1.0f - WATER_SLIP) / WATER_SLIP * 0.5f;
+    if (inLiquid()) {
+        // Swimming (half speed in water, slower in lava); float toward the
+        // surface while the body center is submerged.
+        float slip = inLava ? LAVA_SLIP : WATER_SLIP;
+        float a = (1.0f - slip) / slip * 0.5f;
         velocity.x += desired.x * a;
         velocity.z += desired.z * a;
         glm::ivec3 c = MobContext::blockAtPos(pos + glm::vec3(0.0f, height * 0.6f, 0.0f));
-        if (!dying && floatsInWater() && ctx.isWater(c.x, c.y, c.z)) velocity.y += SWIM_UP;
+        bool submerged = ctx.isWater(c.x, c.y, c.z) || ctx.isLava(c.x, c.y, c.z);
+        if (!dying && floatsInWater() && submerged) velocity.y += SWIM_UP;
         // Climb out onto a shore ledge.
         if (!dying && moving && horizontalCollision) velocity.y = std::max(velocity.y, 0.3f);
     } else {
@@ -267,7 +325,11 @@ void Mob::physicsTick(MobContext& ctx) {
 
     moveWithCollision(ctx, velocity);
 
-    if (inWater) {
+    if (inLava) {
+        velocity.x *= LAVA_SLIP;
+        velocity.z *= LAVA_SLIP;
+        velocity.y = velocity.y * LAVA_SLIP_Y - WATER_GRAVITY;
+    } else if (inWater) {
         velocity *= WATER_SLIP;
         velocity.y -= WATER_GRAVITY;
     } else {
@@ -316,14 +378,14 @@ void Mob::moveWithCollision(MobContext& ctx, glm::vec3 delta) {
         if (!wasOnGround || fallDistance > 0.0f) {
             // Count the landing tick's own drop so fallDistance is the true
             // height fallen (same as the player's Camera::landedFall).
-            if (dy < 0.0f && !inWater) fallDistance -= dy;
+            if (dy < 0.0f && !inLiquid()) fallDistance -= dy;
             // minecraft.wiki: floor((distance - safe_fall_distance) * multiplier);
             // epsilon as in PlayerHealth::fallDamage.
             float dmg = std::floor((fallDistance - SAFE_FALL) * fallDamageMultiplier() + 1e-3f);
-            if (dmg > 0.0f && !inWater) damage(dmg, pos, 0.0f);
+            if (dmg > 0.0f && !inLiquid()) damage(dmg, pos, 0.0f);
         }
         fallDistance = 0.0f;
-    } else if (dy < 0.0f && !inWater) {
+    } else if (dy < 0.0f && !inLiquid()) {
         fallDistance -= dy;
     }
 }

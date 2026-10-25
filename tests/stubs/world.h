@@ -21,6 +21,9 @@ class World {
     World() : chunkManager(new ChunkManager()) {}
     ~World() { delete chunkManager; }
 
+    void beginLightBatch() const {}
+    void endLightBatch() const {}
+
     void setBlock(int x, int y, int z, block_type type, uint8_t waterLevel = 0) const {
         if (y < 0 || y >= CHUNK_HEIGHT) return;
         int cx = worldToChunk(x), cz = worldToChunk(z);

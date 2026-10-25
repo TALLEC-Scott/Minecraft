@@ -1,6 +1,7 @@
 #include "world.h"
 #include "entity_manager.h"
 #include "frustum.h"
+#include "lava_effects.h"
 #include "light_data.h"
 #include "light_propagation.h"
 #include "mob_manager.h"
@@ -19,6 +20,7 @@ World::World(unsigned int seed) : seed(seed) {
     this->waterSimulator = new WaterSimulator(this);
     this->entityManager = new EntityManager();
     this->particles = new ParticleSystem();
+    this->lavaEffects = new LavaEffects();
     this->mobManager = new MobManager(this, seed);
 }
 
@@ -58,9 +60,29 @@ void World::setBlock(int x, int y, int z, block_type type, uint8_t waterLevel) c
     // setBlockType marks only the affected section (+ boundary neighbors)
     // dirty via markSectionDirty. Don't call markDirty() here — that would
     // set ALL sections dirty and defeat the incremental rebuild.
-    chunk->setBlockType(lx, y, lz, type);
-    chunk->setWaterLevel(lx, y, lz, waterLevel);
+    block_type oldType = chunk->getBlockType(lx, y, lz);
+    if (hasFlag(type, BF_OPAQUE) && !hasFlag(oldType, BF_OPAQUE)) {
+        // Liquid hardening into stone / cobblestone / obsidian: placeBlock
+        // also shades the sky light below, as a placed block would.
+        chunk->placeBlock(lx, y, lz, type);
+    } else {
+        chunk->setBlockType(lx, y, lz, type);
+        chunk->setWaterLevel(lx, y, lz, waterLevel);
+    }
     markBorderNeighborsDirty(chunkManager, cx, cz, lx, y, lz);
+    // Lava that flows in, drains away or hardens adds / takes its light.
+    if (oldType == type) return;
+    if (lightBatching)
+        pendingLight.push_back({x, y, z, oldType, type});
+    else
+        relightBlockChange(chunkManager, x, y, z, oldType, type);
+}
+
+void World::endLightBatch() const {
+    lightBatching = false;
+    if (pendingLight.empty()) return;
+    relightBlockChanges(chunkManager, pendingLight);
+    pendingLight.clear();
 }
 
 void World::destroyBlock(glm::vec3 position) const {
@@ -120,19 +142,19 @@ void World::placeBlock(glm::ivec3 position, block_type type) const {
 
     auto chunk = this->chunkManager->getChunk(chunkX, chunkZ);
     if (!chunk) return;
+    // Placing goes into air or, since aiming passes through liquids, into
+    // water or lava: whatever was there takes its light with it.
+    block_type oldType = chunk->getBlockType(lx, by, lz);
     chunk->placeBlock(lx, by, lz, type);
     markBorderNeighborsDirty(chunkManager, chunkX, chunkZ, lx, by, lz);
 
-    // Flood block light in world space, crossing chunk boundaries
-    uint8_t emission = getBlockLightEmission(type);
-    if (emission > 0) {
-        floodBlockLight(chunkManager, bx, by, bz, emission);
-    }
+    // Block light in world space, crossing chunk boundaries
+    relightBlockChange(chunkManager, bx, by, bz, oldType, type);
 
     // Wake the water simulator so placed water sources spread, and so that
     // any adjacent water reacts to a newly-placed solid block (it may now
     // be blocked off from flowing). destroyBlock has the symmetric call.
-    if (type == WATER) {
+    if (hasFlag(type, BF_LIQUID)) {
         waterSimulator->activate(bx, by, bz);
     }
     waterSimulator->activateNeighbors(bx, by, bz);
@@ -140,6 +162,7 @@ void World::placeBlock(glm::ivec3 position, block_type type) const {
 
 World::~World() {
     delete this->mobManager;
+    delete this->lavaEffects;
     delete this->particles;
     delete this->entityManager;
     delete this->waterSimulator;
@@ -314,6 +337,10 @@ void World::update(glm::vec3 cameraPosition, float dt, double now) const {
         this->waterSimulator->updateAmbient(cameraPosition);
     }
     {
+        ZoneScopedN("Lava::effects");
+        this->lavaEffects->update(*this, cameraPosition, dt);
+    }
+    {
         ZoneScopedN("Entities::tick");
         this->entityManager->tick(const_cast<World*>(this), dt, now);
     }
@@ -366,7 +393,7 @@ void World::explode(glm::vec3 center, float power, double now) const {
                 block_type t = b->getType();
                 if (t == AIR) continue;
                 if (t == BEDROCK) continue; // indestructible
-                if (t == WATER) continue;   // don't consume liquid
+                if (hasFlag(t, BF_LIQUID)) continue; // don't consume water or lava
                 if (t == TNT) {
                     // Chain reaction — replace with a short-fused primed entity.
                     // Mirror igniteTnt()'s full transition: light flood +
@@ -434,7 +461,7 @@ bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::i
                 int lx = worldToLocal(pos.x, chunkX);
                 int lz = worldToLocal(pos.z, chunkZ);
                 Cube* block = chunk->getBlock(lx, pos.y, lz);
-                if (block && block->getType() != AIR && block->getType() != WATER) {
+                if (block && block->getType() != AIR && !hasFlag(block->getType(), BF_LIQUID)) {
                     hitPos = pos;
                     prevPos = prev;
                     return true;
