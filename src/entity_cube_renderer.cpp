@@ -122,13 +122,21 @@ void EntityCubeRenderer::drawTnt(const Shader& shader, glm::mat4 /*vp*/, glm::ve
     shader.setFloat("entityTint", 1.0f);
 }
 
-void EntityCubeRenderer::drawBlock(const Shader& shader, const glm::mat4& model, block_type type) {
-    BlockMesh& mesh = blockMeshes[static_cast<size_t>(type)];
-    if (!mesh.vao) buildCube(type, mesh.vao, mesh.vbo, mesh.ebo);
+void EntityCubeRenderer::drawBlock(const Shader& shader, const glm::mat4& model, block_type type, float packedLight) {
+    auto idx = static_cast<size_t>(type);
+    if (idx >= blockMeshes.size()) return;
+    BlockMesh& mesh = blockMeshes[idx];
+    if (!mesh.vao) {
+        buildCube(type, mesh.vao, mesh.vbo, mesh.ebo);
+        // Light comes from the holder's position, set per draw below.
+        glBindVertexArray(mesh.vao);
+        glDisableVertexAttribArray(5);
+    }
     shader.setMat4("model", model);
     shader.setFloat("entityTint", 1.0f);
     shader.setInt("materialType", 0);
     glBindVertexArray(mesh.vao);
+    glVertexAttrib1f(5, packedLight);
     glDrawElements(GL_TRIANGLES, NUM_INDICES, GL_UNSIGNED_INT, nullptr);
     glBindVertexArray(0);
 }

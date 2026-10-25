@@ -8,7 +8,7 @@
 
 namespace netp {
 
-// 2: PlayerState carries the held item (peers on different versions refuse
+// 2: PlayerState carries the held item + flags (peers on different versions refuse
 //    each other at Hello instead of misreading PlayerState).
 constexpr uint8_t PROTOCOL_VERSION = 2;
 
@@ -44,7 +44,9 @@ struct PlayerStateMsg {
     float yaw = 0.0f;
     float pitch = 0.0f;
     uint16_t heldItem = 0; // ItemId (item.h) in the selected hotbar slot
+    uint8_t flags = 0;     // PLAYER_FLAG_* bits
 };
+inline constexpr uint8_t PLAYER_FLAG_DEAD = 0x01; // on the death screen: not hittable
 
 struct PlaceIntentMsg {
     glm::ivec3 pos{0};

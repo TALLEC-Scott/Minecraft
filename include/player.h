@@ -68,9 +68,7 @@ class Player {
 
     // --- Health & combat ---
     // Minecraft creative reach: 5 blocks for mobs, same as blocks (REACH).
-    static constexpr float ATTACK_REACH = 5.0f;   // melee reach (blocks from the eye)
-    static constexpr float PVP_HALF_WIDTH = 0.3f; // remote-player hitbox: Minecraft's 0.6 × 1.8
-    static constexpr float PVP_HEIGHT = 1.8f;
+    static constexpr float ATTACK_REACH = 5.0f;     // melee reach (blocks from the eye)
     static constexpr float HURT_KNOCKBACK = 8.0f;   // blocks / second, decays in Camera
 
     const PlayerHealth& getHealth() const { return health; }

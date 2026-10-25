@@ -18,5 +18,6 @@ struct ItemMeshVertex {
 };
 
 // `rgba` is width*height*4 bytes, top row first (stb_image without flip).
-// Pixels with alpha < 128 are empty. Returns 3 vertices per triangle.
+// Pixels with alpha < 128 are empty. Returns 3 vertices per triangle,
+// wound clockwise seen from outside (the game's glFrontFace(GL_CW)).
 std::vector<ItemMeshVertex> extrudeSprite(const uint8_t* rgba, int width, int height);

@@ -13,6 +13,15 @@
 
 class Shader;
 
+// How a held item is lit. Defaults suit first person (view space, no fog).
+struct ItemShading {
+    glm::vec3 lightTint{1.0f};          // sun/moon/sky/block light at the item
+    glm::vec3 keyDir{0.3f, 0.8f, 0.5f}; // key light, same space as the model output
+    glm::vec3 cameraPos{0.0f};          // fog origin, same space
+    glm::vec3 fogColor{0.0f};
+    float fogStart = 1e9f, fogEnd = 2e9f; // far away: no fog
+};
+
 class HeldItemModel {
   public:
     HeldItemModel() = default;
@@ -23,8 +32,9 @@ class HeldItemModel {
     // Builds the mesh from the sprite PNG + loads the shader on the first
     // call; later calls are no-ops. False (draws nothing) if it failed.
     bool load(const std::string& spritePath);
-    // `lightTint` is the first-person arm light (sun/moon/sky at the camera).
-    void draw(const glm::mat4& projection, const glm::mat4& model, glm::vec3 lightTint) const;
+    // `projection` × `model` must reach clip space: view-space matrices in
+    // first person, viewProjection + world model in third.
+    void draw(const glm::mat4& projection, const glm::mat4& model, const ItemShading& shading) const;
 
   private:
     bool tried_ = false;

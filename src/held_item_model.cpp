@@ -49,18 +49,18 @@ bool HeldItemModel::load(const std::string& spritePath) {
     return true;
 }
 
-void HeldItemModel::draw(const glm::mat4& projection, const glm::mat4& model, glm::vec3 lightTint) const {
+void HeldItemModel::draw(const glm::mat4& projection, const glm::mat4& model, const ItemShading& shading) const {
     if (vertexCount_ == 0) return;
     shader_->use();
     shader_->setMat4("projection", projection);
     shader_->setMat4("model", model);
-    shader_->setVec3("lightTint", lightTint);
-    // The slab is wound counter-clockwise, the world pass culls with
-    // clockwise fronts: draw unculled and restore the caller's state.
-    GLboolean culling = glIsEnabled(GL_CULL_FACE);
-    glDisable(GL_CULL_FACE);
+    shader_->setVec3("lightTint", shading.lightTint);
+    shader_->setVec3("keyDir", shading.keyDir);
+    shader_->setVec3("cameraPos", shading.cameraPos);
+    shader_->setVec3("fogColor", shading.fogColor);
+    shader_->setFloat("fogStart", shading.fogStart);
+    shader_->setFloat("fogEnd", shading.fogEnd);
     glBindVertexArray(vao_);
     glDrawArrays(GL_TRIANGLES, 0, vertexCount_);
     glBindVertexArray(0);
-    if (culling) glEnable(GL_CULL_FACE);
 }

@@ -52,6 +52,8 @@ enum block_type : uint8_t {
     DANDELION,
     POPPY
 };
+// Number of block_type values; keep POPPY (the last one) in sync.
+inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(POPPY) + 1;
 
 enum Biome { BIOME_OCEAN, BIOME_BEACH, BIOME_PLAINS, BIOME_FOREST, BIOME_DESERT, BIOME_TUNDRA, BIOME_COUNT };
 
