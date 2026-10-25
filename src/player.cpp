@@ -1,4 +1,5 @@
 #include "player.h"
+#include "melee.h"
 #include "collision.h"
 #include "mob_manager.h"
 #include "mobs/sheep.h"
@@ -6,6 +7,7 @@
 #include "particle_system.h"
 #include "world.h"
 #include "ChunkManager.h"
+#include <algorithm>
 #include <cmath>
 #include <random>
 
@@ -181,9 +183,12 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     if (leftDown && !leftClickHeld && world) {
         isPunching = true;
         punchStartTime = glfwGetTime();
+        float strength =
+            melee::attackStrength(punchStartTime - lastSwingTime, meleeStats(getSelectedItem()).cooldownSeconds);
+        lastSwingTime = punchStartTime;
         // Mobs are tested before blocks: a punch that lands on a mob never
         // also breaks the block behind it.
-        if (!tryAttackMob(world) && hasHighlight) {
+        if (!tryAttackMob(world, strength) && hasHighlight) {
             Cube* block = world->getBlock(targeted.x, targeted.y, targeted.z);
             if (block) playBreakSound(block->getType());
             // Optimistic local apply — the host's DestroyApply echo will
@@ -208,7 +213,7 @@ void Player::handleInput(GLFWwindow* window, World* world) {
             world->igniteTnt(targeted, glfwGetTime());
             isPunching = true;
             punchStartTime = glfwGetTime();
-        } else if (hotbar[selectedSlot] != AIR) {
+        } else if (getSelectedBlockType() != AIR) {
             glm::vec3 camPos = camera.getPosition();
             int px = (int)std::floor(camPos.x);
             int pzCoord = (int)std::floor(camPos.z);
@@ -218,14 +223,14 @@ void Player::handleInput(GLFWwindow* window, World* world) {
             bool blocked = (placementPos.x == px && placementPos.z == pzCoord &&
                             (placementPos.y == pyHead || placementPos.y == pyFeet));
             if (!blocked) {
-                playBreakSound(hotbar[selectedSlot]);
+                playBreakSound(getSelectedBlockType());
                 // Client-side prediction: apply locally, then send the
                 // intent. The host's PlaceApply echo will idempotently
                 // re-apply the same blockType, so the prediction is
                 // transparent on the happy path.
                 if (netSession)
-                    netSession->notifyLocalPlace(placementPos, static_cast<uint8_t>(hotbar[selectedSlot]));
-                world->placeBlock(placementPos, hotbar[selectedSlot]);
+                    netSession->notifyLocalPlace(placementPos, static_cast<uint8_t>(getSelectedBlockType()));
+                world->placeBlock(placementPos, getSelectedBlockType());
                 // Arm swing (same feedback as left-click) + outline pop at placement pos
                 isPunching = true;
                 punchStartTime = glfwGetTime();
@@ -237,7 +242,7 @@ void Player::handleInput(GLFWwindow* window, World* world) {
     rightClickHeld = rightDown;
 }
 
-bool Player::tryAttackMob(World* world) {
+bool Player::tryAttackMob(World* world, float strength) {
     if (!world->mobManager) return false;
     glm::vec3 eye = camera.getPosition();
     glm::vec3 dir = camera.getFront();
@@ -252,13 +257,9 @@ bool Player::tryAttackMob(World* world) {
             blockDist < mobDist)
             return false;
     }
-    double now = glfwGetTime();
-    if (now - lastAttackTime < ATTACK_COOLDOWN) return true; // swing only, still no block break
-    lastAttackTime = now;
-    float dmg = FIST_DAMAGE;
-    // Minecraft-style critical: hitting while falling.
-    if (camera.isWalkMode() && !camera.isOnGround() && !camera.isInWater() && camera.getVelocityY() < 0.0f)
-        dmg *= 1.5f;
+    // Minecraft-style critical: a charged hit while falling.
+    bool falling = camera.isWalkMode() && !camera.isOnGround() && !camera.isInWater() && camera.getVelocityY() < 0.0f;
+    float dmg = melee::damage(meleeStats(getSelectedItem()).damage, strength, falling);
     if (world->mobManager->attackMob(*mob, dmg, eye)) playHitSound();
     return true;
 }
@@ -512,6 +513,11 @@ void Player::updateTargetedBlock(World* world) {
     glm::vec3 pos = camera.getPosition();
     glm::vec3 front = camera.getFront();
     hasHighlight = world->raycast(pos, front, REACH, targeted, placementPos);
+}
+
+float Player::getSwingProgress() const {
+    if (!isPunching) return 0.0f;
+    return std::clamp((float)((glfwGetTime() - punchStartTime) / PUNCH_DURATION), 0.0f, 1.0f);
 }
 
 float Player::getPunchSwingAngle() const {
