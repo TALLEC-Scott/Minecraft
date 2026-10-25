@@ -44,6 +44,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # sounds.data packages assets/Sounds; real files, not LFS pointers.
+      - name: Fetch LFS sounds
+        run: git lfs pull --include="assets/Sounds/**"
+
       - uses: mymindstorm/setup-emsdk@v14
 
       - name: Configure
@@ -61,3 +65,5 @@ jobs:
             build_web/minecraft.js
             build_web/minecraft.wasm
             build_web/minecraft.data
+            build_web/sounds.js
+            build_web/sounds.data

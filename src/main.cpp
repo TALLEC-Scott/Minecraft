@@ -227,6 +227,31 @@ static Shader* g_shader = nullptr;
 static UIRenderer* g_uiRenderer = nullptr;
 static Menu* g_menu = nullptr;
 static ChatOverlay* g_chat = nullptr;
+
+// Sound files exist on disk from the start on desktop. On the web they
+// arrive after startup: web/shell.html fetches sounds.data in the
+// background once the game is running. Until then no sound is loaded and
+// every play call is a silent no-op.
+static bool g_soundsLoaded = false;
+
+static void loadWorldSounds(World& world, ma_engine* engine) {
+    world.waterSimulator->initAudio(engine);
+    world.entityManager->initAudio(engine);
+    world.mobManager->initAudio(engine);
+}
+
+// Polled every frame; loads the menu, player and current-world sounds the
+// first time the files are present. Worlds created later load their own
+// sounds in switchToWorld.
+static void loadSoundsWhenReady() {
+    if (g_soundsLoaded || !g_menu || !std::filesystem::exists("assets/Sounds/click.ogg")) return;
+    g_soundsLoaded = true;
+    std::cout << "Sounds loaded" << std::endl;
+    ma_engine* engine = g_menu->getAudioEngine();
+    g_menu->loadSounds();
+    player.initAudio(engine);
+    if (w) loadWorldSounds(*w, engine);
+}
 static GLuint sunVAO, sunVBO, sunEBO;
 static GLuint cloudVAO, cloudVBO, cloudEBO;
 static GLuint starVAO, starVBO;
@@ -790,8 +815,7 @@ int main(int argc, char* argv[]) {
     chatHistory.load();
     chatObj.setHistory(&chatHistory);
 
-    // Share audio engine with player for footstep sounds
-    player.initAudio(menuObj.getAudioEngine());
+    loadSoundsWhenReady();
     menuObj.startMenuMusic();
 
     {
@@ -949,9 +973,7 @@ int main(int argc, char* argv[]) {
             loadOrBakeCloudPattern(folder, seed);
             world.emplace(seed);
             world->chunkManager->setWorldSave(&*worldSave);
-            world->waterSimulator->initAudio(menuObj.getAudioEngine());
-            world->entityManager->initAudio(menuObj.getAudioEngine());
-            world->mobManager->initAudio(menuObj.getAudioEngine());
+            if (g_soundsLoaded) loadWorldSounds(*world, menuObj.getAudioEngine());
             world->mobManager->setDamagePlayerCallback(
                 [](float amount, glm::vec3 from) { player.hurt(amount, from); });
             world->chunkManager->setRenderDistance(gameSettings.renderDistance);
@@ -1724,6 +1746,7 @@ int main(int argc, char* argv[]) {
             Shader& shaderProgram = *g_shader;
             UIRenderer& uiRenderer = *g_uiRenderer;
             Menu& menu = *g_menu;
+            loadSoundsWhenReady();
 
             // Menu / loading / pause states call glfwWaitEventsTimeout below
             // instead of glfwPollEvents, so the event loop idles up to a

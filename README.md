@@ -133,7 +133,7 @@ make -C build_win -j$(nproc)
 python3 serve_web.py 8080     # then open http://localhost:8080/minecraft.html
 ```
 
-Shaders are patched at runtime from `#version 330 core` to `#version 300 es`. WASM `INITIAL_MEMORY=256MB` with `ALLOW_MEMORY_GROWTH=1`. Chunk generation and meshing run on pthreads (Web Workers), so the page must be served cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: require-corp`); `serve_web.py` sends both. Assets are bundled via `--preload-file`.
+Shaders are patched at runtime from `#version 330 core` to `#version 300 es`. WASM `INITIAL_MEMORY=256MB` with `ALLOW_MEMORY_GROWTH=1`. Chunk generation and meshing run on pthreads (Web Workers), so the page must be served cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: require-corp`); `serve_web.py` sends both. Assets are bundled via `--preload-file`, except `assets/Sounds`, which ships as a separate `sounds.data` package fetched in the background after the game starts, so the menu appears without waiting for audio.
 
 ### CMake options
 
