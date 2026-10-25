@@ -240,6 +240,22 @@ static void loadWorldSounds(World& world, ma_engine* engine) {
     world.mobManager->initAudio(engine);
 }
 
+// Fraction of sounds.data downloaded (from file_packager's
+// Module.dataFileDownloads), or -1 once the sounds are loaded / on desktop.
+static float soundsDownloadProgress() {
+    if (g_soundsLoaded) return -1.0f;
+#ifdef __EMSCRIPTEN__
+    return (float)EM_ASM_DOUBLE({
+        var d = Module['dataFileDownloads'] || {};
+        for (var k in d)
+            if (k.indexOf('sounds.data') >= 0 && d[k].total > 0) return d[k].loaded / d[k].total;
+        return 0;
+    });
+#else
+    return -1.0f;
+#endif
+}
+
 // Polled every frame; loads the menu, player and current-world sounds the
 // first time the files are present. Worlds created later load their own
 // sounds in switchToWorld.
@@ -1765,6 +1781,7 @@ int main(int argc, char* argv[]) {
             if (currentState == GameState::MainMenu) {
                 glClearColor(0.2f, 0.15f, 0.1f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                menu.setSoundsProgress(soundsDownloadProgress());
                 GameState next = menu.drawMainMenu(uiRenderer, windowWidth, windowHeight, window);
                 if (next == GameState::WorldList) menu.refreshWorldList();
                 if (next == GameState::Settings) applySettings();
