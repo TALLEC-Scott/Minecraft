@@ -1,11 +1,15 @@
-#!/usr/bin/env python3
-"""Item wiki generator.
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = []
+# ///
+"""Item wiki generator (standard library only; run with `uv run`).
 
 Reads the JSON that scripts/item_wiki (item_wiki.cpp) dumps from the game's
 own tables and writes docs/wiki/Items.md, plus a self-contained HTML page
 (sprites embedded) when --html is given.
 
-usage: item_wiki.py <items.json> [--html out.html [--standalone]]
+usage: uv run scripts/item_wiki.py <items.json> [--html out.html [--standalone]]
 --standalone writes a complete HTML document (for serving on the site,
 e.g. /wiki.html); without it the page body suits an embedding viewer.
 Run from the project root (it reads src/texture_array.cpp for block icons).
@@ -77,7 +81,7 @@ def write_markdown(data, layers, out):
         "",
         "```bash",
         "g++ -std=c++20 -I include -I Libraries/include scripts/item_wiki.cpp -o scripts/item_wiki",
-        "./scripts/item_wiki > /tmp/items.json && python3 scripts/item_wiki.py /tmp/items.json",
+        "./scripts/item_wiki > /tmp/items.json && uv run scripts/item_wiki.py /tmp/items.json",
         "```",
         "",
         "Break times follow Minecraft's rules: a block's hardness, sped up by the right tool",
