@@ -37,6 +37,8 @@ class World {
     // hang on); otherwise `placedState` (if given) gets the state used.
     bool placeBlock(glm::ivec3 position, block_type type, uint8_t state = 0xFF, uint8_t* placedState = nullptr) const;
     uint8_t torchStateAt(glm::ivec3 p) const;
+    // Sides (vine.h) a vine placed at p without a state takes.
+    uint8_t vineStateAt(glm::ivec3 p) const;
     void setBlock(int x, int y, int z, block_type type, uint8_t waterLevel = 0) const;
     // Between these, setBlock defers its light updates and the end call
     // relights them all in one pass (WaterSimulator wraps each tick).

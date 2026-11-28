@@ -82,11 +82,18 @@ void main() {
     // axis-aligned box normal pointing the right way even under
     // non-uniform scale; the fragment shader renormalizes.
     Normal = mat3(model) * NORMALS[int(aNormalIdx)];
-    // Wind sway: leaves (oak 10, spruce 47, birch 50, acacia 67, autumn 71 / 72) sway every vertex; tall
+    // Vines (77) are meshed on the face of the block they cover; lift them
+    // 1/16 block off it along their normal (vine.h INSET), which the packed
+    // half-block positions can't express.
+    bool isVine = abs(aTexLayer - 77.0) < 0.5;
+    if (isVine) pos += NORMALS[int(aNormalIdx)] * 0.0625;
+    // Wind sway: leaves (oak 10, spruce 47, birch 50, acacia 67, autumn 71 / 72, jungle 76) and vines
+    // (77, so they move with the leaves they hang on) sway every vertex; tall
     // grass (24) and fern (51) sway only their top verts (v=1 in UV) so the
     // stem stays anchored to the ground.
     float isLeaf = float(abs(aTexLayer - 10.0) < 0.5 || abs(aTexLayer - 47.0) < 0.5 || abs(aTexLayer - 50.0) < 0.5 ||
-                         abs(aTexLayer - 67.0) < 0.5 || (aTexLayer > 70.5 && aTexLayer < 72.5));
+                         abs(aTexLayer - 67.0) < 0.5 || (aTexLayer > 70.5 && aTexLayer < 72.5) ||
+                         (aTexLayer > 75.5 && aTexLayer < 77.5));
     float isTallGrass = float(abs(aTexLayer - 24.0) < 0.5 || abs(aTexLayer - 51.0) < 0.5);
     float swayAmount = isLeaf + isTallGrass * aTexCoord.y;
     pos.x += swayAmount * leafSway.x;

@@ -43,6 +43,13 @@ struct TreeSite {
     // Logs: overwrite whatever is there (a trunk wins over a neighbour's
     // leaves), relative to the trunk column.
     void log(int di, int y, int dk, block_type t) const;
+    // A vine chain hanging from (di, y, dk) down: VINE cells covering
+    // `sides` (vine.h bits) in up to `len` cells, stopping at the first cell
+    // that isn't air (or a vine, which gains the sides) and always leaving
+    // at least one free cell above whatever is below (ground, water, a
+    // plant). Reads only that column, so it comes out the same from both
+    // chunks of a border. Returns how many cells it wrote.
+    int vine(int di, int y, int dk, uint8_t sides, int len) const;
     // Marks the columns within `radius` of the trunk as shaded, so ground
     // cover and features skip them. Call once the tree is committed.
     void claim(int radius) const;

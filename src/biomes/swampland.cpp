@@ -1,10 +1,11 @@
 // Swampland: low, flat, wet ground under murky olive grass. Shallow pools
 // (one block of still water, some with a clay floor) are cut into the
-// ground, wide swamp oaks trail strands of leaves from their canopy edge,
-// and the open ground is thick with tall grass and ferns, with patches of
+// ground, swamp oaks spread a wide canopy high enough to walk under and
+// trail vines from its edge, and the open ground is thick with tall grass (ferns only here and there), with patches of
 // blue orchids.
 
 #include "biome_defs.h"
+#include "vine.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -132,43 +133,50 @@ void decorate(const FeatureSite& s) {
 }
 
 // --- Swamp oak -------------------------------------------------------------
-// Minecraft's swamp tree: a short trunk under a wide, flat canopy, with
-// strands of leaves hanging from the canopy rim.
+// Minecraft's swamp tree (WorldGenSwamp): a 5..8 block trunk whose leaves
+// fill only the top four layers, from top - 3 (two blocks or more above the
+// ground, so you walk under the canopy) to one above the trunk: radius 3,
+// 3, 2, 2, outer-ring corners dropped at random (always on the top layer).
+// Vines hang 1..4 blocks from the sides of the leaves, as in Minecraft.
 
 constexpr int SWAMP_OAK_RADIUS = 3;
+constexpr uint64_t SALT_CORNER = 0x5357'4153, SALT_VINE = 0x5357'4154;
+
+// Leaf layer dy (-3..0, relative to the layer over the trunk) at (dx, dz).
+bool swampLeaf(const TreeSite& s, int dy, int dx, int dz) {
+    const int r = dy <= -2 ? 3 : 2;
+    const int ax = std::abs(dx), az = std::abs(dz);
+    if (ax > r || az > r) return false;
+    if (ax == r && az == r) return dy != 0 && mix(s.bits, dx * 8 + dz, dy, SALT_CORNER) % 2 == 0;
+    return true;
+}
 
 bool growTree(const TreeSite& s) {
-    const int trunkH = 4 + static_cast<int>((s.bits >> 8) % 3); // 4..6
-    const int top = s.surface + trunkH;
-    if (!s.fits(top + 2)) return false;
+    const int trunkH = 5 + static_cast<int>((s.bits >> 8) % 4); // 5..8 logs
+    const int crownTop = s.surface + trunkH + 1;                // the layer over the trunk
+    if (!s.fits(crownTop + 1)) return false;
     s.claim(SWAMP_OAK_RADIUS);
-    for (int y = s.surface + 1; y <= top; y++) s.log(0, y, 0, WOOD);
-    // Two wide layers (radius 3, corners cut), a radius-2 layer, a cap.
-    for (int ly = -2; ly <= 1; ly++) {
-        const int r = ly <= -1 ? 3 : ly == 0 ? 2 : 1;
-        for (int dx = -r; dx <= r; dx++)
-            for (int dz = -r; dz <= r; dz++) {
-                const int ax = std::abs(dx), az = std::abs(dz);
-                if (r >= 2 && ax == r && az == r) continue;                         // square corners
-                if (r == 3 && ax + az == 5 && ((s.bits >> (ax * 4 + az)) & 1)) continue; // ragged rim
-                if (r == 1 && ax + az == 2) continue;
-                s.leaf(dx, top + ly, dz, LEAVES);
+    for (int dy = -3; dy <= 0; dy++)
+        for (int dx = -3; dx <= 3; dx++)
+            for (int dz = -3; dz <= 3; dz++)
+                if (swampLeaf(s, dy, dx, dz)) s.leaf(dx, crownTop + dy, dz, LEAVES);
+    for (int y = s.surface + 1; y < crownTop; y++) s.log(0, y, 0, WOOD);
+    // Vines: each leaf side open to the air (outside its layer) gets one
+    // 1 time in 4, 1..4 long; TreeSite::vine keeps them off the ground.
+    for (int dy = -3; dy <= 0; dy++)
+        for (int dx = -3; dx <= 3; dx++)
+            for (int dz = -3; dz <= 3; dz++) {
+                if (!swampLeaf(s, dy, dx, dz)) continue;
+                for (int b = 0; b < 4; b++) {
+                    const int vx = dx + vine::SIDE[b][0], vz = dz + vine::SIDE[b][2];
+                    if (std::abs(vx) > biomegen::TREE_MAX_RADIUS || std::abs(vz) > biomegen::TREE_MAX_RADIUS) continue;
+                    if (swampLeaf(s, dy, vx, vz)) continue;
+                    const uint64_t h = mix(s.bits, vx * 16 + vz, dy * 4 + b, SALT_VINE);
+                    if (h % 4 != 0) continue;
+                    const auto side = static_cast<uint8_t>(1u << (b ^ 1)); // facing back at the leaf
+                    s.vine(vx, crownTop + dy, vz, side, 1 + static_cast<int>((h >> 8) % 4));
+                }
             }
-    }
-    // Strands: from rim cells of the bottom layer, 1..3 leaves hanging down,
-    // stopping two blocks above the ground.
-    const int lowest = top - 2;
-    uint64_t bits = s.bits;
-    for (int dx = -3; dx <= 3; dx++)
-        for (int dz = -3; dz <= 3; dz++) {
-            if (std::abs(dx) != 3 && std::abs(dz) != 3) continue;
-            if (std::abs(dx) == 3 && std::abs(dz) == 3) continue;
-            bits = bits * 6364136223846793005ULL + 1442695040888963407ULL;
-            const int roll = static_cast<int>((bits >> 33) % 100);
-            if (roll >= 45) continue;
-            const int len = 1 + roll % 3;
-            for (int d = 1; d <= len && lowest - d >= s.surface + 2; d++) s.leaf(dx, lowest - d, dz, LEAVES);
-        }
     return true;
 }
 
@@ -179,8 +187,8 @@ block_type groundCover(const GroundSite& g) {
     // Blue orchids grow in scattered patches, as in Minecraft swamps.
     const bool orchidPatch = mix(g.seed, floorDiv(g.wx, 8), floorDiv(g.wz, 8), SALT_ORCHID) % 100 < 22;
     if (orchidPatch && g.roll < 450) return BLUE_ORCHID;
-    if (g.roll < 2600) return TALL_GRASS;
-    if (g.roll < 3500) return FERN;
+    if (g.roll < 3300) return TALL_GRASS;
+    if (g.roll < 3450) return FERN; // rare: the fern sprite reads as a little sapling
     return AIR;
 }
 

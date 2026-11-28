@@ -1,5 +1,5 @@
 // Seasonal forest: warm, sunlit deciduous woods between the savanna and the
-// rainforest (Minecraft Beta's seasonal forest). Lighter than the Forest:
+// jungle (Minecraft Beta's seasonal forest). Lighter than the Forest:
 // oak and birch stands broken up by open clearings full of flowers, and a
 // touch of autumn: some crowns have turned red or orange among the green.
 //
@@ -217,7 +217,7 @@ const BiomeDef SEASONAL_FOREST_DEF = {
     0.45f, &seasonal_forest::growTree,
     &seasonal_forest::decorate,
     &seasonal_forest::groundCover,
-    // Warmer, yellower than the Forest: halfway between the rainforest's
+    // Warmer, yellower than the Forest: halfway between the jungle's
     // deep green and the savanna's straw.
     {1.00f, 1.03f, 0.80f}, // grass tint
     {0.92f, 1.03f, 0.62f}, // foliage tint (green oaks)

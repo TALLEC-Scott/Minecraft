@@ -92,7 +92,7 @@ TEST_F(ForestTest, FancyOaksAndFallenLogsAppear) {
                         // few blocks into the neighbouring biome.)
                         EXPECT_TRUE(c.biomes[x][z] == BIOME_FOREST || c.biomes[x][z] == BIOME_PLAINS ||
                                     c.biomes[x][z] == BIOME_SEASONAL_FOREST || c.biomes[x][z] == BIOME_TAIGA ||
-                                    c.biomes[x][z] == BIOME_SWAMPLAND || c.biomes[x][z] == BIOME_RAINFOREST);
+                                    c.biomes[x][z] == BIOME_SWAMPLAND || c.biomes[x][z] == BIOME_JUNGLE);
                         EXPECT_EQ(y, h + 1) << "fallen log off the ground";
                         // Run start: count the run along its axis.
                         const bool alongX = t == OAK_LOG_X;

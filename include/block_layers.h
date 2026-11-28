@@ -71,10 +71,13 @@ constexpr int ORANGE_AUTUMN_LEAVES_LAYER = RED_AUTUMN_LEAVES_LAYER + 1; // 72 (s
 constexpr int ORANGE_TULIP_LAYER = ORANGE_AUTUMN_LEAVES_LAYER + 1;
 constexpr int CLAY_LAYER = ORANGE_TULIP_LAYER + 1;
 constexpr int BLUE_ORCHID_LAYER = CLAY_LAYER + 1;
-constexpr int NUM_LAYERS = BLUE_ORCHID_LAYER + 1;
+constexpr int JUNGLE_LEAVES_LAYER = BLUE_ORCHID_LAYER + 1; // 76 (shaders: leaf cutout + sway, foliage tint)
+constexpr int VINE_LAYER = JUNGLE_LEAVES_LAYER + 1;         // 77 (shaders: inset, sway, foliage tint)
+constexpr int NUM_LAYERS = VINE_LAYER + 1;
 // The shaders hard-code these; keep frag.shd / vert.shd in step if they move.
 static_assert(SPRUCE_LEAVES_LAYER == 47 && BIRCH_LEAVES_LAYER == 50 && FERN_LAYER == 51 && ACACIA_LEAVES_LAYER == 67 &&
-              RED_AUTUMN_LEAVES_LAYER == 71 && ORANGE_AUTUMN_LEAVES_LAYER == 72);
+              RED_AUTUMN_LEAVES_LAYER == 71 && ORANGE_AUTUMN_LEAVES_LAYER == 72 && JUNGLE_LEAVES_LAYER == 76 &&
+              VINE_LAYER == 77);
 
 // Face-aware: grass uses different textures per face (top=grass,
 // bottom=dirt, sides=grass_side). Wood is top/bottom vs sides. Other
@@ -156,6 +159,8 @@ inline int layerForFace(block_type t, int face) {
     if (t == ORANGE_TULIP) return ORANGE_TULIP_LAYER;
     if (t == CLAY) return CLAY_LAYER;
     if (t == BLUE_ORCHID) return BLUE_ORCHID_LAYER;
+    if (t == JUNGLE_LEAVES) return JUNGLE_LEAVES_LAYER;
+    if (t == VINE) return VINE_LAYER;
     return static_cast<int>(t);
 }
 
@@ -194,6 +199,8 @@ inline int layerForType(block_type t) {
     if (t == ORANGE_TULIP) return ORANGE_TULIP_LAYER;
     if (t == CLAY) return CLAY_LAYER;
     if (t == BLUE_ORCHID) return BLUE_ORCHID_LAYER;
+    if (t == JUNGLE_LEAVES) return JUNGLE_LEAVES_LAYER;
+    if (t == VINE) return VINE_LAYER;
     return static_cast<int>(t);
 }
 
