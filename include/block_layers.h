@@ -62,7 +62,8 @@ constexpr int DEAD_BUSH_LAYER = SANDSTONE_BOTTOM_LAYER + 1; // plant sprite (sol
 constexpr int ACACIA_LOG_LAYER = DEAD_BUSH_LAYER + 1;
 constexpr int ACACIA_LOG_TOP_LAYER = ACACIA_LOG_LAYER + 1;
 constexpr int ACACIA_LEAVES_LAYER = ACACIA_LOG_TOP_LAYER + 1; // 67 (shaders: leaf cutout + sway; colour baked in)
-constexpr int NUM_LAYERS = ACACIA_LEAVES_LAYER + 1;
+constexpr int COARSE_DIRT_LAYER = ACACIA_LEAVES_LAYER + 1;
+constexpr int NUM_LAYERS = COARSE_DIRT_LAYER + 1;
 // The shaders hard-code these; keep frag.shd / vert.shd in step if they move.
 static_assert(SPRUCE_LEAVES_LAYER == 47 && BIRCH_LEAVES_LAYER == 50 && FERN_LAYER == 51 && ACACIA_LEAVES_LAYER == 67);
 
@@ -139,6 +140,7 @@ inline int layerForFace(block_type t, int face) {
     if (t == DEAD_BUSH) return DEAD_BUSH_LAYER;
     if (t == ACACIA_LOG) return (face == 4 || face == 5) ? ACACIA_LOG_TOP_LAYER : ACACIA_LOG_LAYER;
     if (t == ACACIA_LEAVES) return ACACIA_LEAVES_LAYER;
+    if (t == COARSE_DIRT) return COARSE_DIRT_LAYER;
     return static_cast<int>(t);
 }
 
@@ -170,6 +172,7 @@ inline int layerForType(block_type t) {
     if (t == DEAD_BUSH) return DEAD_BUSH_LAYER;
     if (t == ACACIA_LOG) return ACACIA_LOG_LAYER;
     if (t == ACACIA_LEAVES) return ACACIA_LEAVES_LAYER;
+    if (t == COARSE_DIRT) return COARSE_DIRT_LAYER;
     return static_cast<int>(t);
 }
 
