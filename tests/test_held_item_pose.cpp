@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include <gtest/gtest.h>
 
 #include "held_item_pose.h"
@@ -28,10 +30,11 @@ TEST(HeldItemPoseTest, SwingEndsWhereItStarted) {
 }
 
 TEST(HeldItemPoseTest, MidSwingFlicksTheItemDownAndInward) {
-    // Halfway through, Minecraft's hand has moved toward the screen center
-    // (-X) and a blade pointing up (+Y) now points forward/down.
-    glm::vec3 off = heldpose::swingOffset(0.5f);
-    EXPECT_LT(off.x, -0.3f);
+    // Early on the hand flicks toward the screen center (-X); halfway
+    // through it has dropped well below rest, and a blade pointing up (+Y)
+    // now points forward/down.
+    EXPECT_LT(heldpose::swingOffset(0.15f).x, -0.1f);
+    EXPECT_LT(heldpose::swingOffset(0.5f).y, -0.15f);
     glm::vec3 up = glm::vec3(heldpose::swingRotation(0.5f) * glm::vec4(0, 1, 0, 0));
     EXPECT_LT(up.y, 0.6f) << "blade tipped well past upright";
     EXPECT_LT(up.z, 0.0f) << "and toward the screen";
@@ -150,9 +153,41 @@ TEST(HeldItemPoseTest, PunchThrustsTheFistForwardAndBack) {
     EXPECT_LT(mid.x, rest.x) << "toward the center";
 }
 
-TEST(HeldItemPoseTest, SwungItemStaysOnScreen) {
-    for (float s : {0.15f, 0.3f, 0.5f, 0.75f}) {
-        glm::vec2 hand = ndc(apply(heldpose::itemHand(s, WIDE), {0, 0, 0}), WIDE);
-        EXPECT_GT(hand.y, -1.0f) << "swing " << s;
+namespace {
+
+// Screen extent of the held block's corners: (max x, min y) in NDC.
+glm::vec2 blockLowRight(float swing) {
+    glm::mat4 m = heldpose::itemHand(swing, WIDE) * heldpose::blockDisplay();
+    glm::vec2 lowRight(-10.0f, 10.0f);
+    for (int i = 0; i < 8; i++) {
+        glm::vec2 p = ndc(apply(m, {i & 1 ? 0.5f : -0.5f, i & 2 ? 0.5f : -0.5f, i & 4 ? 0.5f : -0.5f}), WIDE);
+        lowRight.x = std::max(lowRight.x, p.x);
+        lowRight.y = std::min(lowRight.y, p.y);
     }
+    return lowRight;
+}
+
+} // namespace
+
+TEST(HeldItemPoseTest, SwingCarriesTheItemPartlyOffTheLowerRight) {
+    // At rest the whole block is in view (a sliver below the edge at most)...
+    EXPECT_GT(blockLowRight(0.0f).y, -1.1f);
+    EXPECT_LT(blockLowRight(0.0f).x, 1.0f);
+    // ...mid-swing part of it is cut off by the bottom edge, on the right
+    // half of the screen, which sells the swing.
+    for (float s : {0.3f, 0.5f, 0.75f}) {
+        glm::vec2 lr = blockLowRight(s);
+        EXPECT_LT(lr.y, -1.1f) << "swing " << s;
+        EXPECT_GT(lr.x, 0.3f) << "swing " << s;
+    }
+    // Tools too: the sprite sinks past the bottom edge mid-swing.
+    for (float s : {0.3f, 0.5f}) {
+        glm::mat4 m = heldpose::itemHand(s, WIDE) * heldpose::spriteDisplay(false);
+        float lowest = 10.0f;
+        for (glm::vec3 c : {glm::vec3(0, 0, 0), glm::vec3(16, 0, 0), glm::vec3(0, 16, 0), glm::vec3(16, 16, 0)})
+            lowest = std::min(lowest, ndc(apply(m, c), WIDE).y);
+        EXPECT_LT(lowest, -1.0f) << "swing " << s;
+    }
+    // And it all comes back: the end of the swing is the rest pose.
+    expectNear(apply(heldpose::itemHand(1.0f, WIDE), {0, 0, 0}), apply(heldpose::itemHand(0.0f, WIDE), {0, 0, 0}));
 }

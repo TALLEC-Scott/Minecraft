@@ -45,12 +45,16 @@ inline float aspectScale(float aspect) {
 // Where the fist rests (view space, at REFERENCE_ASPECT).
 inline constexpr glm::vec3 HAND_REST{0.62f, -0.45f, -0.75f};
 
-// Hand translation during the swing (view space): Minecraft's, with half
-// its dip so the flicked-down item stays above the bottom edge / hotbar.
+// Hand translation during the swing (view space). Like Minecraft's: a
+// quick lift and flick toward the center, then the hand drops down and back
+// out to the right, so mid-swing the item sinks partly past the lower-right
+// edge of the screen before rising back to rest.
 inline glm::vec3 swingOffset(float swing) {
     const float pi = glm::pi<float>();
-    float sq = std::sqrt(std::clamp(swing, 0.0f, 1.0f));
-    return {-0.4f * std::sin(sq * pi), 0.1f * std::sin(sq * 2.0f * pi), -0.2f * std::sin(swing * pi)};
+    swing = std::clamp(swing, 0.0f, 1.0f);
+    float sq = std::sqrt(swing);
+    float arc = std::sin(swing * pi);
+    return {-0.2f * std::sin(sq * pi) + 0.15f * arc, 0.15f * std::sin(sq * 2.0f * pi) - 0.05f * arc, -0.1f * arc};
 }
 
 // Item rotation about the hand during the swing: it turns sideways and
