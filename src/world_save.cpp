@@ -3,6 +3,7 @@
 #include "chunk_section.h"
 #include "light_propagation.h"
 #include "TerrainGenerator.h"
+#include "biome_tint.h"
 
 #include <filesystem>
 #include <fstream>
@@ -200,6 +201,14 @@ bool WorldSave::loadChunkData(int chunkX, int chunkZ, ChunkData& out, TerrainGen
             out.biomes[x][z] = b;
         }
     }
+    // Grass / foliage colours: the blend reaches TINT_BLEND_RADIUS columns
+    // into the neighbouring chunks, whose biomes come from the generator.
+    blendBiomeTints(
+        [&](int i, int k) {
+            if (i >= 0 && i < CHUNK_SIZE && k >= 0 && k < CHUNK_SIZE) return out.biomes[i][k];
+            return terrain.getBiome(cx * CHUNK_SIZE + i, cz * CHUNK_SIZE + k);
+        },
+        out.tints);
 
     // Recompute maxSolidY by scanning sections
     out.maxSolidY = 0;

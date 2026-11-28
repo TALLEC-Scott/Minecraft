@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "TerrainGenerator.h"
+#include "biome.h"
 #include "cube.h"
 
 class BiomeTest : public ::testing::Test {
@@ -25,10 +26,8 @@ TEST_F(BiomeTest, AllBiomesExistSomewhere) {
             found[terrain.getBiome(x, z)] = true;
         }
     }
-    const char* names[] = {"Ocean", "Beach", "Plains", "Forest", "Desert", "Tundra", "Taiga", "Birch Forest"};
-    static_assert(sizeof(names) / sizeof(names[0]) == BIOME_COUNT, "one name per biome");
     for (int i = 0; i < BIOME_COUNT; i++) {
-        EXPECT_TRUE(found[i]) << "Biome " << names[i] << " not found in 4000x4000 area";
+        EXPECT_TRUE(found[i]) << "Biome " << biomeDef(static_cast<Biome>(i)).name << " not found in 4000x4000 area";
     }
 }
 
@@ -74,10 +73,10 @@ TEST_F(BiomeTest, GetHeightAndBiomeConsistent) {
     }
 }
 
-TEST_F(BiomeTest, BiomeParamsValid) {
+TEST_F(BiomeTest, BiomeDefsValid) {
     for (int i = 0; i < BIOME_COUNT; i++) {
-        const BiomeParams& bp = terrain.getBiomeParams(static_cast<Biome>(i));
-        EXPECT_GE(bp.treeDensity, 0.0f);
-        EXPECT_LE(bp.treeDensity, 1.0f);
+        const BiomeDef& d = biomeDef(static_cast<Biome>(i));
+        EXPECT_GE(d.treeDensity, 0.0f);
+        EXPECT_LE(d.treeDensity, 1.0f);
     }
 }

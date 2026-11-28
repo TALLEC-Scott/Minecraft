@@ -243,8 +243,8 @@ TEST_F(WorldgenTest, OresStayInTheirDepthBands) {
 
 TEST_F(WorldgenTest, BiomesGrowTheirOwnTrees) {
     // Trunk bases (the log just above the surface) by biome: taiga and tundra
-    // grow only spruce, birch forests mostly birch.
-    long spruceInTaiga = 0, otherInTaiga = 0, birchInBirch = 0, oakInBirch = 0;
+    // grow only spruce, forests mostly oak with some birch.
+    long spruceInTaiga = 0, otherInTaiga = 0, birchInForest = 0, oakInForest = 0;
     for (int cx = -40; cx < 40; cx += 4)
         for (int cz = -40; cz < 40; cz += 4) {
             GenChunk c(terrain, cx, cz);
@@ -256,16 +256,16 @@ TEST_F(WorldgenTest, BiomesGrowTheirOwnTrees) {
                     if (!isLog(t)) continue;
                     Biome b = c.biomes[x][z];
                     if (b == BIOME_TAIGA || b == BIOME_TUNDRA) (t == SPRUCE_LOG ? spruceInTaiga : otherInTaiga)++;
-                    if (b == BIOME_BIRCH_FOREST) {
-                        if (t == BIRCH_LOG) birchInBirch++;
-                        if (t == WOOD) oakInBirch++;
+                    if (b == BIOME_FOREST) {
+                        if (t == BIRCH_LOG) birchInForest++;
+                        if (t == WOOD) oakInForest++;
                     }
                 }
         }
     EXPECT_GT(spruceInTaiga, 10);
     EXPECT_EQ(otherInTaiga, 0);
-    EXPECT_GT(birchInBirch, 10);
-    EXPECT_GT(birchInBirch, oakInBirch);
+    EXPECT_GT(birchInForest, 5);
+    EXPECT_GT(oakInForest, birchInForest);
 }
 
 TEST_F(WorldgenTest, DeepCavesHoldLavaAndShallowOnesDont) {

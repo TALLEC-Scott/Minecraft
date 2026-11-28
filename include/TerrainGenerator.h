@@ -5,12 +5,6 @@
 #include "cube.h"
 #include "perlin_noise.h"
 
-struct BiomeParams {
-    block_type surfaceBlock;
-    block_type subsurfaceBlock;
-    float treeDensity; // 0..1: chance that a tree-grid cell grows a tree
-};
-
 class TerrainGenerator {
   public:
     TerrainGenerator(unsigned int seed, float scale, int minHeight, int maxHeight);
@@ -21,7 +15,6 @@ class TerrainGenerator {
     int getHeightAndBiome(int x, int y, Biome& outBiome);
     double getTemperature(int x, int y);
     double getMoisture(int x, int y);
-    const BiomeParams& getBiomeParams(Biome b);
     // Raw 2D Perlin offset to [-0.5, 1.5] (noise + 0.5). Only the cloud
     // layer uses it, and its 0.65 coverage threshold is tuned to this range.
     double getNoise(int x, int y);
@@ -72,6 +65,4 @@ class TerrainGenerator {
     unsigned int seed;
     float scale;
     int minHeight, maxHeight;
-
-    static const BiomeParams BIOME_TABLE[BIOME_COUNT];
 };

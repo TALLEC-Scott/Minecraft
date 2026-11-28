@@ -20,6 +20,7 @@
 #include "skylight.h"
 #include "sparse_skylight.h"
 #include "TerrainGenerator.h"
+#include "biome_tint.h"
 
 static constexpr int NUM_SECTIONS = CHUNK_HEIGHT / 16;
 
@@ -30,6 +31,7 @@ struct ChunkData {
     std::shared_ptr<uint8_t[]> waterLevels; // per-block water level (0=source, 1-7=flow)
     int heights[CHUNK_SIZE][CHUNK_SIZE]{};
     Biome biomes[CHUNK_SIZE][CHUNK_SIZE]{};
+    BiomeTints tints{}; // blended grass / foliage colours, uploaded by ChunkManager
     int chunkX = 0, chunkZ = 0;
     int maxSolidY = 0;
 
@@ -40,6 +42,7 @@ struct ChunkData {
         for (int i = 0; i < NUM_SECTIONS; i++) sections[i] = std::move(o.sections[i]);
         std::memcpy(heights, o.heights, sizeof(heights));
         std::memcpy(biomes, o.biomes, sizeof(biomes));
+        tints = o.tints;
     }
     ChunkData& operator=(ChunkData&& o) noexcept {
         if (this != &o) {
@@ -51,6 +54,7 @@ struct ChunkData {
             maxSolidY = o.maxSolidY;
             std::memcpy(heights, o.heights, sizeof(heights));
             std::memcpy(biomes, o.biomes, sizeof(biomes));
+            tints = o.tints;
         }
         return *this;
     }

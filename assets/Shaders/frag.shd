@@ -30,11 +30,25 @@ uniform vec4 glowColor;
 uniform vec3 glowColorLow;
 uniform vec3 glowColorFace;
 // Lights carried in hand (held_light.h): xyz = holder, w = level (0..15).
+// Biome colours (biome_tint_map.h): per-block-column grass and foliage
+// multipliers, stored ×128 (128 = stock colour), addressed by world x, z
+// modulo TINT_MAP_SIZE.
+uniform sampler2D grassTintMap;
+uniform sampler2D foliageTintMap;
+const int TINT_MAP_SIZE = 1056;
 uniform int heldLightCount;
 uniform vec4 heldLights[4];
 
 // Block light from held lights: level minus distance, like a placed
 // torch's falloff, skipping faces turned away from the holder.
+vec3 biomeTint(sampler2D map) {
+    // Block N spans [N - 0.5, N + 0.5); nudge inward so a face on a column
+    // edge reads its own column.
+    ivec2 p = ivec2(floor(FragPos.xz + 0.5 - normalize(Normal).xz * 0.01));
+    p = ((p % TINT_MAP_SIZE) + TINT_MAP_SIZE) % TINT_MAP_SIZE;
+    return texelFetch(map, p, 0).rgb * (255.0 / 128.0);
+}
+
 float heldLightAt(vec3 p, vec3 n) {
     float best = 0.0;
     for (int i = 0; i < 4; i++) {
@@ -102,9 +116,23 @@ void main() {
     // torch — layer 44; fern — layer 51). These are sprite billboards on a
     // transparent background; drop any pixel below 50% alpha so the X shape
     // reads cleanly.
+    // Any other cut-out texture (new plants, flowers...) in the solid pass
+    // works the same way without being listed here: solid textures are
+    // fully opaque, so this only ever drops transparent texels.
     bool isCrossSprite = (texLayer > 23.5 && texLayer < 26.5) || abs(texLayer - 44.0) < 0.5 ||
                          abs(texLayer - 51.0) < 0.5;
-    if (isCrossSprite && texColor.a < 0.5) discard;
+    if ((isCrossSprite || materialType == 0) && texColor.a < 0.5) discard;
+
+    // Biome colours: grass top (layer 1), the green fringe of the grass side
+    // (11: tint only its green texels, not the dirt), tall grass (24) and
+    // ferns (51) take the grass colour; oak leaves (10) the foliage colour.
+    // Spruce and birch leaves keep their own colours.
+    bool grassTinted = abs(texLayer - 1.0) < 0.5 || abs(texLayer - 24.0) < 0.5 || abs(texLayer - 51.0) < 0.5 ||
+                       (abs(texLayer - 11.0) < 0.5 && texColor.g > texColor.r);
+    if (grassTinted)
+        texColor.rgb = min(texColor.rgb * biomeTint(grassTintMap), vec3(1.0));
+    else if (abs(texLayer - 10.0) < 0.5)
+        texColor.rgb = min(texColor.rgb * biomeTint(foliageTintMap), vec3(1.0));
 
     vec3 norm = normalize(Normal);
 
