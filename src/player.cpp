@@ -265,7 +265,7 @@ void Player::handleInput(GLFWwindow* window, World* world) {
                 // re-apply the same blockType, so the prediction is
                 // transparent on the happy path.
                 if (netSession)
-                    netSession->notifyLocalPlace(placementPos, static_cast<uint8_t>(getSelectedBlockType()));
+                    netSession->notifyLocalPlace(placementPos, static_cast<uint8_t>(getSelectedBlockType()), state);
                 block_type placed = getSelectedBlockType();
                 world->placeBlock(placementPos, placed, state);
                 if (isSurvival()) inventory.take(selectedSlot, 1); // Creative never runs out

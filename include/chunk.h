@@ -136,6 +136,7 @@ class Chunk {
             std::memcpy(sectionConn, other.sectionConn, sizeof(sectionConn));
             std::memcpy(sectionRanges, other.sectionRanges, sizeof(sectionRanges));
             visibleSections = other.visibleSections;
+            torchCellsDirty = true;
 
             other.chunkVAO = other.chunkVBO = other.chunkEBO = 0;
             other.waterVAO = other.waterVBO = other.waterEBO = 0;
@@ -234,6 +235,7 @@ class Chunk {
         }
         sections[sy]->setBlock(x, y % 16, z, t);
         modified = true;
+        torchCellsDirty = true;
         // Extend maxSolidY so the mesh builder's iteration range includes
         // this block. Without this, water/blocks placed above the terrain
         // height (e.g., falling water columns) would be outside the face
@@ -315,6 +317,11 @@ class Chunk {
             level;
         modified = true;
     }
+    // Local cells holding a TORCH (drawn as 3D sticks by TorchModel, not
+    // meshed). Rescanned on the first call after a block write; only
+    // sections whose palette lists TORCH are read.
+    const std::vector<glm::ivec3>& torchCells();
+
     int chunkX = -1;
     int chunkY = -1;
     bool modified = false;
@@ -369,6 +376,8 @@ class Chunk {
     GLuint waterEBO = 0;
     int waterIndexCount = 0;
     MeshData pendingMesh;
+    std::vector<glm::ivec3> torchCellCache;
+    bool torchCellsDirty = true;
 };
 
 // buildMeshFromData is declared in chunk_mesh.h (included above).

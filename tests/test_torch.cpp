@@ -1,7 +1,10 @@
-// Torches: placement state, support, light, mining, recipe and the leaned
-// wall-torch quads (World's pop-off path is exercised in game).
+// Torches: placement state, support, light, mining, recipe, the 3D stick's
+// placement and the pulsing tip (World's pop-off path is exercised in game).
 
 #include <gtest/gtest.h>
+
+#include <algorithm>
+#include <cmath>
 
 #include "held_light.h"
 #include "mining.h"
@@ -55,18 +58,42 @@ TEST(TorchTest, CoalOverStickMakesFour) {
     EXPECT_EQ(craftResult(upsideDown, 2).count, 0);
 }
 
-TEST(TorchTest, WallTorchLeansIntoItsWall) {
-    float a[4][3], b[4][3];
-    crossQuadCorners(TORCH, torch::STANDING, 0, 0, 0, a, b);
-    EXPECT_FLOAT_EQ(a[0][0], -0.5f) << "a standing torch is an upright cross like a flower";
-    uint8_t s = torch::stateForFace(-1, 0, 0); // hangs on the block at +X
-    crossQuadCorners(TORCH, s, 0, 0, 0, a, b);
-    EXPECT_FLOAT_EQ(a[0][0], 0.0f) << "bottom corners shift half a block toward the wall";
-    EXPECT_FLOAT_EQ(a[3][0], 1.0f);
-    EXPECT_FLOAT_EQ(a[1][0], -0.5f) << "top corners stay";
-    // Flowers ignore the state byte.
-    crossQuadCorners(DANDELION, s, 0, 0, 0, a, b);
-    EXPECT_FLOAT_EQ(a[0][0], -0.5f);
+TEST(TorchTest, StandingTorchIsAStickOnTheFloor) {
+    glm::ivec3 cell(3, 10, -2);
+    glm::vec3 foot(torch::placedModel(cell, torch::STANDING) * glm::vec4(0, 0, 0, 1));
+    EXPECT_FLOAT_EQ(foot.x, 3.0f);
+    EXPECT_FLOAT_EQ(foot.y, 9.5f) << "foot on the cell's floor";
+    EXPECT_FLOAT_EQ(foot.z, -2.0f);
+    glm::vec3 tip = torch::tip(cell, torch::STANDING);
+    EXPECT_FLOAT_EQ(tip.x, 3.0f);
+    EXPECT_FLOAT_EQ(tip.y, 9.5f + torch::STICK_HEIGHT);
+}
+
+TEST(TorchTest, WallTorchLeansAwayFromItsWall) {
+    for (uint8_t s = 1; s <= 4; ++s) {
+        glm::vec3 toWall(torch::SUPPORT[s][0], 0, torch::SUPPORT[s][2]);
+        glm::vec3 foot(torch::placedModel({0, 0, 0}, s) * glm::vec4(0, 0, 0, 1));
+        EXPECT_NEAR(glm::dot(foot, toWall), 0.5f, 1e-5f) << "foot on the wall plane, state " << int(s);
+        EXPECT_NEAR(foot.y, torch::WALL_FOOT_Y - 0.5f, 1e-5f);
+        glm::vec3 tip = torch::tip({0, 0, 0}, s);
+        float lean = glm::dot(tip - foot, toWall);
+        EXPECT_LT(lean, 0.0f) << "tip leans away from the wall, state " << int(s);
+        EXPECT_NEAR(lean, -torch::STICK_HEIGHT * std::sin(glm::radians(torch::WALL_TILT_DEGREES)), 1e-5f);
+        EXPECT_LT(tip.y, 0.5f) << "tip stays inside the cell";
+        EXPECT_NEAR(glm::dot(tip, glm::vec3(toWall.z, 0, -toWall.x)), 0.0f, 1e-5f) << "no sideways drift";
+    }
+}
+
+TEST(TorchTest, TipPulsesBetweenOrangeAndRed) {
+    float minGreen = 10.0f, maxGreen = 0.0f;
+    for (int i = 0; i < 100; ++i) {
+        glm::vec3 c = torch::tipColor(i * 0.02, 0.0f);
+        EXPECT_GT(c.r, c.g) << "always warm";
+        minGreen = std::min(minGreen, c.g);
+        maxGreen = std::max(maxGreen, c.g);
+    }
+    EXPECT_GT(maxGreen - minGreen, 0.4f) << "visibly pulses";
+    EXPECT_NE(torch::tipPhase({0, 64, 0}), torch::tipPhase({1, 64, 0})) << "neighbours out of step";
 }
 
 TEST(HeldLightTest, WhatGlowsInHand) {

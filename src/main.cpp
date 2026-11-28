@@ -67,6 +67,8 @@
 #include "held_item_model.h"
 #include "held_item_pose.h"
 #include "held_light.h"
+#include "torch.h"
+#include "torch_model.h"
 #include "day_cycle.h"
 #include "net/net_session.h"
 #include "net/multiplayer_menu.h"
@@ -342,14 +344,14 @@ static const glm::vec3 TOOL_GRIP(2.5f, 2.5f, 0.0f);
 static const glm::vec3 STEM_GRIP(8.0f, 1.0f, 0.0f);
 
 // The sprite an item is held / dropped as: an item's own icon, or a
-// cross-quad block's texture (torch, flowers, grass), which has no cube
-// form. `upright` is set for the latter (drawn standing, not diagonal
-// like the tools). nullptr = draw as a block cube (or nothing).
+// cross-quad plant's texture (flowers, grass), which has no cube form.
+// `upright` is set for the latter (drawn standing, not diagonal like the
+// tools). nullptr = draw as a block cube, the torch model (TORCH), or nothing.
 static const char* heldSpritePath(ItemId id, bool& upright) {
     upright = false;
     if (const char* icon = itemIconPath(id)) return icon;
     block_type bt = itemBlock(id);
-    if (bt == AIR || !hasFlag(bt, BF_CROSS)) return nullptr;
+    if (bt == AIR || bt == TORCH || !hasFlag(bt, BF_CROSS)) return nullptr;
     upright = true;
     return TextureArray::layerPath(TextureArray::layerForType(bt));
 }
@@ -1145,8 +1147,9 @@ int main(int argc, char* argv[]) {
 #endif
 
         EntityCubeRenderer entityCubes;
+        TorchModel torchModel;
         PlayerRenderer playerRenderer;
-        // GL state for entityCubes + particles is created lazily on first render.
+        // GL state for entityCubes, torchModel + particles is created lazily on first render.
 
 #ifdef __EMSCRIPTEN__
         static
@@ -1808,7 +1811,7 @@ int main(int argc, char* argv[]) {
 
                 double t0 = glfwGetTime();
                 if (measuring) profiler.beginRender();
-                w->render(shaderProgram, vp, player.getPosition());
+                w->render(shaderProgram, vp, player.getPosition(), &torchModel, glfwGetTime());
                 w->mobManager->render(shaderProgram, vp, player.getPosition());
                 if (measuring) profiler.endRender();
 
@@ -2511,7 +2514,7 @@ int main(int argc, char* argv[]) {
             shaderProgram.setFloat("entityTint", 1.0f);
             shaderProgram.setVec3("entityColor", glm::vec3(1.0f));
             TextureArray::bind();
-            chunksRendered = w->render(shaderProgram, viewProjection, player.getPosition());
+            chunksRendered = w->render(shaderProgram, viewProjection, player.getPosition(), &torchModel, glfwGetTime());
 
             // Primed TNT entities — drawn after opaque chunks so they
             // correctly sort against the terrain. Chunk shader is already
@@ -2537,6 +2540,13 @@ int main(int argc, char* argv[]) {
                     glm::ivec2 light = lightLevelsAt(centre);
                     glm::mat4 m = glm::rotate(glm::translate(glm::mat4(1.0f), centre), spin, glm::vec3(0, 1, 0));
                     block_type bt = itemBlock(item.id);
+                    if (bt == TORCH) {
+                        // Standing and spinning, centered on the item's middle.
+                        glm::mat4 tm = glm::translate(m, glm::vec3(0.0f, -0.5f * torch::STICK_HEIGHT, 0.0f));
+                        torchModel.drawWorld(shaderProgram, tm, (float)(light.x * 16 + light.y),
+                                             torch::tipColor(t, item.spinPhase));
+                        continue;
+                    }
                     if (bt != AIR && !hasFlag(bt, BF_CROSS) && !hasFlag(bt, BF_LIQUID)) {
                         shaderProgram.setVec2("leafSway", glm::vec2(0.0f));
                         entityCubes.drawBlock(shaderProgram, glm::scale(m, glm::vec3(0.25f)), bt,
@@ -2592,7 +2602,13 @@ int main(int argc, char* argv[]) {
                             toolModel.draw(viewProjection, m, shading);
                             shaderProgram.use();
                         }
-                    } else if (block_type held = itemBlock(r.heldItem); held != AIR && !hasFlag(held, BF_LIQUID)) {
+                    } else if (itemBlock(r.heldItem) == TORCH) {
+                        // Gripped near its foot, tilted forward a little, full size.
+                        glm::mat4 m = glm::translate(hand, glm::vec3(0.0f, -0.1f, 0.05f));
+                        m = glm::rotate(m, glm::radians(20.0f), glm::vec3(1, 0, 0));
+                        torchModel.drawWorld(shaderProgram, m, packedLight, torch::tipColor(renderNow, 0.0f));
+                    } else if (block_type held = itemBlock(r.heldItem);
+                               held != AIR && !hasFlag(held, BF_LIQUID) && !hasFlag(held, BF_CROSS)) {
                         // Solid block: a small cube in front of the fist. Plants
                         // and water have no cube form, so nothing is drawn.
                         glm::mat4 m = glm::translate(hand, glm::vec3(0.0f, -0.05f, 0.12f));
@@ -2865,14 +2881,16 @@ int main(int argc, char* argv[]) {
                 block_type heldType = player.getSelectedBlockType();
                 glDisable(GL_CULL_FACE);
                 bool uprightSprite = false;
-                if (const char* spritePath = heldSpritePath(player.getSelectedItem(), uprightSprite)) {
+                const char* spritePath = heldSpritePath(player.getSelectedItem(), uprightSprite);
+                if (spritePath || heldType == TORCH) {
                     // Tool (the sword): its sprite extruded into a pixel
                     // slab held in the hand — handle in the lower right, flat
                     // side toward the camera, blade leaning toward the
                     // crosshair. Attacks play Minecraft's swing about the
                     // hand; the arm runs from the hand to a fixed shoulder.
-                    HeldItemModel& swordModel = itemModel(spritePath);
-                    if (swordModel.load(spritePath)) {
+                    // The torch is its 3D stick in the same grip.
+                    HeldItemModel* swordModel = spritePath ? &itemModel(spritePath) : nullptr;
+                    if (!swordModel || swordModel->load(spritePath)) {
                         constexpr float ITEM_SCALE = 0.04f; // sprite pixels -> view units
                         const glm::vec3 HAND_REST(0.28f * aspect, -0.4f, -0.7f);
                         const glm::vec3 SHOULDER = HAND_REST + glm::vec3(0.3f, -0.45f, 0.3f); // off-screen
@@ -2894,22 +2912,30 @@ int main(int argc, char* argv[]) {
                         // Diagonal tool sprites stand up at 70°; upright ones
                         // (torch, flowers) are smaller and only lean a little,
                         // top toward the crosshair, so the torch's flame shows.
-                        m = glm::rotate(m, glm::radians(uprightSprite ? 12.0f : 70.0f), glm::vec3(0, 0, 1));
-                        m = glm::scale(m, glm::vec3(uprightSprite ? ITEM_SCALE * 0.75f : ITEM_SCALE));
-                        m = glm::translate(m, uprightSprite ? -STEM_GRIP : -TOOL_GRIP);
-                        // Something that gives light (the torch) isn't darkened by the night.
-                        bool glowing = heldItemLight(player.getSelectedItem()) > 0;
-                        swordModel.draw(projection, m, ItemShading{glowing ? glm::vec3(1.0f) : armTint});
-                        billboardShader.use(); // restore for the rest of this pass
+                        bool upright = uprightSprite || heldType == TORCH;
+                        m = glm::rotate(m, glm::radians(upright ? 12.0f : 70.0f), glm::vec3(0, 0, 1));
+                        if (swordModel) {
+                            m = glm::scale(m, glm::vec3(uprightSprite ? ITEM_SCALE * 0.75f : ITEM_SCALE));
+                            m = glm::translate(m, uprightSprite ? -STEM_GRIP : -TOOL_GRIP);
+                            swordModel->draw(projection, m, ItemShading{armTint});
+                            billboardShader.use(); // restore for the rest of this pass
+                        } else {
+                            // Torch: ~0.35 view units tall, gripped a little above its
+                            // foot, full-bright since it gives light.
+                            m = glm::scale(m, glm::vec3(0.55f));
+                            m = glm::translate(m, glm::vec3(0.0f, -0.12f, 0.0f));
+                            torchModel.drawView(billboardShader, m, glm::vec3(1.0f),
+                                                torch::tipColor(glfwGetTime(), 0.0f));
+                            billboardShader.setVec3("tintColor", armTint);
+                        }
 
-                        // Held torch: flame flicker + smoke at its tip (sprite
-                        // point (8, 9), the flame in the iron cup), drawn in
-                        // this view-space pass so it stays on the torch.
+                        // Held torch: flame flicker + smoke just above its tip,
+                        // drawn in this view-space pass so it stays on the torch.
                         if (heldType == TORCH && w && w->particles) {
                             static double lastHandFlame = 0.0;
                             static int handFlames = 0;
                             double now = glfwGetTime();
-                            glm::vec3 tip = glm::vec3(m * glm::vec4(8.0f, 9.0f, 0.5f, 1.0f));
+                            glm::vec3 tip = glm::vec3(m * glm::vec4(0.0f, torch::STICK_HEIGHT + 0.03f, 0.0f, 1.0f));
                             if (now - lastHandFlame > 0.05) {
                                 lastHandFlame = now;
                                 w->particles->spawnHeldTorchFlame(tip, ++handFlames % 6 == 0);

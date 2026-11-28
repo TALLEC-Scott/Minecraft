@@ -132,7 +132,8 @@ class NetSession {
     //  - Host:   sends PLACE_APPLY / DESTROY_APPLY (authoritative echo).
     //  - Client: sends PLACE_INTENT / DESTROY_INTENT (asks host to apply).
     //  - Off:    no-op.
-    void notifyLocalPlace(glm::ivec3 pos, uint8_t blockType);
+    // `state` = the placed block's state byte (a torch's facing).
+    void notifyLocalPlace(glm::ivec3 pos, uint8_t blockType, uint8_t state);
     void notifyLocalDestroy(glm::ivec3 pos);
 
     // Shared game clock. On the host this is just glfwGetTime(); on a

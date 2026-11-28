@@ -1,6 +1,6 @@
 # Minecraft Clone in C++/OpenGL
 
-A Minecraft-like voxel sandbox built with C++ and OpenGL 3.3 Core Profile. Procedural terrain, biomes, cellular-automaton water, primed TNT with entity physics, cross-texture plants, day/night cycle, multithreaded chunk streaming, persistent saves, and a WebAssembly build.
+Minecraft-like voxel sandbox built with C++ and OpenGL 3.3 Core Profile. Procedural terrain, biomes, cellular-automaton water, primed TNT with entity physics, cross-texture plants, day/night cycle, multithreaded chunk streaming, persistent saves, and a WebAssembly build.
 
 The purpose was mainly to see how far I could take agentic coding, namely anthropic models, on an old throwaway college project (see first screenshot in earlier versions) to test the capabilities of the models. The progress is as you can see remarkable, yes I had to steer quite a bit for the optimization parts and for the cellular automata for the cascading water effect (the early 2026 models struggled with geometry). 
 
@@ -20,7 +20,7 @@ https://github.com/user-attachments/assets/4a94017a-34d2-41fa-8707-44ceb98dd80f
 
 #### v0.6
 
-<img src="Minecraft_Screenshot_5.png" width="600" />
+<img src="docs/images/Minecraft_Screenshot_5.png" width="600" />
 
 #### v0.5
 
@@ -28,23 +28,23 @@ https://github.com/user-attachments/assets/c95a33fa-b7e2-41ac-b8ba-79bb7edf997f
 
 #### v0.4
 
-<img src="Minecraft_0.4.png" width="500" />
+<img src="docs/images/Minecraft_0.4.png" width="500" />
 
 #### v0.3
 
-<img src="Minecraft_Screenshot_4.png" width="600" />
+<img src="docs/images/Minecraft_Screenshot_4.png" width="600" />
 
 #### v0.2
 
-[![Watch the demo](docs/v02-thumb.jpg)](https://i.imgur.com/WYfonMc.mp4)
+[![Watch the demo](docs/images/v02-thumb.jpg)](https://i.imgur.com/WYfonMc.mp4)
 
 #### v0.1
 
 <p>
-  <img src="Minecraft_Screenshot_1.png" width="300" />
-  <img src="Minecraft_Screenshot_2.png" width="300" />
-  <img src="Minecraft_Screenshot_6.png" width="300" />
-  <img src="Minecraft_0.1.png" width="300" />
+  <img src="docs/images/Minecraft_Screenshot_1.png" width="300" />
+  <img src="docs/images/Minecraft_Screenshot_2.png" width="300" />
+  <img src="docs/images/Minecraft_Screenshot_6.png" width="300" />
+  <img src="docs/images/Minecraft_0.1.png" width="300" />
 </p>
 
 </details>

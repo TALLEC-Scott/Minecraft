@@ -611,8 +611,11 @@ void NetSession::handleMessage(const uint8_t* data, std::size_t len, double now)
         if (role_ != NetRole::Host || !world_) return;
         netp::PlaceIntentMsg m;
         if (!netp::decodePlaceIntent(data, len, m)) return;
-        world_->placeBlock(m.pos, static_cast<block_type>(m.blockType));
-        notifyLocalPlace(m.pos, m.blockType);
+        uint8_t placed = 0;
+        if (world_->placeBlock(m.pos, static_cast<block_type>(m.blockType), m.state, &placed))
+            notifyLocalPlace(m.pos, m.blockType, placed);
+        else
+            notifyLocalDestroy(m.pos); // rejected (e.g. a torch with nothing to hang on): undo the client's prediction
         break;
     }
     case netp::Op::DestroyIntent: {
@@ -627,7 +630,7 @@ void NetSession::handleMessage(const uint8_t* data, std::size_t len, double now)
         if (role_ != NetRole::Client || !world_) return;
         netp::PlaceApplyMsg m;
         if (!netp::decodePlaceApply(data, len, m)) return;
-        world_->placeBlock(m.pos, static_cast<block_type>(m.blockType));
+        world_->placeBlock(m.pos, static_cast<block_type>(m.blockType), m.state);
         break;
     }
     case netp::Op::DestroyApply: {
@@ -731,14 +734,14 @@ void NetSession::tickBroadcast(const Player& p, double now) {
     }
 }
 
-void NetSession::notifyLocalPlace(glm::ivec3 pos, uint8_t blockType) {
+void NetSession::notifyLocalPlace(glm::ivec3 pos, uint8_t blockType, uint8_t state) {
     if (!connected()) return;
     std::vector<uint8_t> buf;
     if (role_ == NetRole::Host) {
-        netp::PlaceApplyMsg m{pos, blockType};
+        netp::PlaceApplyMsg m{pos, blockType, state};
         netp::encodePlaceApply(buf, m);
     } else {
-        netp::PlaceIntentMsg m{pos, blockType};
+        netp::PlaceIntentMsg m{pos, blockType, state};
         netp::encodePlaceIntent(buf, m);
     }
     sendRaw(buf);

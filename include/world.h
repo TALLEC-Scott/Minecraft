@@ -15,6 +15,7 @@ class EntityManager;
 class BlockEffects;
 class MobManager;
 class ParticleSystem;
+class TorchModel;
 
 class World {
   public:
@@ -25,10 +26,16 @@ class World {
     // Torches the removed block was holding pop off too; their positions
     // are appended to `popped` (the local player drops them as items).
     void destroyBlock(glm::vec3 position, std::vector<glm::ivec3>* popped = nullptr) const;
+    // Breaks the torches standing on or hanging from block `b` (which has
+    // just stopped being able to hold them); appends them to `popped`.
+    void popTorchesSupportedBy(glm::ivec3 b, std::vector<glm::ivec3>* popped = nullptr) const;
     // `state` is the cell's state byte (torch.h: standing / which wall);
     // a torch left at INVALID (the network path) picks one from its
     // surroundings, and isn't placed if nothing can hold it.
-    void placeBlock(glm::ivec3 position, block_type type, uint8_t state = 0xFF) const;
+    // `state` = the block's state byte (a torch's facing); 0xFF works one
+    // out. Returns false if nothing was placed (a torch with nothing to
+    // hang on); otherwise `placedState` (if given) gets the state used.
+    bool placeBlock(glm::ivec3 position, block_type type, uint8_t state = 0xFF, uint8_t* placedState = nullptr) const;
     uint8_t torchStateAt(glm::ivec3 p) const;
     void setBlock(int x, int y, int z, block_type type, uint8_t waterLevel = 0) const;
     // Between these, setBlock defers its light updates and the end call
@@ -73,7 +80,11 @@ class World {
 
     unsigned int seed = 0;
 
-    int render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const;
+    // Draws the chunks, and (if `torchModel` is given) the torches in the
+    // sections it drew, between the opaque and the water pass. `time`
+    // drives the torch tips' pulse.
+    int render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos,
+               TorchModel* torchModel = nullptr, double time = 0.0) const;
     // Did last render()'s cave-culling BFS reach the section holding this
     // block? Always true when cave culling didn't run that frame (disabled,
     // or the camera chunk wasn't loaded). Used to skip mobs in sealed caves.

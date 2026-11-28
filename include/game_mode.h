@@ -8,7 +8,7 @@
 #include <cctype>
 #include <cstdint>
 #include <optional>
-#include <string>
+#include <string_view>
 
 enum class GameMode : uint8_t { Survival = 0, Creative = 1 };
 
@@ -17,11 +17,17 @@ inline const char* gameModeName(GameMode m) {
 }
 
 // /gamemode argument: survival|creative, s|c or 0|1 (any case), as
-// Minecraft accepts. nullopt for anything else.
-inline std::optional<GameMode> parseGameMode(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-    if (s == "survival" || s == "s" || s == "0") return GameMode::Survival;
-    if (s == "creative" || s == "c" || s == "1") return GameMode::Creative;
+// Minecraft accepts. nullopt for anything else. Compares in place rather
+// than lowercasing a copy: GCC 15 misreports the copy's destruction (inlined
+// into the /gamemode lambda) as -Wfree-nonheap-object.
+inline std::optional<GameMode> parseGameMode(std::string_view s) {
+    auto is = [s](std::string_view word) {
+        return std::equal(s.begin(), s.end(), word.begin(), word.end(), [](char a, char b) {
+            return std::tolower(static_cast<unsigned char>(a)) == static_cast<unsigned char>(b);
+        });
+    };
+    if (is("survival") || is("s") || is("0")) return GameMode::Survival;
+    if (is("creative") || is("c") || is("1")) return GameMode::Creative;
     return std::nullopt;
 }
 
