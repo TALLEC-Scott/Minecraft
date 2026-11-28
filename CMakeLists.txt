@@ -111,7 +111,9 @@ if(EMSCRIPTEN)
   # -pthread: chunk generation + meshing run on ChunkManager's worker
   # threads (Web Workers sharing the wasm memory). Needs a cross-origin
   # isolated page (COOP same-origin + COEP require-corp headers).
-  target_compile_options(minecraft PRIVATE -O2 -pthread ${WARNING_FLAGS})
+  # -O3 for Release, like the desktop builds (the link step already runs
+  # wasm-opt at -O3 from CMAKE_CXX_FLAGS_RELEASE); -O2 otherwise.
+  target_compile_options(minecraft PRIVATE $<IF:$<CONFIG:Release>,-O3,-O2> -pthread ${WARNING_FLAGS})
   # Prevent system library paths from leaking into the Emscripten link
   set(CMAKE_EXE_LINKER_FLAGS "")
   set_property(DIRECTORY PROPERTY LINK_DIRECTORIES "")
