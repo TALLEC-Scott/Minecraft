@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "audio_output.h"
 #include "open_url.h"
 #include "texture_array.h"
 
@@ -14,8 +15,8 @@ void Menu::init() {
 
     // Sounds load later in loadSounds(): on the web they arrive after
     // startup (sounds.data is fetched in the background).
-    ma_engine_config config = ma_engine_config_init();
-    if (ma_engine_init(&config, &audioEngine) == MA_SUCCESS) audioInitialized = true;
+    // On the web this drives the engine from an AudioWorklet (see audio_output.h).
+    if (audio_output::initEngine(&audioEngine) == MA_SUCCESS) audioInitialized = true;
     // Widgets forwards click audio back to Menu::playClick so sound stays here.
     widgets.setClickSound([this]() { playClick(); });
 }
@@ -55,7 +56,10 @@ void Menu::destroy() {
     if (menuMusicLoaded) ma_sound_uninit(&menuMusicSound);
     if (musicLoaded) ma_sound_uninit(&musicSound);
     if (clickLoaded) ma_sound_uninit(&clickSound);
-    if (audioInitialized) ma_engine_uninit(&audioEngine);
+    if (audioInitialized) {
+        audio_output::shutdown();
+        ma_engine_uninit(&audioEngine);
+    }
 }
 
 void Menu::startMusic() {
@@ -102,6 +106,7 @@ void Menu::playClick() {
     if (clickLoaded) {
         ma_sound_seek_to_pcm_frame(&clickSound, 0);
         ma_sound_start(&clickSound);
+        audio_output::probeSoundStarted();
     }
 }
 
