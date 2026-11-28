@@ -5,7 +5,9 @@
 
 namespace {
 
-block_type groundCover(block_type ground, uint32_t roll) {
+block_type groundCover(const biomegen::GroundSite& g) {
+    const block_type ground = g.ground;
+    const uint32_t roll = g.roll;
     return ground == GRASS && roll < 200 ? TALL_GRASS : AIR;
 }
 

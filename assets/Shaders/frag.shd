@@ -116,9 +116,12 @@ void main() {
     // torch — layer 44; fern — layer 51). These are sprite billboards on a
     // transparent background; drop any pixel below 50% alpha so the X shape
     // reads cleanly.
+    // Any other cut-out texture (new plants, flowers...) in the solid pass
+    // works the same way without being listed here: solid textures are
+    // fully opaque, so this only ever drops transparent texels.
     bool isCrossSprite = (texLayer > 23.5 && texLayer < 26.5) || abs(texLayer - 44.0) < 0.5 ||
                          abs(texLayer - 51.0) < 0.5;
-    if (isCrossSprite && texColor.a < 0.5) discard;
+    if ((isCrossSprite || materialType == 0) && texColor.a < 0.5) discard;
 
     // Biome colours: grass top (layer 1), the green fringe of the grass side
     // (11: tint only its green texels, not the dirt), tall grass (24) and

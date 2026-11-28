@@ -35,6 +35,8 @@ struct TreeSite {
     int i, k;
     int surface;   // y of the ground block under the trunk
     uint64_t bits; // free hash entropy for this tree (size, variant...)
+    int wx, wz;    // world column of the trunk (for groves / patches)
+    uint64_t seed; // world seed
 
     // Leaves / anything soft: written only into AIR (order-independent).
     void leaf(int di, int y, int dk, block_type t) const;
@@ -59,13 +61,28 @@ struct FeatureSite {
     block_type ground; // the block at `surface` as generated (after shores)
     int seaLevel;
     uint64_t bits;     // free hash entropy for this cell
+    int wx, wz;        // world column
+    uint64_t seed;     // world seed
 
     block_type at(int y) const;                  // block in this column
+    block_type atNear(int di, int y, int dk) const; // nearby column (AIR outside the chunk)
     void set(int y, block_type t) const;         // write into AIR only
     void setAt(int di, int y, int dk, block_type t) const; // nearby column, AIR only, in chunk
+    // Overwrite (pools, ice, boulders...). Only inside this chunk, so keep
+    // anything that must match across a border to a single column, or
+    // accept that features stop at chunk edges.
+    void replace(int di, int y, int dk, block_type t) const;
     void claim() const;                          // shade this column (ground cover skips it)
 
     void* impl = nullptr;
+};
+
+// One open, unshaded column above sea level that may get ground cover.
+struct GroundSite {
+    block_type ground; // its surface block
+    uint32_t roll;     // uniform 0..9999, per column
+    int wx, wz;        // world column (for patches: hash a coarser cell)
+    uint64_t seed;     // world seed
 };
 
 } // namespace biomegen
@@ -88,10 +105,9 @@ struct BiomeDef {
     // Per-cell features after trees (cactus, boulders...). Null = none.
     void (*decorate)(const biomegen::FeatureSite&);
 
-    // Ground cover for an open, unshaded column above sea level:
-    // `ground` is its surface block, `roll` uniform in 0..9999. Return the
-    // plant to put on top, or AIR.
-    block_type (*groundCover)(block_type ground, uint32_t roll);
+    // Ground cover for an open, unshaded column above sea level: the plant
+    // to put on top of it, or AIR.
+    block_type (*groundCover)(const biomegen::GroundSite&);
 
     // Colour multipliers over the stock textures, (1,1,1) = as drawn
     // (the stock grass / oak leaves are a temperate green). Blended across

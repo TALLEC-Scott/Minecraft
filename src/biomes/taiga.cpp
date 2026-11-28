@@ -9,7 +9,9 @@ bool growTree(const biomegen::TreeSite& s) {
     return trees::spruce(s);
 }
 
-block_type groundCover(block_type ground, uint32_t roll) {
+block_type groundCover(const biomegen::GroundSite& g) {
+    const block_type ground = g.ground;
+    const uint32_t roll = g.roll;
     if (ground != GRASS) return AIR;
     return roll < 600 ? FERN : roll < 1000 ? TALL_GRASS : AIR;
 }

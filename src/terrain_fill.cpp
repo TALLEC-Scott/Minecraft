@@ -237,7 +237,7 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
             // Don't plant on a cave mouth.
             if (terrain.caveEntranceAllowed(wx, wz) && terrain.isCave(wx, tc.height, wz)) continue;
 
-            biomegen::TreeSite site{ti, tk, tc.height, hsh >> 20, &ctx};
+            biomegen::TreeSite site{ti, tk, tc.height, hsh >> 20, wx, wz, seed, &ctx};
             def.growTree(site);
         }
     }
@@ -253,8 +253,16 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
             const Column& c = col(ci, ck);
             const BiomeDef& def = biomeDef(c.biome);
             if (!def.decorate) continue;
-            biomegen::FeatureSite site{ci,  ck, c.height, blocks[blockIndex(ci, c.height, ck)].getType(), sea,
-                                       hash4(seed, cx, cz, SALT_CACTUS + 100), &ctx};
+            biomegen::FeatureSite site{ci,
+                                       ck,
+                                       c.height,
+                                       blocks[blockIndex(ci, c.height, ck)].getType(),
+                                       sea,
+                                       hash4(seed, cx, cz, SALT_CACTUS + 100),
+                                       ox + ci,
+                                       oz + ck,
+                                       seed,
+                                       &ctx};
             def.decorate(site);
         }
     }
@@ -269,7 +277,7 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
             if (blocks[blockIndex(i, c.height + 1, k)].getType() != AIR) continue;
             const block_type ground = blocks[blockIndex(i, c.height, k)].getType();
             const auto roll = static_cast<uint32_t>(hash4(seed, ox + i, oz + k, SALT_PLANT) % 10000);
-            const block_type pick = def.groundCover(ground, roll);
+            const block_type pick = def.groundCover(biomegen::GroundSite{ground, roll, ox + i, oz + k, seed});
             if (pick != AIR) blocks[blockIndex(i, c.height + 1, k)].setType(pick);
         }
     }
@@ -297,6 +305,12 @@ bool TreeSite::fits(int top) const {
 
 block_type FeatureSite::at(int y) const {
     return static_cast<GenContext*>(impl)->get(i, y, k);
+}
+block_type FeatureSite::atNear(int di, int y, int dk) const {
+    return static_cast<GenContext*>(impl)->get(i + di, y, k + dk);
+}
+void FeatureSite::replace(int di, int y, int dk, block_type t) const {
+    static_cast<GenContext*>(impl)->set(i + di, y, k + dk, t);
 }
 void FeatureSite::set(int y, block_type t) const {
     static_cast<GenContext*>(impl)->setIfAir(i, y, k, t);
