@@ -3,6 +3,7 @@
  */
 
 #include "chunk.h"
+#include "torch.h"
 #include "light_data.h"
 #include "texture_array.h"
 #include "profiler.h"
@@ -995,7 +996,8 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
             for (int y = yMin; y < yMax; ++y) {
                 for (int z = 0; z < CHUNK_SIZE; ++z) {
                     block_type bt = getBlock(x, y, z)->getType();
-                    if (!hasFlag(bt, BF_CROSS)) continue;
+                    // Torches are 3D sticks drawn by TorchModel, not meshed.
+                    if (!hasFlag(bt, BF_CROSS) || bt == TORCH) continue;
                     float layer = (float)TextureArray::layerForFace(bt, 0);
                     uint8_t packedLight = (uint8_t)(getSkyLight(x, y, z) * 16 + getBlockLight(x, y, z));
                     float wx = (float)(x + chunkX * CHUNK_SIZE);
@@ -1027,15 +1029,8 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                         sm.crossIdx.push_back(b);
                         opaqueBase += 4;
                     };
-                    float y0 = wy - 0.5f, y1 = wy + 0.5f;
-                    float planeA[4][3] = {{wx - 0.5f, y0, wz - 0.5f},
-                                          {wx - 0.5f, y1, wz - 0.5f},
-                                          {wx + 0.5f, y1, wz + 0.5f},
-                                          {wx + 0.5f, y0, wz + 0.5f}};
-                    float planeB[4][3] = {{wx - 0.5f, y0, wz + 0.5f},
-                                          {wx - 0.5f, y1, wz + 0.5f},
-                                          {wx + 0.5f, y1, wz - 0.5f},
-                                          {wx + 0.5f, y0, wz - 0.5f}};
+                    float planeA[4][3], planeB[4][3];
+                    crossQuadCorners(wx, wy, wz, planeA, planeB);
                     emitPlane(planeA);
                     emitPlane(planeB);
                 }
@@ -1453,11 +1448,30 @@ static void darkenSkyLightLocal(Cube* blocks, uint8_t* skyLight, int x, int y, i
     }
 }
 
+const std::vector<glm::ivec3>& Chunk::torchCells() {
+    if (!torchCellsDirty) return torchCellCache;
+    torchCellsDirty = false;
+    torchCellCache.clear();
+    for (int s = 0; s < NUM_SECTIONS; s++) {
+        if (!sections[s]) continue;
+        const auto& palette = sections[s]->getPalette();
+        // The palette can list types no longer present; the scan settles it.
+        if (std::find(palette.begin(), palette.end(), static_cast<uint8_t>(TORCH)) == palette.end()) continue;
+        for (int x = 0; x < CHUNK_SIZE; x++)
+            for (int ly = 0; ly < 16; ly++)
+                for (int z = 0; z < CHUNK_SIZE; z++)
+                    if (sections[s]->getBlock(x, ly, z) == TORCH) torchCellCache.emplace_back(x, s * 16 + ly, z);
+    }
+    return torchCellCache;
+}
+
 void Chunk::placeBlock(int x, int y, int z, block_type type) {
     // setBlockType marks the affected section (+ boundary neighbors) dirty.
     setBlockType(x, y, z, type);
     setWaterLevel(x, y, z, 0);
     if (y > maxSolidY) maxSolidY = y;
+    // Plants and torches don't block the sky.
+    if (hasFlag(type, BF_CROSS)) return;
     auto flat = decompressBlocks();
     ensureSkyLightFlat(); // BFS modifies the flat skyLight
     darkenSkyLightLocal(flat.get(), skyLight.get(), x, y, z);

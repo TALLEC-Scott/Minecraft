@@ -70,9 +70,9 @@ inline double getF64LE(const uint8_t* p) {
 
 constexpr std::size_t HELLO_LEN = 1 + 1 + 4;
 constexpr std::size_t PLAYER_STATE_LEN = 1 + 4 + 4 * 3 + 4 + 4 + 2 + 1;
-constexpr std::size_t PLACE_INTENT_LEN = 1 + 4 * 3 + 1;
+constexpr std::size_t PLACE_INTENT_LEN = 1 + 4 * 3 + 1 + 1;
 constexpr std::size_t DESTROY_INTENT_LEN = 1 + 4 * 3;
-constexpr std::size_t PLACE_APPLY_LEN = 1 + 4 * 3 + 1;
+constexpr std::size_t PLACE_APPLY_LEN = 1 + 4 * 3 + 1 + 1;
 constexpr std::size_t DESTROY_APPLY_LEN = 1 + 4 * 3;
 constexpr std::size_t BYE_LEN = 1 + 4;
 constexpr std::size_t TIME_SYNC_LEN = 1 + 8;
@@ -107,6 +107,7 @@ void encodePlaceIntent(std::vector<uint8_t>& out, const PlaceIntentMsg& m) {
     putI32LE(out, m.pos.y);
     putI32LE(out, m.pos.z);
     putU8(out, m.blockType);
+    putU8(out, m.state);
 }
 
 void encodeDestroyIntent(std::vector<uint8_t>& out, const DestroyIntentMsg& m) {
@@ -122,6 +123,7 @@ void encodePlaceApply(std::vector<uint8_t>& out, const PlaceApplyMsg& m) {
     putI32LE(out, m.pos.y);
     putI32LE(out, m.pos.z);
     putU8(out, m.blockType);
+    putU8(out, m.state);
 }
 
 void encodeDestroyApply(std::vector<uint8_t>& out, const DestroyApplyMsg& m) {
@@ -193,6 +195,7 @@ bool decodePlaceIntent(const uint8_t* buf, std::size_t len, PlaceIntentMsg& out)
     out.pos.y = getI32LE(buf + 5);
     out.pos.z = getI32LE(buf + 9);
     out.blockType = buf[13];
+    out.state = buf[14];
     return true;
 }
 
@@ -210,6 +213,7 @@ bool decodePlaceApply(const uint8_t* buf, std::size_t len, PlaceApplyMsg& out) {
     out.pos.y = getI32LE(buf + 5);
     out.pos.z = getI32LE(buf + 9);
     out.blockType = buf[13];
+    out.state = buf[14];
     return true;
 }
 

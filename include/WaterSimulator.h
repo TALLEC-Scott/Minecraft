@@ -71,7 +71,7 @@ class WaterSimulator {
     bool forceNextTick = false;
     std::chrono::steady_clock::time_point lastTickTime; // water's (lava keeps its own)
     // Blocks where lava met water and hardened since the last drain; the
-    // game turns each into a hiss + smoke (LavaEffects) and clears it.
+    // game turns each into a hiss + smoke (BlockEffects) and clears it.
     std::vector<glm::ivec3> fizzes;
 
   private:

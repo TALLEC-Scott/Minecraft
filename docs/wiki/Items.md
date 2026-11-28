@@ -39,6 +39,7 @@ more than three times longer.
 | <img src="../../assets/Textures/crafting_table_top.png" width="16"> | Crafting Table | 20 | 2.5 | axe | 3.75 s | 1.9 s | 0.95 s | Crafting Table | solid |
 | <img src="../../assets/Textures/lava.png" width="16"> | Lava | 21 | – | any | unbreakable | unbreakable | unbreakable | nothing | liquid, light 15 |
 | <img src="../../assets/Textures/obsidian.png" width="16"> | Obsidian | 22 | 50 | pickaxe (needs tool) | 250 s | 125 s | 62.5 s | nothing | solid |
+| <img src="../../assets/Textures/torch.png" width="16"> | Torch | 23 | 0 | any | instant | instant | instant | Torch | plant, light 14 |
 
 ## Tools and weapons
 
@@ -84,6 +85,7 @@ larger ones need a crafting table.
 |---|---|---|
 | Oak Planks ×4 | Wood | inventory |
 | Stick ×4 | Oak Planks<br>Oak Planks | inventory |
+| Torch ×4 | Coal<br>Stick | inventory |
 | Crafting Table | Oak Planks · Oak Planks<br>Oak Planks · Oak Planks | inventory |
 | Wooden Pickaxe | Oak Planks · Oak Planks · Oak Planks<br>— · Stick · —<br>— · Stick · — | crafting table |
 | Wooden Axe | Oak Planks · Oak Planks<br>Oak Planks · Stick<br>— · Stick | crafting table |
