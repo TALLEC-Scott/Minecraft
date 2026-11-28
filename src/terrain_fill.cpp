@@ -4,6 +4,7 @@
 
 #include "biome.h"
 #include "biome_tint.h"
+#include "terrain_density.h"
 #include <cstdint>
 #include <cstdlib>
 
@@ -43,7 +44,7 @@ double unitFloat(uint64_t h) {
 constexpr uint64_t SALT_TREE = 1, SALT_CACTUS = 2, SALT_PLANT = 3;
 
 struct Column {
-    int height;
+    int height; // topmost terrain block (after the 3D density, terrain_density.h)
     Biome biome;
     int slope; // largest height step to a 4-neighbor
     block_type surface;
@@ -123,11 +124,23 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
     // --- Column grid with margin (local coords -MARGIN .. CHUNK_SIZE+MARGIN) ---
     static thread_local Column cols[EXT][EXT];
     auto col = [&](int i, int k) -> Column& { return cols[i + MARGIN][k + MARGIN]; };
+    // Heightmap + jaggedness, then the 3D density reshapes the ground
+    // around that height: columns get their real top, `bands` their solid
+    // profile (overhangs, cuts).
+    static thread_local int target[EXT * EXT];
+    static thread_local float jagged[EXT * EXT];
+    static thread_local terraindensity::ColumnBand bands[EXT * EXT];
+    auto band = [&](int i, int k) -> const terraindensity::ColumnBand& {
+        return bands[(i + MARGIN) * EXT + (k + MARGIN)];
+    };
     for (int i = -MARGIN; i < CHUNK_SIZE + MARGIN; i++)
         for (int k = -MARGIN; k < CHUNK_SIZE + MARGIN; k++) {
-            Column& c = col(i, k);
-            c.height = terrain.getHeightAndBiome(ox + i, oz + k, c.biome);
+            const int idx = (i + MARGIN) * EXT + (k + MARGIN);
+            target[idx] = terrain.getHeightAndBiome(ox + i, oz + k, col(i, k).biome, jagged[idx]);
         }
+    terraindensity::shapeColumns(terrain, ox - MARGIN, oz - MARGIN, EXT, target, jagged, bands);
+    for (int i = -MARGIN; i < CHUNK_SIZE + MARGIN; i++)
+        for (int k = -MARGIN; k < CHUNK_SIZE + MARGIN; k++) col(i, k).height = band(i, k).top;
     for (int i = -MARGIN; i < CHUNK_SIZE + MARGIN; i++)
         for (int k = -MARGIN; k < CHUNK_SIZE + MARGIN; k++) {
             Column& c = col(i, k);
@@ -145,6 +158,7 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
     for (int i = 0; i < CHUNK_SIZE; i++) {
         for (int k = 0; k < CHUNK_SIZE; k++) {
             const Column& c = col(i, k);
+            const terraindensity::ColumnBand& cb = band(i, k);
             const int gx = ox + i, gz = oz + k;
             const int h = c.height;
             heights[i][k] = h;
@@ -153,24 +167,40 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
             const int soil = terrain.soilDepth(gx, gz);
             // Caves keep a solid crust (or a thick roof under water), except
             // in rare entrance zones where tunnels may breach the surface.
+            // Measured from the ground under any overhang (cb.floor).
             int caveCeil;
             if (h <= sea + 1)
                 caveCeil = h - OCEAN_ROOF;
             else
-                caveCeil = terrain.caveEntranceAllowed(gx, gz) ? h : h - CAVE_CRUST;
+                caveCeil = terrain.caveEntranceAllowed(gx, gz) ? cb.floor : cb.floor - CAVE_CRUST;
+            // Ground under an overhang (or in a notch) gets the column's
+            // surface too, except snow, which doesn't fall there: the biome's
+            // own ground instead.
+            const block_type biomeGround = biomeDef(c.biome).surface;
+            const block_type lowerSurface =
+                c.surface != SNOW ? c.surface : (biomeGround != SNOW ? biomeGround : c.subsurface);
 
-            const int top = std::max(h, sea);
-            for (int j = 0; j <= top && j < CHUNK_HEIGHT; j++) {
+            // Top down, so each run of solid blocks under air gets its own
+            // surface + soil layers.
+            const int top = std::min(std::max(h, sea), CHUNK_HEIGHT - 1);
+            int depth = -1; // blocks below the top of the current solid run
+            bool firstRun = true;
+            for (int j = top; j >= 0; j--) {
                 Cube& b = blocks[blockIndex(i, j, k)];
-                if (j > h) {
-                    b.setType(WATER); // j <= sea here
-                } else if (j == 0) {
+                if (!cb.solidAt(j)) {
+                    if (j <= sea) b.setType(WATER); // only above a sub-sea column (bands start over sea)
+                    if (depth >= 0) firstRun = false;
+                    depth = -1;
+                    continue;
+                }
+                depth++;
+                if (j == 0) {
                     b.setType(BEDROCK);
                 } else if (j >= CAVE_FLOOR && j <= caveCeil && terrain.isCave(gx, j, gz)) {
                     b.setType(j <= LAVA_LEVEL ? LAVA : AIR);
-                } else if (j == h) {
-                    b.setType(c.surface);
-                } else if (j > h - soil) {
+                } else if (depth == 0) {
+                    b.setType(firstRun ? c.surface : lowerSurface);
+                } else if (depth < soil) {
                     b.setType(c.subsurface);
                 } else {
                     b.setType(terrain.oreAt(gx, j, gz));

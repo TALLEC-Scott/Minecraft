@@ -15,6 +15,21 @@ class TerrainGenerator {
     int getHeightAndBiome(int x, int y, Biome& outBiome);
     double getTemperature(int x, int y);
     double getMoisture(int x, int y);
+
+    // Heightmap height plus "jaggedness" (0..1): how strongly 3D overhang
+    // density reshapes the ground around that height (terrain_density.h).
+    // 0 on plains, near water, on beaches / ocean and along rivers; up to 1
+    // on mountains and cliff land. No biome lookup (cheaper than
+    // getHeightAndBiome); `jagged` of the combined call below matches it.
+    struct ColumnShape {
+        int height;
+        float jagged;
+    };
+    ColumnShape getShape(int x, int z);
+    int getHeightAndBiome(int x, int z, Biome& outBiome, float& outJagged);
+    // Overhang noise at world block (x, y, z), roughly -1..1: two octaves of
+    // 3D Perlin, stretched horizontally so cuts form ledges and shelves.
+    double overhangNoise(int x, int y, int z);
     // Raw 2D Perlin offset to [-0.5, 1.5] (noise + 0.5). Only the cloud
     // layer uses it, and its 0.65 coverage threshold is tuned to this range.
     double getNoise(int x, int y);
@@ -53,9 +68,10 @@ class TerrainGenerator {
         double ridge;           // 0..1, ridged noise: 1 on mountain crest lines
         double relief;          // blocks of mountain relief added at this column
         int height;
+        float jagged;
         Biome biome;
     };
-    ColumnSample sampleColumn(int x, int y);
+    ColumnSample sampleColumn(int x, int y, bool withBiome = true);
 
     double octaveNoise(double x, double y, int octaves, double persistence, double lacunarity);
     // Ridged multifractal: 1 - |noise| per octave, squared, so crests form
