@@ -18,9 +18,21 @@ modified versions of them, stay under CC BY-SA 4.0; the rest of the project is u
 | `lava.png` | `ITEMS/mcl_core/textures/default_lava_source_animated.png`, first 16×16 frame of the animation |
 | `obsidian.png` | `ITEMS/mcl_core/textures/default_obsidian.png` (unmodified) |
 | `torch.png` | `ITEMS/mcl_torches/textures/default_torch_on_floor.png` (unmodified) |
+| `spruce_log.png` | `ITEMS/mcl_core/textures/mcl_core_log_spruce.png` (unmodified) |
+| `spruce_log_top.png` | `ITEMS/mcl_core/textures/mcl_core_log_spruce_top.png` (unmodified) |
+| `spruce_leaves.png` | `ITEMS/mcl_core/textures/mcl_core_leaves_spruce.png`, tinted ×`#619961` |
+| `birch_log.png` | `ITEMS/mcl_core/textures/mcl_core_log_birch.png` (unmodified) |
+| `birch_log_top.png` | `ITEMS/mcl_core/textures/mcl_core_log_birch_top.png` (unmodified) |
+| `birch_leaves.png` | `ITEMS/mcl_core/textures/mcl_core_leaves_birch.png`, tinted ×`#80A755` |
+| `fern.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_fern.png`, tinted ×`#6ADE3C` |
+| `iron_ore.png` | `ITEMS/mcl_core/textures/mcl_core_iron_ore.png` (unmodified) |
+| `diamond_ore.png` | `ITEMS/mcl_core/textures/mcl_core_diamond_ore.png` (unmodified) |
+
+"Tinted" files are the grayscale originals multiplied by a fixed colour (the game has no runtime
+biome tint), made with `scripts/tint_textures.py`.
 
 Note: Mineclonia's `mcl_core/README.md` still says its textures come from the "Faithful 1.11"
 pack, which conflicts with the repository-wide `LEGAL.md`. `planks.png`, `cobblestone.png`,
-`lava.png` and `obsidian.png` are used on the strength of `LEGAL.md`.
+`lava.png`, `obsidian.png` and the `mcl_core` files above are used on the strength of `LEGAL.md`.
 
 Item textures are credited in `items/README.md`.

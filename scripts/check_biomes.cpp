@@ -20,7 +20,8 @@ int main() {
         }
     }
     
-    const char* names[] = {"Ocean","Beach","Plains","Forest","Desert","Tundra"};
+    const char* names[] = {"Ocean","Beach","Plains","Forest","Desert","Tundra","Taiga","Birch Forest"};
+    static_assert(sizeof(names) / sizeof(names[0]) == BIOME_COUNT, "one name per biome");
     int total = 0;
     for (int i = 0; i < BIOME_COUNT; i++) total += counts[i];
     printf("Biome distribution (4096x4096 area):\n");

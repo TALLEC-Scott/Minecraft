@@ -13,6 +13,26 @@ TEST(RecipeTest, LogToPlanksAnywhere) {
     EXPECT_EQ(r.count, 4);
 }
 
+TEST(RecipeTest, EveryLogMakesPlanks) {
+    for (block_type log : {SPRUCE_LOG, BIRCH_LOG}) {
+        ItemId grid[4] = {blockItem(log), _, _, _};
+        EXPECT_EQ(craftResult(grid, 2).id, P);
+        EXPECT_EQ(craftResult(grid, 2).count, 4);
+    }
+}
+
+TEST(RecipeTest, IronAndDiamondTools) {
+    constexpr ItemId I = ITEM_IRON_INGOT, D = ITEM_DIAMOND;
+    ItemId ironPick[9] = {I, I, I, _, S, _, _, S, _};
+    EXPECT_EQ(craftResult(ironPick, 3).id, ITEM_IRON_PICKAXE);
+    ItemId ironSword[9] = {_, I, _, _, I, _, _, S, _};
+    EXPECT_EQ(craftResult(ironSword, 3).id, ITEM_IRON_SWORD);
+    ItemId diamondAxe[9] = {D, D, _, D, S, _, _, S, _};
+    EXPECT_EQ(craftResult(diamondAxe, 3).id, ITEM_DIAMOND_AXE);
+    ItemId diamondShovel[9] = {_, D, _, _, S, _, _, S, _};
+    EXPECT_EQ(craftResult(diamondShovel, 3).id, ITEM_DIAMOND_SHOVEL);
+}
+
 TEST(RecipeTest, SticksNeedVerticalPlanks) {
     ItemId vertical[4] = {_, P, _, P};
     EXPECT_EQ(craftResult(vertical, 2).id, ITEM_STICK);

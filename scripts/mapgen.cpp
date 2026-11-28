@@ -97,6 +97,8 @@ int main(int argc, char* argv[]) {
         {30,  100,  20},  // FOREST - dark green
         {210, 190, 100},  // DESERT - tan
         {200, 220, 230},  // TUNDRA - pale blue-white
+        {50,  110,  90},  // TAIGA - blue-green
+        {150, 200, 110},  // BIRCH_FOREST - pale green
     };
 
     for (int y = 0; y < mapSize; y++) {

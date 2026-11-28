@@ -41,9 +41,15 @@ inline BlockMining blockMining(block_type t) {
         /* COBBLESTONE    */ {2.0f,  ToolKind::Pickaxe, true},
         /* CRAFTING_TABLE */ {2.5f,  ToolKind::Axe,     false},
         /* LAVA           */ {-1.0f, ToolKind::None,    false},
-        // Minecraft needs a diamond pickaxe; nothing here is good enough yet.
-        /* OBSIDIAN       */ {50.0f, ToolKind::Pickaxe, true, 4},
+        /* OBSIDIAN       */ {50.0f, ToolKind::Pickaxe, true, 4}, // diamond pickaxe
         /* TORCH          */ {0.0f,  ToolKind::None,    false},
+        /* SPRUCE_LOG     */ {2.0f,  ToolKind::Axe,     false},
+        /* SPRUCE_LEAVES  */ {0.2f,  ToolKind::None,    false},
+        /* BIRCH_LOG      */ {2.0f,  ToolKind::Axe,     false},
+        /* BIRCH_LEAVES   */ {0.2f,  ToolKind::None,    false},
+        /* FERN           */ {0.0f,  ToolKind::None,    false},
+        /* IRON_ORE       */ {3.0f,  ToolKind::Pickaxe, true, 2}, // stone pickaxe
+        /* DIAMOND_ORE    */ {3.0f,  ToolKind::Pickaxe, true, 3}, // iron pickaxe
     };
     // clang-format on
     static_assert(sizeof(table) / sizeof(table[0]) == BLOCK_TYPE_COUNT, "one row per block_type");
@@ -53,13 +59,13 @@ inline BlockMining blockMining(block_type t) {
 }
 
 // Mining speed of `held` on `t`: the tool's tier speed when it is the
-// block's best tool (wood 2, stone 4, iron 6), else 1 (bare hand).
+// block's best tool (wood 2, stone 4, iron 6, diamond 8), else 1 (bare hand).
 inline float miningSpeed(block_type t, ItemId held) {
     ToolKind kind = toolKind(held);
     if (kind == ToolKind::None || kind != blockMining(t).bestTool) return 1.0f;
-    static const float TIER_SPEED[] = {1.0f, 2.0f, 4.0f, 6.0f};
+    static const float TIER_SPEED[] = {1.0f, 2.0f, 4.0f, 6.0f, 8.0f};
     int tier = toolTier(held);
-    return (tier >= 0 && tier <= 3) ? TIER_SPEED[tier] : 1.0f;
+    return (tier >= 0 && tier <= 4) ? TIER_SPEED[tier] : 1.0f;
 }
 
 // Whether breaking `t` with `held` yields its drop.
@@ -92,9 +98,17 @@ inline ItemDrop blockDrop(block_type t, ItemId held, float roll) {
         return {blockItem(COBBLESTONE), 1};
     case COAL_ORE:
         return {ITEM_COAL, 1};
+    // No furnace yet, so iron ore drops the ingot directly.
+    case IRON_ORE:
+        return {ITEM_IRON_INGOT, 1};
+    case DIAMOND_ORE:
+        return {ITEM_DIAMOND, 1};
     case LEAVES:
         return roll < 0.005f ? ItemDrop{ITEM_APPLE, 1} : ItemDrop{};
+    case SPRUCE_LEAVES:
+    case BIRCH_LEAVES:
     case TALL_GRASS:
+    case FERN:
         return {};
     default:
         return {blockItem(t), 1};

@@ -25,6 +25,9 @@ inline const std::vector<Recipe>& allRecipes() {
     static const std::vector<Recipe> recipes = [] {
         std::vector<Recipe> r = {
             {1, 1, {blockItem(WOOD)}, {blockItem(PLANKS), 4}},
+            // One planks type: every log makes the same planks.
+            {1, 1, {blockItem(SPRUCE_LOG)}, {blockItem(PLANKS), 4}},
+            {1, 1, {blockItem(BIRCH_LOG)}, {blockItem(PLANKS), 4}},
             {1, 2, {blockItem(PLANKS), blockItem(PLANKS)}, {ITEM_STICK, 4}},
             {1, 2, {ITEM_COAL, ITEM_STICK}, {blockItem(TORCH), 4}}, // coal over a stick
             {2, 2, {blockItem(PLANKS), blockItem(PLANKS), blockItem(PLANKS), blockItem(PLANKS)},
@@ -36,6 +39,8 @@ inline const std::vector<Recipe>& allRecipes() {
         const Tier tiers[] = {
             {blockItem(PLANKS), ITEM_WOODEN_PICKAXE, ITEM_WOODEN_AXE, ITEM_WOODEN_SHOVEL, ITEM_WOODEN_SWORD},
             {blockItem(COBBLESTONE), ITEM_STONE_PICKAXE, ITEM_STONE_AXE, ITEM_STONE_SHOVEL, ITEM_STONE_SWORD},
+            {ITEM_IRON_INGOT, ITEM_IRON_PICKAXE, ITEM_IRON_AXE, ITEM_IRON_SHOVEL, ITEM_IRON_SWORD},
+            {ITEM_DIAMOND, ITEM_DIAMOND_PICKAXE, ITEM_DIAMOND_AXE, ITEM_DIAMOND_SHOVEL, ITEM_DIAMOND_SWORD},
         };
         for (const Tier& t : tiers) {
             const ItemId M = t.material;

@@ -84,16 +84,19 @@ void main() {
     bool isSnow = (texLayer > 12.5 && texLayer < 13.5);
     if (isSnow) texColor.rgb *= vec3(0.93, 0.97, 1.06);
 
-    // Leaf cutout (only branch that truly needs discard)
-    bool isLeaves = (texLayer > 9.5 && texLayer < 10.5);
+    // Leaf cutout (only branch that truly needs discard): oak 10, spruce 47,
+    // birch 50 (block_layers.h).
+    bool isLeaves = abs(texLayer - 10.0) < 0.5 || abs(texLayer - 47.0) < 0.5 || abs(texLayer - 50.0) < 0.5;
     if (isLeaves && texColor.a < 0.5) {
         if (fancyLeaves == 1) discard;
         texColor = vec4(0.12, 0.25, 0.08, 1.0);
     }
     // Cross-plant cutout (tall grass, dandelion, poppy — layers 24..26;
-    // torch — layer 44). These are sprite billboards on a transparent
-    // background; drop any pixel below 50% alpha so the X shape reads cleanly.
-    bool isCrossSprite = (texLayer > 23.5 && texLayer < 26.5) || (texLayer > 43.5 && texLayer < 44.5);
+    // torch — layer 44; fern — layer 51). These are sprite billboards on a
+    // transparent background; drop any pixel below 50% alpha so the X shape
+    // reads cleanly.
+    bool isCrossSprite = (texLayer > 23.5 && texLayer < 26.5) || abs(texLayer - 44.0) < 0.5 ||
+                         abs(texLayer - 51.0) < 0.5;
     if (isCrossSprite && texColor.a < 0.5) discard;
 
     vec3 norm = normalize(Normal);

@@ -38,6 +38,25 @@ double unitFloat(uint64_t h) {
 
 constexpr uint64_t SALT_TREE = 1, SALT_CACTUS = 2, SALT_PLANT = 3;
 
+enum class TreeKind { Oak, Birch, Spruce };
+
+// Cold biomes grow spruce; birch forests are mostly birch with some oak,
+// forests the other way round. `bits` is spare tree-hash entropy.
+TreeKind treeKindFor(Biome b, uint64_t bits) {
+    const int roll = static_cast<int>(bits % 10);
+    switch (b) {
+    case BIOME_TAIGA:
+    case BIOME_TUNDRA:
+        return TreeKind::Spruce;
+    case BIOME_BIRCH_FOREST:
+        return roll < 8 ? TreeKind::Birch : TreeKind::Oak;
+    case BIOME_FOREST:
+        return roll < 2 ? TreeKind::Birch : TreeKind::Oak;
+    default:
+        return TreeKind::Oak;
+    }
+}
+
 struct Column {
     int height;
     Biome biome;
@@ -139,7 +158,7 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
                 } else if (j > h - soil) {
                     b.setType(c.subsurface);
                 } else {
-                    b.setType(terrain.isCoalOre(gx, j, gz) ? COAL_ORE : STONE);
+                    b.setType(terrain.oreAt(gx, j, gz));
                 }
             }
         }
@@ -213,11 +232,34 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
             // Don't plant on a cave mouth.
             if (terrain.caveEntranceAllowed(wx, wz) && terrain.isCave(wx, tc.height, wz)) continue;
 
-            int trunkH = 4 + static_cast<int>((hsh >> 8) % 4);   // 4..7
-            int radius = 2 + static_cast<int>((hsh >> 12) % 2);  // 2..3
-            int layers = 3 + static_cast<int>((hsh >> 16) % 3);  // 3..5
-            int surface = tc.height;
-            if (surface + trunkH + layers + 2 >= CHUNK_HEIGHT) continue;
+            const TreeKind kind = treeKindFor(tc.biome, hsh >> 20);
+            const block_type log = kind == TreeKind::Spruce ? SPRUCE_LOG : kind == TreeKind::Birch ? BIRCH_LOG : WOOD;
+            const block_type leaves =
+                kind == TreeKind::Spruce ? SPRUCE_LEAVES : kind == TreeKind::Birch ? BIRCH_LEAVES : LEAVES;
+            const int surface = tc.height;
+
+            // Ring of leaves at height y, radius r, corners trimmed when r > 1.
+            auto leafRing = [&](int y, int r, bool skipCenter) {
+                for (int dx = -r; dx <= r; dx++)
+                    for (int dz = -r; dz <= r; dz++) {
+                        if (std::abs(dx) == r && std::abs(dz) == r && r > 1) continue;
+                        if (dx == 0 && dz == 0 && skipCenter) continue;
+                        setIfAir(ti + dx, y, tk + dz, leaves);
+                    }
+            };
+
+            int trunkH, radius;
+            if (kind == TreeKind::Spruce) {
+                trunkH = 6 + static_cast<int>((hsh >> 8) % 4);  // 6..9
+                radius = 2 + static_cast<int>((hsh >> 12) % 2); // 2..3
+                if (surface + trunkH + 2 >= CHUNK_HEIGHT) continue;
+            } else {
+                trunkH = kind == TreeKind::Birch ? 5 + static_cast<int>((hsh >> 8) % 3)  // 5..7
+                                                 : 4 + static_cast<int>((hsh >> 8) % 4); // 4..7
+                radius = kind == TreeKind::Birch ? 2 : 2 + static_cast<int>((hsh >> 12) % 2);
+            }
+            const int layers = 3 + static_cast<int>((hsh >> 16) % 3); // 3..5 (oak / birch)
+            if (kind != TreeKind::Spruce && surface + trunkH + layers + 2 >= CHUNK_HEIGHT) continue;
 
             for (int dx = -radius - 1; dx <= radius + 1; dx++)
                 for (int dz = -radius - 1; dz <= radius + 1; dz++)
@@ -225,21 +267,24 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
 
             // Trunk overwrites leaves from neighboring trees (order-independent).
             if (inChunk(ti, tk))
-                for (int y = surface + 1; y <= surface + trunkH; y++) blocks[blockIndex(ti, y, tk)].setType(WOOD);
+                for (int y = surface + 1; y <= surface + trunkH; y++) blocks[blockIndex(ti, y, tk)].setType(log);
 
-            int canopyBase = surface + trunkH;
-            for (int ly = 0; ly < layers; ly++) {
-                int layerR = std::max(1, radius - ly / 2);
-                for (int dx = -layerR; dx <= layerR; dx++)
-                    for (int dz = -layerR; dz <= layerR; dz++) {
-                        if (std::abs(dx) == layerR && std::abs(dz) == layerR && layerR > 1) continue;
-                        if (dx == 0 && dz == 0 && ly == 0) continue;
-                        setIfAir(ti + dx, canopyBase + ly, tk + dz, LEAVES);
-                    }
+            const int top = surface + trunkH;
+            if (kind == TreeKind::Spruce) {
+                // Cone from the trunk top down to 3 above the ground; the
+                // radius widens downward with alternate rows pulled in, the
+                // stepped silhouette of a spruce. One leaf caps the trunk.
+                setIfAir(ti, top + 1, tk, leaves);
+                for (int d = 0; top - d >= surface + 3; d++) {
+                    int r = 1 + d / 2 - ((d % 2 == 1 && d >= 3) ? 1 : 0);
+                    leafRing(top - d, std::min(r, radius), true);
+                }
+            } else {
+                for (int ly = 0; ly < layers; ly++) leafRing(top + ly, std::max(1, radius - ly / 2), ly == 0);
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dz = -1; dz <= 1; dz++)
+                        if (std::abs(dx) + std::abs(dz) <= 1) setIfAir(ti + dx, top + layers, tk + dz, leaves);
             }
-            for (int dx = -1; dx <= 1; dx++)
-                for (int dz = -1; dz <= 1; dz++)
-                    if (std::abs(dx) + std::abs(dz) <= 1) setIfAir(ti + dx, canopyBase + layers, tk + dz, LEAVES);
         }
     }
 
@@ -277,6 +322,12 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
                 break;
             case BIOME_FOREST:
                 pick = roll < 8 ? TALL_GRASS : roll < 9 ? POPPY : AIR;
+                break;
+            case BIOME_BIRCH_FOREST:
+                pick = roll < 8 ? TALL_GRASS : roll < 9 ? DANDELION : roll < 10 ? POPPY : AIR;
+                break;
+            case BIOME_TAIGA:
+                pick = roll < 6 ? FERN : roll < 10 ? TALL_GRASS : AIR;
                 break;
             case BIOME_TUNDRA:
             case BIOME_BEACH:

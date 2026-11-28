@@ -25,7 +25,16 @@ modified versions of them, stay under CC BY-SA 4.0; the rest of the project is u
 | `stick.png` | `mcl_core/textures/default_stick.png` |
 | `coal.png` | `mcl_core/textures/default_coal_lump.png` |
 | `apple.png` | `mcl_core/textures/default_apple.png` |
+| `iron_ingot.png` | `mcl_core/textures/default_steel_ingot.png` |
+| `diamond.png` | `mcl_core/textures/default_diamond.png` |
+| `iron_pickaxe.png` | `mcl_tools/textures/default_tool_steelpick.png` |
+| `iron_axe.png` | `mcl_tools/textures/default_tool_steelaxe.png` |
+| `iron_shovel.png` | `mcl_tools/textures/default_tool_steelshovel.png` |
+| `diamond_pickaxe.png` | `mcl_tools/textures/default_tool_diamondpick.png` |
+| `diamond_axe.png` | `mcl_tools/textures/default_tool_diamondaxe.png` |
+| `diamond_shovel.png` | `mcl_tools/textures/default_tool_diamondshovel.png` |
+| `diamond_sword.png` | `mcl_tools/textures/default_tool_diamondsword.png` |
 
 Note: Mineclonia's `mcl_core/README.md` still says its textures come from the "Faithful 1.11"
 pack, which conflicts with the repository-wide `LEGAL.md`. The `mcl_core` files above (stick,
-coal, apple) are used on the strength of `LEGAL.md`.
+coal, apple, iron ingot, diamond) are used on the strength of `LEGAL.md`.

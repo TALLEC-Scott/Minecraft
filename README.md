@@ -53,8 +53,9 @@ https://github.com/user-attachments/assets/c95a33fa-b7e2-41ac-b8ba-79bb7edf997f
 
 ### World
 - Procedural terrain with multi-octave Perlin noise - continentalness, temperature, humidity
-- 6 biomes - ocean, beach, plains, forest, desert, tundra - driving surface blocks, tree/cactus placement, snow caps and shore sand/gravel post-pass
-- 24 block types including `GRASS`, `DIRT`, `STONE`, `COBBLESTONE`, `COAL_ORE`, `BEDROCK`, `WATER`, `LAVA`, `OBSIDIAN`, `SAND`, `GLOWSTONE`, `WOOD`, `PLANKS`, `LEAVES`, `SNOW`, `GRAVEL`, `CACTUS`, `TNT`, `CRAFTING_TABLE`, and cross-quad blocks (`TALL_GRASS`, `DANDELION`, `POPPY`, `TORCH`)
+- 8 biomes - ocean, beach, plains, forest, birch forest, taiga, desert, tundra - driving surface blocks, tree type (oak, birch, spruce) and cactus placement, ground cover, snow caps and shore sand/gravel post-pass
+- 31 block types including `GRASS`, `DIRT`, `STONE`, `COBBLESTONE`, ores (`COAL_ORE`, `IRON_ORE` below y 64, `DIAMOND_ORE` below y 16), `BEDROCK`, `WATER`, `LAVA`, `OBSIDIAN`, `SAND`, `GLOWSTONE`, logs and leaves (`WOOD`/`LEAVES`, `SPRUCE_*`, `BIRCH_*`), `PLANKS`, `SNOW`, `GRAVEL`, `CACTUS`, `TNT`, `CRAFTING_TABLE`, and cross-quad blocks (`TALL_GRASS`, `FERN`, `DANDELION`, `POPPY`, `TORCH`)
+- Wood, stone, iron and diamond tools; iron ore drops an iron ingot directly (no furnace yet), and a diamond pickaxe mines obsidian
 - Unified vegetation placement - trees, cacti, and plants share a `claimed[]` occupancy grid so nothing grows under a canopy or clips with another tree
 - Persistent worlds - modified chunks save as palette-encoded binary files in `saves/world/chunks/`; game mode, player position, yaw/pitch, inventory, selected slot, health, food and walk mode in `level.dat`
 

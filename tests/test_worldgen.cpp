@@ -83,7 +83,7 @@ TEST_F(WorldgenTest, CoalIsSparseOre) {
             GenChunk c(terrain, cx, cz);
             for (size_t i = 0; i < VOLUME; i++) {
                 block_type t = c.blocks[i].getType();
-                if (t == STONE || t == COAL_ORE) solid++;
+                if (t == STONE || t == COAL_ORE || t == IRON_ORE || t == DIAMOND_ORE) solid++;
                 if (t == COAL_ORE) coal++;
             }
         }
@@ -150,7 +150,9 @@ TEST_F(WorldgenTest, BiomesFormRegionsNotSpeckle) {
     // Walk three long lines and measure land blocks per biome change. The
     // old 150-block climate blobs scored ~54 here (seed 42); the larger
     // climate scale roughly doubles it (~90). Coasts and snowy peaks keep
-    // some short runs, so the bar sits between the two.
+    // some short runs, so the bar sits between the two. Taiga and birch
+    // forest add real borders between the old regions (~72 with them), so
+    // the bar sits at 65: still well clear of the speckled 54.
     int changes = 0, landSamples = 0;
     for (int zLine : {700, -900, 2500}) {
         Biome prev = terrain.getBiome(-3000, zLine);
@@ -162,7 +164,7 @@ TEST_F(WorldgenTest, BiomesFormRegionsNotSpeckle) {
         }
     }
     ASSERT_GT(landSamples, 1500);
-    EXPECT_GT(static_cast<double>(landSamples) / std::max(1, changes), 75.0);
+    EXPECT_GT(static_cast<double>(landSamples) / std::max(1, changes), 65.0);
 }
 
 TEST_F(WorldgenTest, TreeCanopiesCrossChunkBorders) {
@@ -182,7 +184,9 @@ TEST_F(WorldgenTest, TreeCanopiesCrossChunkBorders) {
                 while (top + 1 < CHUNK_HEIGHT && a.at(x, top + 1, z) == WOOD) top++;
                 GenChunk b(terrain, cx + 1, cz);
                 block_type t = b.at(0, top, z);
-                EXPECT_TRUE(t == LEAVES || t == WOOD)
+                // Only oak trunks are picked (spruce tops are 1 wide); a
+                // neighbouring birch canopy may fill the cell instead.
+                EXPECT_TRUE(isLeaves(t) || isLog(t))
                     << "canopy cut at chunk border, trunk at world (" << cx * CHUNK_SIZE + x << ", "
                     << cz * CHUNK_SIZE + z << ")";
                 checked++;
@@ -202,11 +206,66 @@ TEST_F(WorldgenTest, ForestsAreDense) {
                     if (c.biomes[x][z] != BIOME_FOREST) continue;
                     forestCols++;
                     int h = c.heights[x][z];
-                    if (h + 1 < CHUNK_HEIGHT && c.at(x, h + 1, z) == WOOD) trunks++;
+                    if (h + 1 < CHUNK_HEIGHT && isLog(c.at(x, h + 1, z))) trunks++;
                 }
         }
     ASSERT_GT(forestCols, 256) << "no forest in the sample";
     EXPECT_GT(256.0 * trunks / forestCols, 4.0) << "trees per forest chunk";
+}
+
+TEST_F(WorldgenTest, OresStayInTheirDepthBands) {
+    long stone = 0, iron = 0, diamond = 0, coal = 0;
+    for (int cx = -6; cx < 6; cx += 2)
+        for (int cz = -6; cz < 6; cz += 2) {
+            GenChunk c(terrain, cx, cz);
+            for (int x = 0; x < CHUNK_SIZE; x++)
+                for (int z = 0; z < CHUNK_SIZE; z++)
+                    for (int y = 0; y < CHUNK_HEIGHT; y++) {
+                        block_type t = c.at(x, y, z);
+                        if (t == STONE || t == COAL_ORE || t == IRON_ORE || t == DIAMOND_ORE) stone++;
+                        if (t == COAL_ORE) coal++;
+                        if (t == IRON_ORE) {
+                            ASSERT_LE(y, TerrainGenerator::IRON_MAX_Y);
+                            iron++;
+                        }
+                        if (t == DIAMOND_ORE) {
+                            ASSERT_LE(y, TerrainGenerator::DIAMOND_MAX_Y);
+                            diamond++;
+                        }
+                    }
+        }
+    EXPECT_GT(iron, 0);
+    EXPECT_GT(diamond, 0);
+    EXPECT_LT(iron, coal) << "iron should be rarer than coal";
+    EXPECT_LT(diamond, iron) << "diamond should be rarer than iron";
+    EXPECT_LT(static_cast<double>(diamond) / stone, 0.002);
+}
+
+TEST_F(WorldgenTest, BiomesGrowTheirOwnTrees) {
+    // Trunk bases (the log just above the surface) by biome: taiga and tundra
+    // grow only spruce, birch forests mostly birch.
+    long spruceInTaiga = 0, otherInTaiga = 0, birchInBirch = 0, oakInBirch = 0;
+    for (int cx = -40; cx < 40; cx += 4)
+        for (int cz = -40; cz < 40; cz += 4) {
+            GenChunk c(terrain, cx, cz);
+            for (int x = 0; x < CHUNK_SIZE; x++)
+                for (int z = 0; z < CHUNK_SIZE; z++) {
+                    int h = c.heights[x][z];
+                    if (h + 1 >= CHUNK_HEIGHT) continue;
+                    block_type t = c.at(x, h + 1, z);
+                    if (!isLog(t)) continue;
+                    Biome b = c.biomes[x][z];
+                    if (b == BIOME_TAIGA || b == BIOME_TUNDRA) (t == SPRUCE_LOG ? spruceInTaiga : otherInTaiga)++;
+                    if (b == BIOME_BIRCH_FOREST) {
+                        if (t == BIRCH_LOG) birchInBirch++;
+                        if (t == WOOD) oakInBirch++;
+                    }
+                }
+        }
+    EXPECT_GT(spruceInTaiga, 10);
+    EXPECT_EQ(otherInTaiga, 0);
+    EXPECT_GT(birchInBirch, 10);
+    EXPECT_GT(birchInBirch, oakInBirch);
 }
 
 TEST_F(WorldgenTest, DeepCavesHoldLavaAndShallowOnesDont) {

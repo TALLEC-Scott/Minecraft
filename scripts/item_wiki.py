@@ -106,7 +106,7 @@ def write_markdown(data, layers, out):
     tools = [i for i in items if i["tool"] != "none"]
     food = [i for i in items if i["hunger"] > 0]
     other = [i for i in items if i["tool"] == "none" and i["hunger"] == 0]
-    tier = {1: "wood", 2: "stone", 3: "iron"}
+    tier = {1: "wood", 2: "stone", 3: "iron", 4: "diamond"}
     lines += [
         "",
         "## Tools and weapons",
@@ -208,7 +208,7 @@ def write_html(data, layers, out, standalone=False):
         return f'<span class="slot" title="{html.escape(name)}">{icon(name)}{n}</span>'
 
     e = html.escape
-    tier = {1: "Wood", 2: "Stone", 3: "Iron"}
+    tier = {1: "Wood", 2: "Stone", 3: "Iron", 4: "Diamond"}
     blocks_rows = []
     for b in data["blocks"]:
         hard = "—" if b["hardness"] < 0 else f'{b["hardness"]:g}'
