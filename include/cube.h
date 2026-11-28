@@ -72,11 +72,13 @@ enum block_type : uint8_t {
     MOSSY_COBBLESTONE,
     ICE,
     SANDSTONE,
-    DEAD_BUSH
+    DEAD_BUSH,
+    ACACIA_LOG,
+    ACACIA_LEAVES
 };
-// Number of block_type values; keep DEAD_BUSH (the last one) in sync.
+// Number of block_type values; keep ACACIA_LEAVES (the last one) in sync.
 // Values are saved in chunk files and level.dat: append only.
-inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(DEAD_BUSH) + 1;
+inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(ACACIA_LEAVES) + 1;
 
 // Values index tables (BIOME_DEFS in biome.cpp, mob spawn masks). Not saved
 // (recomputed from the seed), so they may be reordered. One BiomeDef each.
@@ -98,10 +100,10 @@ enum Biome {
 
 // Tree trunks and canopies, for code that treats every wood type alike.
 inline bool isLog(block_type t) {
-    return t == WOOD || t == SPRUCE_LOG || t == BIRCH_LOG || t == OAK_LOG_X || t == OAK_LOG_Z;
+    return t == WOOD || t == SPRUCE_LOG || t == BIRCH_LOG || t == OAK_LOG_X || t == OAK_LOG_Z || t == ACACIA_LOG;
 }
 inline bool isLeaves(block_type t) {
-    return t == LEAVES || t == SPRUCE_LEAVES || t == BIRCH_LEAVES;
+    return t == LEAVES || t == SPRUCE_LEAVES || t == BIRCH_LEAVES || t == ACACIA_LEAVES;
 }
 
 // Water level encoding: bits 0-2 hold the flow level (0-7), bit 7 is the
@@ -183,6 +185,8 @@ inline uint32_t getBlockFlags(block_type t) {
         /* ICE           */ BF_SOLID | BF_OPAQUE,
         /* SANDSTONE     */ BF_SOLID | BF_OPAQUE,
         /* DEAD_BUSH     */ BF_TRANSPARENT | BF_CROSS,
+        /* ACACIA_LOG    */ BF_SOLID | BF_OPAQUE,
+        /* ACACIA_LEAVES */ BF_SOLID | BF_TRANSLUCENT,
     };
     // clang-format on
     int idx = static_cast<int>(t);
@@ -274,6 +278,8 @@ inline StepSound getStepSound(block_type t) {
         /* ICE           */ STEP_STONE,
         /* SANDSTONE     */ STEP_STONE,
         /* DEAD_BUSH     */ STEP_GRASS,
+        /* ACACIA_LOG    */ STEP_WOOD,
+        /* ACACIA_LEAVES */ STEP_GRASS,
     };
     // clang-format on
     int idx = static_cast<int>(t);

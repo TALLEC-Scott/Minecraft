@@ -59,6 +59,8 @@ inline BlockMining blockMining(block_type t) {
         /* ICE            */ {0.5f,  ToolKind::Pickaxe, false},
         /* SANDSTONE      */ {0.8f,  ToolKind::Pickaxe, true},
         /* DEAD_BUSH      */ {0.0f,  ToolKind::None,    false},
+        /* ACACIA_LOG     */ {2.0f,  ToolKind::Axe,     false},
+        /* ACACIA_LEAVES  */ {0.2f,  ToolKind::None,    false},
     };
     // clang-format on
     static_assert(sizeof(table) / sizeof(table[0]) == BLOCK_TYPE_COUNT, "one row per block_type");
@@ -121,6 +123,7 @@ inline ItemDrop blockDrop(block_type t, ItemId held, float roll) {
         return roll < 0.005f ? ItemDrop{ITEM_APPLE, 1} : ItemDrop{};
     case SPRUCE_LEAVES:
     case BIRCH_LEAVES:
+    case ACACIA_LEAVES:
     case TALL_GRASS:
     case FERN:
     case ICE: // Minecraft: ice drops nothing without Silk Touch

@@ -45,7 +45,9 @@ vec3 biomeTint(sampler2D map) {
     // Block N spans [N - 0.5, N + 0.5); nudge inward so a face on a column
     // edge reads its own column.
     ivec2 p = ivec2(floor(FragPos.xz + 0.5 - normalize(Normal).xz * 0.01));
-    p = ((p % TINT_MAP_SIZE) + TINT_MAP_SIZE) % TINT_MAP_SIZE;
+    // Float mod: GLSL's integer % is undefined for negative operands (some
+    // drivers return garbage there, leaving negative-x/z columns untinted).
+    p = ivec2(mod(vec2(p), float(TINT_MAP_SIZE)));
     return texelFetch(map, p, 0).rgb * (255.0 / 128.0);
 }
 
@@ -106,8 +108,9 @@ void main() {
     if (isSnow) texColor.rgb *= vec3(0.93, 0.97, 1.06);
 
     // Leaf cutout (only branch that truly needs discard): oak 10, spruce 47,
-    // birch 50 (block_layers.h).
-    bool isLeaves = abs(texLayer - 10.0) < 0.5 || abs(texLayer - 47.0) < 0.5 || abs(texLayer - 50.0) < 0.5;
+    // birch 50, acacia 67 (block_layers.h).
+    bool isLeaves = abs(texLayer - 10.0) < 0.5 || abs(texLayer - 47.0) < 0.5 || abs(texLayer - 50.0) < 0.5 ||
+                    abs(texLayer - 67.0) < 0.5;
     if (isLeaves && texColor.a < 0.5) {
         if (fancyLeaves == 1) discard;
         texColor = vec4(0.12, 0.25, 0.08, 1.0);

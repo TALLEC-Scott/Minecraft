@@ -14,7 +14,7 @@ TEST(RecipeTest, LogToPlanksAnywhere) {
 }
 
 TEST(RecipeTest, EveryLogMakesPlanks) {
-    for (block_type log : {SPRUCE_LOG, BIRCH_LOG}) {
+    for (block_type log : {SPRUCE_LOG, BIRCH_LOG, ACACIA_LOG}) {
         ItemId grid[4] = {blockItem(log), _, _, _};
         EXPECT_EQ(craftResult(grid, 2).id, P);
         EXPECT_EQ(craftResult(grid, 2).count, 4);

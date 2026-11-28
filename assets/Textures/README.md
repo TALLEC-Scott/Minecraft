@@ -37,6 +37,9 @@ modified versions of them, stay under CC BY-SA 4.0; the rest of the project is u
 | `sandstone_top.png` | `ITEMS/mcl_core/textures/mcl_core_sandstone_top.png`, recoloured ×(1.05, 1.29, 1.25) per channel to match `sand.png` |
 | `sandstone_bottom.png` | `ITEMS/mcl_core/textures/mcl_core_sandstone_bottom.png`, recoloured ×(1.05, 1.29, 1.25) per channel to match `sand.png` |
 | `dead_bush.png` | `ITEMS/mcl_core/textures/default_dry_shrub.png` (unmodified) |
+| `acacia_log.png` | `ITEMS/mcl_core/textures/default_acacia_tree.png` (unmodified) |
+| `acacia_log_top.png` | `ITEMS/mcl_core/textures/default_acacia_tree_top.png` (unmodified) |
+| `acacia_leaves.png` | `ITEMS/mcl_core/textures/default_acacia_leaves.png`, tinted ×`#B4D04C` |
 
 "Tinted" files are the grayscale originals multiplied by a fixed colour (the game has no runtime
 biome tint), made with `scripts/tint_textures.py`.

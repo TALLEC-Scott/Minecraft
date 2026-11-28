@@ -225,6 +225,10 @@ inline const char* itemName(ItemId id) {
         return "Sandstone";
     case DEAD_BUSH:
         return "Dead Bush";
+    case ACACIA_LOG:
+        return "Acacia Log";
+    case ACACIA_LEAVES:
+        return "Acacia Leaves";
     default:
         return "?";
     }
