@@ -54,7 +54,11 @@ constexpr int WOOD_SIDEWAYS_LAYER = CORNFLOWER_LAYER + 1;
 constexpr int PODZOL_TOP_LAYER = WOOD_SIDEWAYS_LAYER + 1;
 constexpr int PODZOL_SIDE_LAYER = PODZOL_TOP_LAYER + 1;
 constexpr int MOSSY_COBBLESTONE_LAYER = PODZOL_SIDE_LAYER + 1;
-constexpr int NUM_LAYERS = MOSSY_COBBLESTONE_LAYER + 1;
+constexpr int SANDSTONE_LAYER = MOSSY_COBBLESTONE_LAYER + 1; // side
+constexpr int SANDSTONE_TOP_LAYER = SANDSTONE_LAYER + 1;
+constexpr int SANDSTONE_BOTTOM_LAYER = SANDSTONE_TOP_LAYER + 1;
+constexpr int DEAD_BUSH_LAYER = SANDSTONE_BOTTOM_LAYER + 1; // plant sprite (solid-pass cutout)
+constexpr int NUM_LAYERS = DEAD_BUSH_LAYER + 1;
 // The shaders hard-code these; keep frag.shd / vert.shd in step if they move.
 static_assert(SPRUCE_LEAVES_LAYER == 47 && BIRCH_LEAVES_LAYER == 50 && FERN_LAYER == 51);
 
@@ -122,6 +126,12 @@ inline int layerForFace(block_type t, int face) {
         return PODZOL_SIDE_LAYER;
     }
     if (t == MOSSY_COBBLESTONE) return MOSSY_COBBLESTONE_LAYER;
+    if (t == SANDSTONE) {
+        if (face == 4) return SANDSTONE_TOP_LAYER;
+        if (face == 5) return SANDSTONE_BOTTOM_LAYER;
+        return SANDSTONE_LAYER;
+    }
+    if (t == DEAD_BUSH) return DEAD_BUSH_LAYER;
     return static_cast<int>(t);
 }
 
@@ -148,6 +158,8 @@ inline int layerForType(block_type t) {
     if (t == OAK_LOG_X || t == OAK_LOG_Z) return static_cast<int>(WOOD);
     if (t == PODZOL) return PODZOL_SIDE_LAYER;
     if (t == MOSSY_COBBLESTONE) return MOSSY_COBBLESTONE_LAYER;
+    if (t == SANDSTONE) return SANDSTONE_LAYER;
+    if (t == DEAD_BUSH) return DEAD_BUSH_LAYER;
     return static_cast<int>(t);
 }
 

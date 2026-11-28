@@ -69,11 +69,13 @@ enum block_type : uint8_t {
     OAK_LOG_X, // oak log lying along X (fallen logs); drops WOOD
     OAK_LOG_Z, // oak log lying along Z
     PODZOL,
-    MOSSY_COBBLESTONE
+    MOSSY_COBBLESTONE,
+    SANDSTONE,
+    DEAD_BUSH
 };
-// Number of block_type values; keep MOSSY_COBBLESTONE (the last one) in sync.
+// Number of block_type values; keep DEAD_BUSH (the last one) in sync.
 // Values are saved in chunk files and level.dat: append only.
-inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(MOSSY_COBBLESTONE) + 1;
+inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(DEAD_BUSH) + 1;
 
 // Values index tables (BIOME_DEFS in biome.cpp, mob spawn masks). Not saved
 // (recomputed from the seed), so they may be reordered. One BiomeDef each.
@@ -177,6 +179,8 @@ inline uint32_t getBlockFlags(block_type t) {
         /* OAK_LOG_Z     */ BF_SOLID | BF_OPAQUE,
         /* PODZOL        */ BF_SOLID | BF_OPAQUE,
         /* MOSSY_COBBLESTONE */ BF_SOLID | BF_OPAQUE,
+        /* SANDSTONE     */ BF_SOLID | BF_OPAQUE,
+        /* DEAD_BUSH     */ BF_TRANSPARENT | BF_CROSS,
     };
     // clang-format on
     int idx = static_cast<int>(t);
@@ -265,6 +269,8 @@ inline StepSound getStepSound(block_type t) {
         /* OAK_LOG_Z     */ STEP_WOOD,
         /* PODZOL        */ STEP_GRASS,
         /* MOSSY_COBBLESTONE */ STEP_STONE,
+        /* SANDSTONE     */ STEP_STONE,
+        /* DEAD_BUSH     */ STEP_GRASS,
     };
     // clang-format on
     int idx = static_cast<int>(t);
