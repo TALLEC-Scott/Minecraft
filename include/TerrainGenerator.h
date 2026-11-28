@@ -39,6 +39,15 @@ class TerrainGenerator {
     bool caveEntranceAllowed(int x, int z);
     // Coal ore: compact 3D blobs (~1% of stone), not noise contour sheets.
     bool isCoalOre(int wx, int wy, int wz);
+    // Iron (y ≤ IRON_MAX_Y) and diamond (y ≤ DIAMOND_MAX_Y): smaller,
+    // rarer blobs from their own noises.
+    bool isIronOre(int wx, int wy, int wz);
+    bool isDiamondOre(int wx, int wy, int wz);
+    // What a stone cell holds: an ore, or STONE. Coal wins over iron over
+    // diamond where blobs overlap.
+    block_type oreAt(int wx, int wy, int wz);
+    static constexpr int IRON_MAX_Y = 64;
+    static constexpr int DIAMOND_MAX_Y = 16;
     // Soil depth (dirt / sand) under the surface block, 3..5 blocks.
     int soilDepth(int x, int z);
 

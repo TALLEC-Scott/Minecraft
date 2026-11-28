@@ -40,6 +40,13 @@ more than three times longer.
 | <img src="../../assets/Textures/lava.png" width="16"> | Lava | 21 | – | any | unbreakable | unbreakable | unbreakable | nothing | liquid, light 15 |
 | <img src="../../assets/Textures/obsidian.png" width="16"> | Obsidian | 22 | 50 | pickaxe (needs tool) | 250 s | 125 s | 62.5 s | nothing | solid |
 | <img src="../../assets/Textures/torch.png" width="16"> | Torch | 23 | 0 | any | instant | instant | instant | Torch | plant, light 14 |
+| <img src="../../assets/Textures/spruce_log_top.png" width="16"> | Spruce Log | 24 | 2 | axe | 3 s | 1.5 s | 0.75 s | Spruce Log | solid |
+| <img src="../../assets/Textures/spruce_leaves.png" width="16"> | Spruce Leaves | 25 | 0.2 | any | 0.3 s | 0.3 s | 0.3 s | nothing | see-through |
+| <img src="../../assets/Textures/birch_log_top.png" width="16"> | Birch Log | 26 | 2 | axe | 3 s | 1.5 s | 0.75 s | Birch Log | solid |
+| <img src="../../assets/Textures/birch_leaves.png" width="16"> | Birch Leaves | 27 | 0.2 | any | 0.3 s | 0.3 s | 0.3 s | nothing | see-through |
+| <img src="../../assets/Textures/fern.png" width="16"> | Fern | 28 | 0 | any | instant | instant | instant | nothing | plant |
+| <img src="../../assets/Textures/iron_ore.png" width="16"> | Iron Ore | 29 | 3 | pickaxe (needs tool) | 15 s | 7.5 s | 1.15 s | Iron Ingot | solid |
+| <img src="../../assets/Textures/diamond_ore.png" width="16"> | Diamond Ore | 30 | 3 | pickaxe (needs tool) | 15 s | 7.5 s | 3.75 s | nothing | solid |
 
 ## Tools and weapons
 
@@ -56,6 +63,13 @@ Bare hand: 1 damage, 4 attacks/s. Damage is in half-hearts; a full-strength hit 
 | <img src="../../assets/Textures/items/stone_axe.png" width="16"> | Stone Axe | 265 | axe | stone | 9 | 0.8 | 1 |
 | <img src="../../assets/Textures/items/stone_shovel.png" width="16"> | Stone Shovel | 266 | shovel | stone | 3.5 | 1 | 1 |
 | <img src="../../assets/Textures/items/stone_sword.png" width="16"> | Stone Sword | 267 | sword | stone | 5 | 1.6 | 1 |
+| <img src="../../assets/Textures/items/iron_pickaxe.png" width="16"> | Iron Pickaxe | 274 | pickaxe | iron | 4 | 1.2 | 1 |
+| <img src="../../assets/Textures/items/iron_axe.png" width="16"> | Iron Axe | 275 | axe | iron | 9 | 0.9 | 1 |
+| <img src="../../assets/Textures/items/iron_shovel.png" width="16"> | Iron Shovel | 276 | shovel | iron | 4.5 | 1 | 1 |
+| <img src="../../assets/Textures/items/diamond_pickaxe.png" width="16"> | Diamond Pickaxe | 277 | pickaxe | diamond | 5 | 1.2 | 1 |
+| <img src="../../assets/Textures/items/diamond_axe.png" width="16"> | Diamond Axe | 278 | axe | diamond | 9 | 1 | 1 |
+| <img src="../../assets/Textures/items/diamond_shovel.png" width="16"> | Diamond Shovel | 279 | shovel | diamond | 5.5 | 1 | 1 |
+| <img src="../../assets/Textures/items/diamond_sword.png" width="16"> | Diamond Sword | 280 | sword | diamond | 7 | 1.6 | 1 |
 
 ## Food
 
@@ -75,6 +89,8 @@ Hold right click for 1.6 s to eat (only when not full). Food points are half dru
 |---|---|---|---|
 | <img src="../../assets/Textures/items/stick.png" width="16"> | Stick | 257 | 64 |
 | <img src="../../assets/Textures/items/coal.png" width="16"> | Coal | 258 | 64 |
+| <img src="../../assets/Textures/items/iron_ingot.png" width="16"> | Iron Ingot | 272 | 64 |
+| <img src="../../assets/Textures/items/diamond.png" width="16"> | Diamond | 273 | 64 |
 
 ## Crafting
 
@@ -84,6 +100,8 @@ larger ones need a crafting table.
 | Result | Pattern | Where |
 |---|---|---|
 | Oak Planks ×4 | Wood | inventory |
+| Oak Planks ×4 | Spruce Log | inventory |
+| Oak Planks ×4 | Birch Log | inventory |
 | Stick ×4 | Oak Planks<br>Oak Planks | inventory |
 | Torch ×4 | Coal<br>Stick | inventory |
 | Crafting Table | Oak Planks · Oak Planks<br>Oak Planks · Oak Planks | inventory |
@@ -95,6 +113,14 @@ larger ones need a crafting table.
 | Stone Axe | Cobblestone · Cobblestone<br>Cobblestone · Stick<br>— · Stick | crafting table |
 | Stone Shovel | Cobblestone<br>Stick<br>Stick | crafting table |
 | Stone Sword | Cobblestone<br>Cobblestone<br>Stick | crafting table |
+| Iron Pickaxe | Iron Ingot · Iron Ingot · Iron Ingot<br>— · Stick · —<br>— · Stick · — | crafting table |
+| Iron Axe | Iron Ingot · Iron Ingot<br>Iron Ingot · Stick<br>— · Stick | crafting table |
+| Iron Shovel | Iron Ingot<br>Stick<br>Stick | crafting table |
+| Iron Sword | Iron Ingot<br>Iron Ingot<br>Stick | crafting table |
+| Diamond Pickaxe | Diamond · Diamond · Diamond<br>— · Stick · —<br>— · Stick · — | crafting table |
+| Diamond Axe | Diamond · Diamond<br>Diamond · Stick<br>— · Stick | crafting table |
+| Diamond Shovel | Diamond<br>Stick<br>Stick | crafting table |
+| Diamond Sword | Diamond<br>Diamond<br>Stick | crafting table |
 
 ## Mob drops
 

@@ -56,12 +56,39 @@ enum block_type : uint8_t {
     CRAFTING_TABLE,
     LAVA,
     OBSIDIAN,
-    TORCH
+    TORCH,
+    SPRUCE_LOG,
+    SPRUCE_LEAVES,
+    BIRCH_LOG,
+    BIRCH_LEAVES,
+    FERN,
+    IRON_ORE,
+    DIAMOND_ORE
 };
-// Number of block_type values; keep TORCH (the last one) in sync.
-inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(TORCH) + 1;
+// Number of block_type values; keep DIAMOND_ORE (the last one) in sync.
+// Values are saved in chunk files and level.dat: append only.
+inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(DIAMOND_ORE) + 1;
 
-enum Biome { BIOME_OCEAN, BIOME_BEACH, BIOME_PLAINS, BIOME_FOREST, BIOME_DESERT, BIOME_TUNDRA, BIOME_COUNT };
+// Values index tables (BIOME_TABLE, mob spawn masks): append before BIOME_COUNT.
+enum Biome {
+    BIOME_OCEAN,
+    BIOME_BEACH,
+    BIOME_PLAINS,
+    BIOME_FOREST,
+    BIOME_DESERT,
+    BIOME_TUNDRA,
+    BIOME_TAIGA,
+    BIOME_BIRCH_FOREST,
+    BIOME_COUNT
+};
+
+// Tree trunks and canopies, for code that treats every wood type alike.
+inline bool isLog(block_type t) {
+    return t == WOOD || t == SPRUCE_LOG || t == BIRCH_LOG;
+}
+inline bool isLeaves(block_type t) {
+    return t == LEAVES || t == SPRUCE_LEAVES || t == BIRCH_LEAVES;
+}
 
 // Water level encoding: bits 0-2 hold the flow level (0-7), bit 7 is the
 // "falling" flag. Level 0 without the flag is a source (infinite). Level 0
@@ -126,6 +153,13 @@ inline uint32_t getBlockFlags(block_type t) {
         /* LAVA      */ BF_TRANSPARENT | BF_LIQUID,
         /* OBSIDIAN  */ BF_SOLID | BF_OPAQUE,
         /* TORCH     */ BF_TRANSPARENT | BF_CROSS,
+        /* SPRUCE_LOG    */ BF_SOLID | BF_OPAQUE,
+        /* SPRUCE_LEAVES */ BF_SOLID | BF_TRANSLUCENT,
+        /* BIRCH_LOG     */ BF_SOLID | BF_OPAQUE,
+        /* BIRCH_LEAVES  */ BF_SOLID | BF_TRANSLUCENT,
+        /* FERN          */ BF_TRANSPARENT | BF_CROSS,
+        /* IRON_ORE      */ BF_SOLID | BF_OPAQUE,
+        /* DIAMOND_ORE   */ BF_SOLID | BF_OPAQUE,
     };
     // clang-format on
     int idx = static_cast<int>(t);
@@ -201,6 +235,13 @@ inline StepSound getStepSound(block_type t) {
         /* LAVA      */ STEP_NONE,
         /* OBSIDIAN  */ STEP_STONE,
         /* TORCH     */ STEP_WOOD,
+        /* SPRUCE_LOG    */ STEP_WOOD,
+        /* SPRUCE_LEAVES */ STEP_GRASS,
+        /* BIRCH_LOG     */ STEP_WOOD,
+        /* BIRCH_LEAVES  */ STEP_GRASS,
+        /* FERN          */ STEP_GRASS,
+        /* IRON_ORE      */ STEP_STONE,
+        /* DIAMOND_ORE   */ STEP_STONE,
     };
     // clang-format on
     int idx = static_cast<int>(t);

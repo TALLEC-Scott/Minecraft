@@ -52,6 +52,30 @@ TEST(MiningTest, LeavesSometimesDropAnApple) {
     EXPECT_EQ(blockDrop(LEAVES, ITEM_EMPTY, 0.5f).count, 0);
 }
 
+TEST(MiningTest, OresNeedTheirPickaxeTier) {
+    EXPECT_FALSE(canHarvest(IRON_ORE, ITEM_WOODEN_PICKAXE));
+    EXPECT_EQ(blockDrop(IRON_ORE, ITEM_STONE_PICKAXE, 0.5f).id, ITEM_IRON_INGOT);
+    EXPECT_EQ(blockDrop(DIAMOND_ORE, ITEM_STONE_PICKAXE, 0.5f).count, 0);
+    EXPECT_EQ(blockDrop(DIAMOND_ORE, ITEM_IRON_PICKAXE, 0.5f).id, ITEM_DIAMOND);
+    // Obsidian finally has a pickaxe good enough for it.
+    EXPECT_FALSE(canHarvest(OBSIDIAN, ITEM_IRON_PICKAXE));
+    EXPECT_EQ(blockDrop(OBSIDIAN, ITEM_DIAMOND_PICKAXE, 0.5f).id, blockItem(OBSIDIAN));
+}
+
+TEST(MiningTest, BetterTiersAreFaster) {
+    EXPECT_EQ(breakTicks(STONE, ITEM_IRON_PICKAXE), 8);    // 0.4 s
+    EXPECT_EQ(breakTicks(STONE, ITEM_DIAMOND_PICKAXE), 6); // 0.3 s
+    EXPECT_EQ(breakTicks(OBSIDIAN, ITEM_DIAMOND_PICKAXE), 188); // 9.4 s
+    EXPECT_LT(breakTicks(SPRUCE_LOG, ITEM_DIAMOND_AXE), breakTicks(BIRCH_LOG, ITEM_IRON_AXE));
+}
+
+TEST(MiningTest, NewFoliageDropsNothing) {
+    EXPECT_EQ(blockDrop(SPRUCE_LEAVES, ITEM_EMPTY, 0.001f).count, 0); // apples are oak-only
+    EXPECT_EQ(blockDrop(BIRCH_LEAVES, ITEM_EMPTY, 0.001f).count, 0);
+    EXPECT_EQ(blockDrop(FERN, ITEM_EMPTY, 0.5f).count, 0);
+    EXPECT_EQ(blockDrop(SPRUCE_LOG, ITEM_EMPTY, 0.5f).id, blockItem(SPRUCE_LOG));
+}
+
 TEST(MiningTest, EveryBlockHasARow) {
     for (int i = 0; i < BLOCK_TYPE_COUNT; i++) {
         BlockMining m = blockMining(static_cast<block_type>(i));

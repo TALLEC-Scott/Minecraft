@@ -38,7 +38,18 @@ constexpr int DESTROY_STAGE_COUNT = 10;
 constexpr int LAVA_LAYER = DESTROY_STAGE_FIRST_LAYER + DESTROY_STAGE_COUNT; // 42 (frag.shd: opaque, glowing)
 constexpr int OBSIDIAN_LAYER = LAVA_LAYER + 1;
 constexpr int TORCH_LAYER = OBSIDIAN_LAYER + 1; // 44 (frag.shd: cutout like the plants)
-constexpr int NUM_LAYERS = TORCH_LAYER + 1;
+constexpr int SPRUCE_LOG_LAYER = TORCH_LAYER + 1;
+constexpr int SPRUCE_LOG_TOP_LAYER = SPRUCE_LOG_LAYER + 1;
+constexpr int SPRUCE_LEAVES_LAYER = SPRUCE_LOG_TOP_LAYER + 1; // 47 (shaders: leaf cutout + sway)
+constexpr int BIRCH_LOG_LAYER = SPRUCE_LEAVES_LAYER + 1;
+constexpr int BIRCH_LOG_TOP_LAYER = BIRCH_LOG_LAYER + 1;
+constexpr int BIRCH_LEAVES_LAYER = BIRCH_LOG_TOP_LAYER + 1; // 50 (shaders: leaf cutout + sway)
+constexpr int FERN_LAYER = BIRCH_LEAVES_LAYER + 1;          // 51 (shaders: plant cutout + sway)
+constexpr int IRON_ORE_LAYER = FERN_LAYER + 1;
+constexpr int DIAMOND_ORE_LAYER = IRON_ORE_LAYER + 1;
+constexpr int NUM_LAYERS = DIAMOND_ORE_LAYER + 1;
+// The shaders hard-code these; keep frag.shd / vert.shd in step if they move.
+static_assert(SPRUCE_LEAVES_LAYER == 47 && BIRCH_LEAVES_LAYER == 50 && FERN_LAYER == 51);
 
 // Face-aware: grass uses different textures per face (top=grass,
 // bottom=dirt, sides=grass_side). Wood is top/bottom vs sides. Other
@@ -76,6 +87,13 @@ inline int layerForFace(block_type t, int face) {
     if (t == LAVA) return LAVA_LAYER;
     if (t == OBSIDIAN) return OBSIDIAN_LAYER;
     if (t == TORCH) return TORCH_LAYER;
+    if (t == SPRUCE_LOG) return (face == 4 || face == 5) ? SPRUCE_LOG_TOP_LAYER : SPRUCE_LOG_LAYER;
+    if (t == BIRCH_LOG) return (face == 4 || face == 5) ? BIRCH_LOG_TOP_LAYER : BIRCH_LOG_LAYER;
+    if (t == SPRUCE_LEAVES) return SPRUCE_LEAVES_LAYER;
+    if (t == BIRCH_LEAVES) return BIRCH_LEAVES_LAYER;
+    if (t == FERN) return FERN_LAYER;
+    if (t == IRON_ORE) return IRON_ORE_LAYER;
+    if (t == DIAMOND_ORE) return DIAMOND_ORE_LAYER;
     return static_cast<int>(t);
 }
 
@@ -90,6 +108,13 @@ inline int layerForType(block_type t) {
     if (t == LAVA) return LAVA_LAYER;
     if (t == OBSIDIAN) return OBSIDIAN_LAYER;
     if (t == TORCH) return TORCH_LAYER;
+    if (t == SPRUCE_LOG) return SPRUCE_LOG_LAYER;
+    if (t == SPRUCE_LEAVES) return SPRUCE_LEAVES_LAYER;
+    if (t == BIRCH_LOG) return BIRCH_LOG_LAYER;
+    if (t == BIRCH_LEAVES) return BIRCH_LEAVES_LAYER;
+    if (t == FERN) return FERN_LAYER;
+    if (t == IRON_ORE) return IRON_ORE_LAYER;
+    if (t == DIAMOND_ORE) return DIAMOND_ORE_LAYER;
     return static_cast<int>(t);
 }
 

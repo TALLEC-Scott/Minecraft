@@ -70,7 +70,7 @@ constexpr uint32_t biomeBit(Biome b) {
 }
 inline constexpr uint32_t ALL_LAND_BIOMES =
     biomeBit(BIOME_BEACH) | biomeBit(BIOME_PLAINS) | biomeBit(BIOME_FOREST) | biomeBit(BIOME_DESERT) |
-    biomeBit(BIOME_TUNDRA);
+    biomeBit(BIOME_TUNDRA) | biomeBit(BIOME_TAIGA) | biomeBit(BIOME_BIRCH_FOREST);
 
 using MobFactory = std::unique_ptr<Mob> (*)();
 

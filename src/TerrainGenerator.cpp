@@ -34,7 +34,9 @@ const BiomeParams TerrainGenerator::BIOME_TABLE[BIOME_COUNT] = {
     {GRASS, DIRT, 0.05f},  // PLAINS: the odd lone tree
     {GRASS, DIRT, 0.60f},  // FOREST: dense canopy
     {SAND, SAND, 0.0f},    // DESERT
-    {SNOW, DIRT, 0.08f},   // TUNDRA: sparse snowy trees
+    {SNOW, DIRT, 0.08f},   // TUNDRA: sparse snowy spruce
+    {GRASS, DIRT, 0.45f},  // TAIGA: spruce woods
+    {GRASS, DIRT, 0.50f},  // BIRCH_FOREST
 };
 
 namespace {
@@ -100,6 +102,13 @@ double stretch(double n, double k) {
 constexpr double OCEAN_END = -0.11;  // below: ocean
 constexpr double BEACH_END = -0.04;  // below: beach
 constexpr double INLAND_FULL = 0.12; // mountains at full strength
+
+// Climate thresholds for the land biomes (temperature after altitude
+// cooling, moisture), both 0..1.
+constexpr double TUNDRA_MAX_TEMP = 0.26;
+constexpr double TAIGA_MAX_TEMP = 0.42;
+constexpr double BIRCH_MIN_HUMID = 0.56;
+constexpr double BIRCH_MAX_TEMP = 0.56;
 
 // Cliffs: in jagged terrain the height is pulled toward terraces of this
 // many blocks; the riser occupies the middle RISER fraction of each step.
@@ -255,9 +264,18 @@ TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y) {
             // Altitude cooling: high ground is colder, so tall ranges get
             // tundra (snowy) tops inside otherwise temperate regions.
             double altitude = (s.height - seaLevel) / (double)seaLevel;
-            temp -= std::max(0.0, altitude) * 0.45;
-            if (temp < 0.26)
+            double cooled = temp - std::max(0.0, altitude) * 0.45;
+            // Cold → tundra, then a cool spruce band, then the temperate
+            // biomes split by moisture (birch where it's wet and mild).
+            // Only tundra uses the altitude-cooled temperature: taiga and
+            // birch follow the regional climate, otherwise every mountain
+            // would wear a thin taiga ring below its tundra cap.
+            if (cooled < TUNDRA_MAX_TEMP)
                 s.biome = BIOME_TUNDRA;
+            else if (temp < TAIGA_MAX_TEMP)
+                s.biome = BIOME_TAIGA;
+            else if (humid > BIRCH_MIN_HUMID && temp < BIRCH_MAX_TEMP)
+                s.biome = BIOME_BIRCH_FOREST;
             else if (humid > 0.5)
                 s.biome = BIOME_FOREST;
             else
@@ -360,6 +378,23 @@ bool TerrainGenerator::isCoalOre(int wx, int wy, int wz) {
     // high keeps only isolated peaks, unlike the old near-zero band that
     // traced thin contour shells through all the stone.
     return perlinNoise.noise(wx * 0.19 + 9100.0, wy * 0.19 + 9100.0, wz * 0.19 + 9100.0) > 0.57;
+}
+
+bool TerrainGenerator::isIronOre(int wx, int wy, int wz) {
+    if (wy > IRON_MAX_Y) return false;
+    return perlinNoise.noise(wx * 0.23 + 9400.0, wy * 0.23 + 9400.0, wz * 0.23 + 9400.0) > 0.6;
+}
+
+bool TerrainGenerator::isDiamondOre(int wx, int wy, int wz) {
+    if (wy > DIAMOND_MAX_Y) return false;
+    return perlinNoise.noise(wx * 0.3 + 9700.0, wy * 0.3 + 9700.0, wz * 0.3 + 9700.0) > 0.66;
+}
+
+block_type TerrainGenerator::oreAt(int wx, int wy, int wz) {
+    if (isCoalOre(wx, wy, wz)) return COAL_ORE;
+    if (isIronOre(wx, wy, wz)) return IRON_ORE;
+    if (isDiamondOre(wx, wy, wz)) return DIAMOND_ORE;
+    return STONE;
 }
 
 int TerrainGenerator::soilDepth(int x, int z) {

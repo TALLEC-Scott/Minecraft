@@ -31,7 +31,16 @@ inline constexpr ItemId ITEM_RAW_PORKCHOP = 268;
 inline constexpr ItemId ITEM_RAW_BEEF = 269;
 inline constexpr ItemId ITEM_RAW_CHICKEN = 270;
 inline constexpr ItemId ITEM_RAW_MUTTON = 271;
-inline constexpr ItemId LAST_ITEM = ITEM_RAW_MUTTON;
+inline constexpr ItemId ITEM_IRON_INGOT = 272;
+inline constexpr ItemId ITEM_DIAMOND = 273;
+inline constexpr ItemId ITEM_IRON_PICKAXE = 274;
+inline constexpr ItemId ITEM_IRON_AXE = 275;
+inline constexpr ItemId ITEM_IRON_SHOVEL = 276;
+inline constexpr ItemId ITEM_DIAMOND_PICKAXE = 277;
+inline constexpr ItemId ITEM_DIAMOND_AXE = 278;
+inline constexpr ItemId ITEM_DIAMOND_SHOVEL = 279;
+inline constexpr ItemId ITEM_DIAMOND_SWORD = 280;
+inline constexpr ItemId LAST_ITEM = ITEM_DIAMOND_SWORD;
 
 enum class ToolKind : uint8_t { None, Pickaxe, Axe, Shovel, Sword };
 
@@ -55,7 +64,7 @@ struct ItemInfo {
     // model (item_mesh.h) and drawn spinning when dropped.
     const char* iconPath;
     ToolKind tool;
-    int tier; // 1 wood, 2 stone, 3 iron; 0 for non-tools
+    int tier; // 1 wood, 2 stone, 3 iron, 4 diamond; 0 for non-tools
     MeleeStats melee;
     FoodStats food; // hunger 0 = not edible
 };
@@ -82,6 +91,15 @@ inline const ItemInfo* itemInfo(ItemId id) {
         /* 269 */ {"Raw Beef",       "assets/Textures/items/raw_beef.png",       ToolKind::None,    0, FIST_MELEE,        {3, 1.8f}},
         /* 270 */ {"Raw Chicken",    "assets/Textures/items/raw_chicken.png",    ToolKind::None,    0, FIST_MELEE,        {2, 1.2f}},
         /* 271 */ {"Raw Mutton",     "assets/Textures/items/raw_mutton.png",     ToolKind::None,    0, FIST_MELEE,        {2, 1.2f}},
+        /* 272 */ {"Iron Ingot",     "assets/Textures/items/iron_ingot.png",     ToolKind::None,    0, FIST_MELEE,        {}},
+        /* 273 */ {"Diamond",        "assets/Textures/items/diamond.png",        ToolKind::None,    0, FIST_MELEE,        {}},
+        /* 274 */ {"Iron Pickaxe",   "assets/Textures/items/iron_pickaxe.png",   ToolKind::Pickaxe, 3, {4.0f, 1.0 / 1.2}, {}},
+        /* 275 */ {"Iron Axe",       "assets/Textures/items/iron_axe.png",       ToolKind::Axe,     3, {9.0f, 1.0 / 0.9}, {}},
+        /* 276 */ {"Iron Shovel",    "assets/Textures/items/iron_shovel.png",    ToolKind::Shovel,  3, {4.5f, 1.0 / 1.0}, {}},
+        /* 277 */ {"Diamond Pickaxe","assets/Textures/items/diamond_pickaxe.png",ToolKind::Pickaxe, 4, {5.0f, 1.0 / 1.2}, {}},
+        /* 278 */ {"Diamond Axe",    "assets/Textures/items/diamond_axe.png",    ToolKind::Axe,     4, {9.0f, 1.0 / 1.0}, {}},
+        /* 279 */ {"Diamond Shovel", "assets/Textures/items/diamond_shovel.png", ToolKind::Shovel,  4, {5.5f, 1.0 / 1.0}, {}},
+        /* 280 */ {"Diamond Sword",  "assets/Textures/items/diamond_sword.png",  ToolKind::Sword,   4, {7.0f, 1.0 / 1.6}, {}},
     };
     // clang-format on
     static_assert(sizeof(items) / sizeof(items[0]) == LAST_ITEM - FIRST_ITEM + 1, "one row per item id");
@@ -176,6 +194,20 @@ inline const char* itemName(ItemId id) {
         return "Obsidian";
     case TORCH:
         return "Torch";
+    case SPRUCE_LOG:
+        return "Spruce Log";
+    case SPRUCE_LEAVES:
+        return "Spruce Leaves";
+    case BIRCH_LOG:
+        return "Birch Log";
+    case BIRCH_LEAVES:
+        return "Birch Leaves";
+    case FERN:
+        return "Fern";
+    case IRON_ORE:
+        return "Iron Ore";
+    case DIAMOND_ORE:
+        return "Diamond Ore";
     default:
         return "?";
     }
