@@ -76,6 +76,7 @@ enum block_type : uint8_t {
     ACACIA_LOG,
     ACACIA_LEAVES,
     JUNGLE_LOG,
+    COARSE_DIRT,
     CLAY,
     BLUE_ORCHID
 };
@@ -192,6 +193,7 @@ inline uint32_t getBlockFlags(block_type t) {
         /* ACACIA_LOG    */ BF_SOLID | BF_OPAQUE,
         /* ACACIA_LEAVES */ BF_SOLID | BF_TRANSLUCENT,
         /* JUNGLE_LOG    */ BF_SOLID | BF_OPAQUE,
+        /* COARSE_DIRT   */ BF_SOLID | BF_OPAQUE,
         /* CLAY          */ BF_SOLID | BF_OPAQUE,
         /* BLUE_ORCHID   */ BF_TRANSPARENT | BF_CROSS,
     };
@@ -288,6 +290,7 @@ inline StepSound getStepSound(block_type t) {
         /* ACACIA_LOG    */ STEP_WOOD,
         /* ACACIA_LEAVES */ STEP_GRASS,
         /* JUNGLE_LOG    */ STEP_WOOD,
+        /* COARSE_DIRT   */ STEP_GRAVEL,
         /* CLAY          */ STEP_GRAVEL,
         /* BLUE_ORCHID   */ STEP_GRASS,
     };

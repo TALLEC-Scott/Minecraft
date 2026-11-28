@@ -102,6 +102,7 @@ class Inventory {
         MOSSY_COBBLESTONE,
         SANDSTONE,
         DEAD_BUSH,
+        COARSE_DIRT,
         ITEM_STICK,
         ITEM_COAL,
         ITEM_WOODEN_PICKAXE,
