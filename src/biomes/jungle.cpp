@@ -1,4 +1,4 @@
-// Rainforest: the hot, wet corner of the climate table. A layered jungle:
+// Jungle: the hot, wet corner of the climate table. A layered jungle:
 // emergent giants on 2×2 jungle-log trunks with broad flat crowns, branch
 // clusters and buttress roots; a middle storey of smaller jungle trees; low
 // lumpy jungle-leaf bushes covering most of the floor; vines draped down
@@ -212,11 +212,11 @@ bool growTree(const TreeSite& s) {
 // More bushes between the trees: up to three per feature cell, at the site
 // and two diagonal steps off it, on open grass. Features only write inside the
 // chunk, so a mound's 3×3 core keeps a column away from the chunk edge
-// (only an outer lump can be cut), and lumps stay on rainforest columns.
+// (only an outer lump can be cut), and lumps stay on jungle columns.
 void featureBush(const biomegen::FeatureSite& f, int di, int dk, uint64_t bits) {
     const int ci = f.i + di, ck = f.k + dk;
     if (ci < 1 || ci > CHUNK_SIZE - 2 || ck < 1 || ck > CHUNK_SIZE - 2) return;
-    if (f.biomeAt(di, dk) != BIOME_RAINFOREST) return;
+    if (f.biomeAt(di, dk) != BIOME_JUNGLE) return;
     // That column's open grass surface (near this cell's).
     int y = -1;
     for (int t = f.surface + 2; t >= f.surface - 2; t--)
@@ -228,7 +228,7 @@ void featureBush(const biomegen::FeatureSite& f, int di, int dk, uint64_t bits) 
     bushShape(
         bits, y,
         [&](int dx, int ly, int dz) {
-            if (f.biomeAt(di + dx, dk + dz) == BIOME_RAINFOREST) f.setAt(di + dx, ly, dk + dz, JUNGLE_LEAVES);
+            if (f.biomeAt(di + dx, dk + dz) == BIOME_JUNGLE) f.setAt(di + dx, ly, dk + dz, JUNGLE_LEAVES);
         },
         [&](int dx, int ly, int dz) { f.setAt(di + dx, ly, dk + dz, JUNGLE_LOG); });
 }
@@ -255,8 +255,14 @@ block_type groundCover(const biomegen::GroundSite& g) {
 
 } // namespace
 
-const BiomeDef RAINFOREST_DEF = {
-    "Rainforest",          GRASS, DIRT, SAND, 0.85f, &growTree, &decorate, &groundCover,
+// clang-format off
+const BiomeDef JUNGLE_DEF = {
+    "Jungle",
+    GRASS, DIRT, SAND,
+    0.85f, &growTree,
+    &decorate,
+    &groundCover,
     {0.45f, 0.85f, 0.40f}, // grass tint: deep jungle green
     {0.48f, 1.32f, 0.26f}, // foliage tint
 };
+// clang-format on

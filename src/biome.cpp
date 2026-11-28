@@ -13,7 +13,7 @@ const BiomeDef* const BIOME_DEFS[] = {
     &DESERT_DEF,          // BIOME_DESERT
     &TUNDRA_DEF,          // BIOME_TUNDRA
     &TAIGA_DEF,           // BIOME_TAIGA
-    &RAINFOREST_DEF,      // BIOME_RAINFOREST
+    &JUNGLE_DEF,          // BIOME_JUNGLE
     &SEASONAL_FOREST_DEF, // BIOME_SEASONAL_FOREST
     &SWAMPLAND_DEF,       // BIOME_SWAMPLAND
     &SAVANNA_DEF,         // BIOME_SAVANNA
@@ -37,8 +37,8 @@ const BiomeDef& biomeDef(Biome b) {
 //   cold       tundra (altitude-cooled temperature, so also mountain caps)
 //   cool       taiga
 //   temperate  shrubland │ plains   │ forest         │ swampland (low ground)
-//   warm       savanna   │ plains   │ seasonal forest │ rainforest
-//   hot        desert    │ savanna  │ seasonal forest │ rainforest
+//   warm       savanna   │ plains   │ seasonal forest │ jungle
+//   hot        desert    │ savanna  │ seasonal forest │ jungle
 Biome pickBiome(const Climate& c) {
     if (c.cooled < 0.22) return BIOME_TUNDRA;
     // Cool regions, and the band below the snow caps on high ground, so
@@ -56,12 +56,12 @@ Biome pickBiome(const Climate& c) {
         if (h < 0.38) return BIOME_SAVANNA;
         if (h < 0.52) return BIOME_PLAINS;
         if (h < 0.64) return BIOME_SEASONAL_FOREST;
-        return BIOME_RAINFOREST;
+        return BIOME_JUNGLE;
     }
     // Hot. Mountain relief suppresses desert so peaks don't read as dunes;
     // those become savanna highlands instead.
     if (h < 0.45) return c.relief < 14.0 ? BIOME_DESERT : BIOME_SAVANNA;
     if (h < 0.55) return BIOME_SAVANNA;
     if (h < 0.63) return BIOME_SEASONAL_FOREST;
-    return BIOME_RAINFOREST;
+    return BIOME_JUNGLE;
 }

@@ -98,7 +98,7 @@ int main(int argc, char* argv[]) {
         {210, 190, 100},  // DESERT - tan
         {200, 220, 230},  // TUNDRA - pale blue-white
         {50,  110,  90},  // TAIGA - blue-green
-        {20,  140,  40},  // RAINFOREST - vivid green
+        {20,  140,  40},  // JUNGLE - vivid green
         {120, 160,  50},  // SEASONAL_FOREST - olive
         {70,   90,  60},  // SWAMPLAND - murky
         {190, 170,  80},  // SAVANNA - straw
