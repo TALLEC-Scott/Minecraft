@@ -4,6 +4,7 @@
 
 #include "chunk.h"
 #include "torch.h"
+#include "vine.h"
 #include "light_data.h"
 #include "texture_array.h"
 #include "profiler.h"
@@ -131,7 +132,13 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
     d.chunkZ = chunkZ;
 
     // Terrain, caves, ore, shores and vegetation (GL-free, see terrain_fill.cpp).
-    fillChunkTerrain(terrain, chunkX, chunkZ, flatBlocks.get(), d.heights, d.biomes, &d.tints);
+    // Generated vines carry their sides in the state byte, which lives in the
+    // liquid-level array: keep it only if something wrote one.
+    constexpr size_t CELLS = static_cast<size_t>(CHUNK_SIZE) * CHUNK_HEIGHT * CHUNK_SIZE;
+    auto states = std::shared_ptr<uint8_t[]>(new uint8_t[CELLS]());
+    fillChunkTerrain(terrain, chunkX, chunkZ, flatBlocks.get(), d.heights, d.biomes, &d.tints, states.get());
+    if (std::any_of(states.get(), states.get() + CELLS, [](uint8_t s) { return s != 0; }))
+        d.waterLevels = std::move(states);
 
     // Compute maxSolidY
     d.maxSolidY = 0;
@@ -1003,7 +1010,7 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                     float wx = (float)(x + chunkX * CHUNK_SIZE);
                     float wy = (float)y;
                     float wz = (float)z + chunkY * CHUNK_SIZE;
-                    auto emitPlane = [&](float p[4][3]) {
+                    auto emitPlane = [&](float p[4][3], uint8_t normalIdx) {
                         size_t off = sm.verts.size();
                         sm.verts.resize(off + 4 * BYTES_PER_VERT);
                         PackedVertex* dst = reinterpret_cast<PackedVertex*>(&sm.verts[off]);
@@ -1014,7 +1021,7 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                             dst->pz = (int16_t)(p[vi][2] * 2.0f);
                             dst->u = uv[vi][0];
                             dst->v = uv[vi][1];
-                            dst->normalIdx = 4;
+                            dst->normalIdx = normalIdx;
                             dst->texLayer = (uint8_t)layer;
                             dst->ao = 3;
                             dst->packedLight = packedLight;
@@ -1029,10 +1036,22 @@ void Chunk::buildMeshData(const NeighborChunks& nc) {
                         sm.crossIdx.push_back(b);
                         opaqueBase += 4;
                     };
+                    if (bt == VINE) {
+                        // One flat quad per covered side (vine.h).
+                        uint8_t sides = getWaterLevel(x, y, z);
+                        if (!vine::validState(sides)) sides = vine::ALL_SIDES;
+                        for (int s = 0; s < 4; ++s) {
+                            if ((sides & (1u << s)) == 0) continue;
+                            float quad[4][3];
+                            vine::quadCorners(wx, wy, wz, s, quad);
+                            emitPlane(quad, vine::NORMAL_IDX[s]);
+                        }
+                        continue;
+                    }
                     float planeA[4][3], planeB[4][3];
                     crossQuadCorners(wx, wy, wz, planeA, planeB);
-                    emitPlane(planeA);
-                    emitPlane(planeB);
+                    emitPlane(planeA, 4);
+                    emitPlane(planeB, 4);
                 }
             }
         }

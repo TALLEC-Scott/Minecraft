@@ -82,6 +82,8 @@ enum block_type : uint8_t {
     ORANGE_TULIP,
     CLAY,
     BLUE_ORCHID,
+    JUNGLE_LEAVES,
+    VINE, // flat sheet against a block side; sides in the state byte (vine.h)
     // Two-block plants (double_plant.h): the lower half is the item / what
     // generation places, the upper half only ever sits on top of it.
     DOUBLE_TALL_GRASS,
@@ -103,7 +105,7 @@ enum Biome {
     BIOME_DESERT,
     BIOME_TUNDRA,
     BIOME_TAIGA,
-    BIOME_RAINFOREST,
+    BIOME_JUNGLE,
     BIOME_SEASONAL_FOREST,
     BIOME_SWAMPLAND,
     BIOME_SAVANNA,
@@ -118,7 +120,7 @@ inline bool isLog(block_type t) {
 }
 inline bool isLeaves(block_type t) {
     return t == LEAVES || t == SPRUCE_LEAVES || t == BIRCH_LEAVES || t == ACACIA_LEAVES || t == RED_AUTUMN_LEAVES ||
-           t == ORANGE_AUTUMN_LEAVES;
+           t == ORANGE_AUTUMN_LEAVES || t == JUNGLE_LEAVES;
 }
 
 // Water level encoding: bits 0-2 hold the flow level (0-7), bit 7 is the
@@ -209,6 +211,8 @@ inline uint32_t getBlockFlags(block_type t) {
         /* ORANGE_TULIP  */ BF_TRANSPARENT | BF_CROSS,
         /* CLAY          */ BF_SOLID | BF_OPAQUE,
         /* BLUE_ORCHID   */ BF_TRANSPARENT | BF_CROSS,
+        /* JUNGLE_LEAVES */ BF_SOLID | BF_TRANSLUCENT,
+        /* VINE          */ BF_TRANSPARENT | BF_CROSS,
         /* DOUBLE_TALL_GRASS     */ BF_TRANSPARENT | BF_CROSS,
         /* DOUBLE_TALL_GRASS_TOP */ BF_TRANSPARENT | BF_CROSS,
         /* LARGE_FERN            */ BF_TRANSPARENT | BF_CROSS,
@@ -313,6 +317,8 @@ inline StepSound getStepSound(block_type t) {
         /* ORANGE_TULIP  */ STEP_GRASS,
         /* CLAY          */ STEP_GRAVEL,
         /* BLUE_ORCHID   */ STEP_GRASS,
+        /* JUNGLE_LEAVES */ STEP_GRASS,
+        /* VINE          */ STEP_GRASS,
         /* DOUBLE_TALL_GRASS     */ STEP_GRASS,
         /* DOUBLE_TALL_GRASS_TOP */ STEP_GRASS,
         /* LARGE_FERN            */ STEP_GRASS,

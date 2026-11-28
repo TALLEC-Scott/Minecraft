@@ -75,7 +75,7 @@ TEST(GrassClimateTest, DensityFollowsTheClimate) {
     // Tall grass: warm grassland over cold or wet forest.
     EXPECT_GT(tallGrassShare(0.66, 0.40), 0.25f) << "savanna";
     EXPECT_GT(tallGrassShare(0.66, 0.40), 2.0f * tallGrassShare(0.30, 0.50)) << "taiga";
-    EXPECT_GT(tallGrassShare(0.56, 0.45), 2.0f * tallGrassShare(0.68, 0.80)) << "rainforest";
+    EXPECT_GT(tallGrassShare(0.56, 0.45), 2.0f * tallGrassShare(0.68, 0.80)) << "jungle";
 }
 
 TEST(GrassClimateTest, ClimateGrassMatchesTheDensity) {
@@ -120,7 +120,7 @@ TEST(GrassClimateTest, TwoBlockPlantHelpers) {
     int dy = 0;
     block_type other = AIR;
     EXPECT_FALSE(partner(TALL_GRASS, dy, other));
-    // Each half has its own sprite (76..79, the range the shaders test);
+    // Each half has its own sprite (78..81, the range the shaders test);
     // the item shows the top half.
     using namespace block_layers;
     EXPECT_EQ(layerForFace(DOUBLE_TALL_GRASS, 0), DOUBLE_TALL_GRASS_BOTTOM_LAYER);

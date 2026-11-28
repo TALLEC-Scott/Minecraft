@@ -43,6 +43,7 @@ static const char* TEXTURE_PATHS[] = {
     "assets/Textures/red_autumn_leaves.png",  "assets/Textures/orange_autumn_leaves.png",
     "assets/Textures/orange_tulip.png",
     "assets/Textures/clay.png",               "assets/Textures/blue_orchid.png",
+    "assets/Textures/jungle_leaves.png",      "assets/Textures/vine.png",
     "assets/Textures/double_tall_grass_bottom.png", "assets/Textures/double_tall_grass_top.png",
     "assets/Textures/large_fern_bottom.png",  "assets/Textures/large_fern_top.png",
 };

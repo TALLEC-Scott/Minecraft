@@ -14,6 +14,7 @@
 #include "mesh_types.h"
 #include "torch.h"
 #include "tracy_shim.h"
+#include "vine.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -466,7 +467,7 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
         // Each plane: 4 unique verts + 6 forward-winding indices. Plants
         // render in a second draw call with GL_CULL_FACE disabled so both
         // sides of each quad are visible, no reverse-winding dupes needed.
-        auto emitPlane = [&](float p[4][3]) {
+        auto emitPlane = [&](float p[4][3], uint8_t normalIdx) {
             size_t off = opaqueVerts.size();
             opaqueVerts.resize(off + 4 * BYTES_PER_VERT);
             PackedVertex* dst = reinterpret_cast<PackedVertex*>(&opaqueVerts[off]);
@@ -477,7 +478,7 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
                 dst->pz = (int16_t)(p[vi][2] * 2.0f);
                 dst->u = uv[vi][0];
                 dst->v = uv[vi][1];
-                dst->normalIdx = 4; // +Y — gives the plant full face-brightness
+                dst->normalIdx = normalIdx; // plants: +Y (4), full face-brightness
                 dst->texLayer = (uint8_t)layer;
                 dst->ao = 3; // AO_CURVE[3] = 1.0 (full bright)
                 dst->packedLight = packedLight;
@@ -492,10 +493,25 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
             crossIdx.push_back(b);
             opaqueBase += 4;
         };
+        if (bt == VINE) {
+            // One flat quad per covered side (vine.h), drawn double-sided
+            // like the plants; normal faces away from the covered block.
+            const size_t i =
+                (static_cast<size_t>(lx) * CHUNK_HEIGHT + static_cast<size_t>(ly)) * CHUNK_SIZE + static_cast<size_t>(lz);
+            uint8_t sides = waterLevels ? waterLevels[i] : 0;
+            if (!vine::validState(sides)) sides = vine::ALL_SIDES;
+            for (int s = 0; s < 4; ++s) {
+                if ((sides & (1u << s)) == 0) continue;
+                float quad[4][3];
+                vine::quadCorners(wx, wy, wz, s, quad);
+                emitPlane(quad, vine::NORMAL_IDX[s]);
+            }
+            return;
+        }
         float planeA[4][3], planeB[4][3];
         crossQuadCorners(wx, wy, wz, planeA, planeB);
-        emitPlane(planeA);
-        emitPlane(planeB);
+        emitPlane(planeA, 4);
+        emitPlane(planeB, 4);
     };
 
     for (int x = 0; x < CHUNK_SIZE; ++x) {

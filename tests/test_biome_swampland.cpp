@@ -1,6 +1,7 @@
 // Swampland (src/biomes/swampland.cpp): shallow pools (some clay-floored)
-// stay on swamp columns, swamp oaks hang strands of leaves from a canopy
-// within TREE_MAX_RADIUS, and blue orchids grow only in swamps.
+// stay on swamp columns, swamp oaks (Minecraft's: 5..8 trunk, leaves on the
+// top four layers, high enough to walk under) trail real vines, and blue
+// orchids grow only in swamps.
 
 #include <gtest/gtest.h>
 
@@ -10,6 +11,7 @@
 #include "TerrainGenerator.h"
 #include "biome.h"
 #include "terrain_fill.h"
+#include "vine.h"
 
 namespace {
 
@@ -18,10 +20,16 @@ constexpr int SEA = CHUNK_HEIGHT / 2;
 
 struct GenChunk {
     std::unique_ptr<Cube[]> blocks{new Cube[VOLUME]};
+    std::unique_ptr<uint8_t[]> states{new uint8_t[VOLUME]()};
     int heights[CHUNK_SIZE][CHUNK_SIZE];
     Biome biomes[CHUNK_SIZE][CHUNK_SIZE];
 
-    GenChunk(TerrainGenerator& tg, int cx, int cz) { fillChunkTerrain(tg, cx, cz, blocks.get(), heights, biomes); }
+    GenChunk(TerrainGenerator& tg, int cx, int cz) {
+        fillChunkTerrain(tg, cx, cz, blocks.get(), heights, biomes, nullptr, states.get());
+    }
+    uint8_t state(int x, int y, int z) const {
+        return states[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z];
+    }
     block_type at(int x, int y, int z) const {
         if (y < 0 || y >= CHUNK_HEIGHT) return AIR;
         return blocks[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z]
@@ -99,8 +107,10 @@ TEST_F(SwamplandTest, PoolsAndOrchidsStayInSwamps) {
     EXPECT_EQ(strayWater, 0);
 }
 
-TEST_F(SwamplandTest, SwampOaksHangLeavesAndStayInRadius) {
-    long trees = 0, strands = 0;
+TEST_F(SwamplandTest, SwampOaksStandTallEnoughToWalkUnder) {
+    // A neighbouring oak on slightly different ground may break the pattern
+    // here and there, so low leaves are counted, not forbidden outright.
+    long trees = 0, lowLeaves = 0, cells = 0;
     for (int dx = -2; dx <= 2; dx++)
         for (int dz = -2; dz <= 2; dz++) {
             GenChunk c(terrain, SWAMP_CX + dx, SWAMP_CZ + dz);
@@ -111,20 +121,60 @@ TEST_F(SwamplandTest, SwampOaksHangLeavesAndStayInRadius) {
                     trees++;
                     int top = h + 1;
                     while (c.at(x, top + 1, z) == WOOD) top++;
-                    EXPECT_LE(top - h, 6);
-                    // Rim strands: leaves 3 out from the trunk, below the
-                    // canopy's lowest layer (top - 2).
+                    EXPECT_GE(top - h, 5);
+                    EXPECT_LE(top - h, 8);
+                    EXPECT_EQ(c.at(x, top + 1, z), LEAVES) << "a leaf over the trunk";
+                    // No leaves in the two blocks over the ground under the
+                    // canopy (its lowest layer is top - 2).
                     for (int ox = -3; ox <= 3; ox++)
                         for (int oz = -3; oz <= 3; oz++) {
-                            if (std::abs(ox) != 3 && std::abs(oz) != 3) continue;
                             const int lx = x + ox, lz = z + oz;
                             if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE) continue;
-                            if (c.at(lx, top - 3, lz) == LEAVES) strands++;
+                            const int g = c.heights[lx][lz];
+                            if (g > h) continue; // a rise in the ground
+                            cells++;
+                            if (isLeaves(c.at(lx, g + 1, lz)) || isLeaves(c.at(lx, g + 2, lz))) lowLeaves++;
                         }
                 }
         }
     EXPECT_GT(trees, 5);
-    EXPECT_GT(strands, trees);
+    EXPECT_LT(lowLeaves, cells / 50);
+}
+
+TEST_F(SwamplandTest, SwampOaksTrailVines) {
+    long vines = 0, onLeaves = 0;
+    for (int dx = -2; dx <= 2; dx++)
+        for (int dz = -2; dz <= 2; dz++) {
+            GenChunk c(terrain, SWAMP_CX + dx, SWAMP_CZ + dz);
+            for (int x = 0; x < CHUNK_SIZE; x++)
+                for (int z = 0; z < CHUNK_SIZE; z++)
+                    for (int y = SEA; y + 1 < CHUNK_HEIGHT; y++) {
+                        if (c.at(x, y, z) != VINE) continue;
+                        vines++;
+                        const uint8_t s = c.state(x, y, z);
+                        ASSERT_TRUE(vine::validState(s));
+                        const block_type below = c.at(x, y - 1, z);
+                        EXPECT_TRUE(below == AIR || below == VINE || isLog(below) || isLeaves(below))
+                            << "vines stop above ground and water, not " << int(below);
+                        // Chains are 1..4 long (5 where one from the layer above
+                        // runs into one starting under the next layer).
+                        int len = 1;
+                        while (c.at(x, y + len, z) == VINE) len++;
+                        EXPECT_LE(len, 5);
+                        for (int b = 0; b < 4; b++) {
+                            const int nx = x + vine::SIDE[b][0], nz = z + vine::SIDE[b][2];
+                            if ((s & (1u << b)) == 0 || nx < 0 || nx >= CHUNK_SIZE || nz < 0 || nz >= CHUNK_SIZE)
+                                continue;
+                            if (c.at(nx, y, nz) == LEAVES) {
+                                onLeaves++;
+                            } else if (!vine::canSupport(c.at(nx, y, nz))) {
+                                EXPECT_EQ(c.at(x, y + 1, z), VINE) << "hangs from a leaf or the vine above";
+                            }
+                        }
+                    }
+        }
+    EXPECT_GT(vines, 40);
+    EXPECT_GT(onLeaves, 15);
 }
 
 TEST_F(SwamplandTest, TintsAreMurkierThanForest) {

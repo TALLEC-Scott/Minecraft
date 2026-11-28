@@ -9,6 +9,7 @@
 #include "net/net_session.h"
 #include "particle_system.h"
 #include "torch.h"
+#include "vine.h"
 #include "world.h"
 #include "ChunkManager.h"
 #include <algorithm>
@@ -259,6 +260,18 @@ void Player::handleInput(GLFWwindow* window, World* world) {
                 blocked = blocked || !targetBlock || !torch::canSupport(targetBlock->getType()) ||
                           !torch::validState(state);
             }
+            // A vine lies against the clicked side of a solid block or
+            // leaves, or extends a vine downward from under it.
+            if (getSelectedBlockType() == VINE) {
+                glm::ivec3 n = placementPos - targeted;
+                const block_type tt = targetBlock ? targetBlock->getType() : AIR;
+                if (n.y < 0 && tt == VINE) {
+                    state = 0xFF; // World::placeBlock copies the vine above
+                } else {
+                    state = vine::stateForFace(n.x, n.y, n.z);
+                    blocked = blocked || !vine::canSupport(tt) || !vine::validState(state);
+                }
+            }
             // A two-block plant needs a free cell above for its upper half.
             if (double_plant::isLower(getSelectedBlockType())) {
                 Cube* above = world->getBlock(placementPos.x, placementPos.y + 1, placementPos.z);
@@ -270,10 +283,10 @@ void Player::handleInput(GLFWwindow* window, World* world) {
                 // intent. The host's PlaceApply echo will idempotently
                 // re-apply the same blockType, so the prediction is
                 // transparent on the happy path.
-                if (netSession)
-                    netSession->notifyLocalPlace(placementPos, static_cast<uint8_t>(getSelectedBlockType()), state);
                 block_type placed = getSelectedBlockType();
-                world->placeBlock(placementPos, placed, state);
+                uint8_t placedState = state; // a vine extending a chain gets its state here
+                if (world->placeBlock(placementPos, placed, state, &placedState) && netSession)
+                    netSession->notifyLocalPlace(placementPos, static_cast<uint8_t>(placed), placedState);
                 if (isSurvival()) inventory.take(selectedSlot, 1); // Creative never runs out
                 // Arm swing (same feedback as left-click) + outline pop at placement pos
                 isPunching = true;

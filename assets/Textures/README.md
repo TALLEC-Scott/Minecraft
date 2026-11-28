@@ -48,14 +48,17 @@ modified versions of them, stay under CC BY-SA 4.0; the rest of the project is u
 | `orange_tulip.png` | `ITEMS/mcl_flowers/textures/flowers_tulip.png` (unmodified) |
 | `clay.png` | `ITEMS/mcl_core/textures/default_clay.png` (unmodified) |
 | `blue_orchid.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_blue_orchid.png` (unmodified) |
+| `jungle_leaves.png` | `ITEMS/mcl_core/textures/default_jungleleaves.png`, tinted ×`#6ADE3C` (the oak-leaves green; the biome foliage colour is applied on top at runtime) |
+| `vine.png` | `ITEMS/mcl_core/textures/mcl_core_vine.png`, green channel ×1.8 as gray, then tinted ×`#6ADE3C` (biome foliage colour applied on top at runtime) |
 | `tall_grass.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_tallgrass.png`, tinted ×`#8BDB46` (the grass block's average green) |
 | `double_tall_grass_bottom.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_double_plant_grass_bottom.png`, tinted ×`#8BDB46` |
 | `double_tall_grass_top.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_double_plant_grass_top.png`, tinted ×`#8BDB46` |
 | `large_fern_bottom.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_double_plant_fern_bottom.png`, tinted ×`#6ADE3C` |
 | `large_fern_top.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_double_plant_fern_top.png`, tinted ×`#6ADE3C` |
 
-"Tinted" files are the grayscale originals multiplied by a fixed colour (the game has no runtime
-biome tint), made with `scripts/tint_textures.py`.
+"Tinted" files are the grayscale originals multiplied by a fixed colour, made with
+`scripts/tint_textures.py`. Only oak leaves, jungle leaves, vines, grass, tall grass and ferns also
+take the biome colour at runtime (frag.shd); the others keep the baked colour.
 
 Note: Mineclonia's `mcl_core/README.md` still says its textures come from the "Faithful 1.11"
 pack, which conflicts with the repository-wide `LEGAL.md`. `planks.png`, `cobblestone.png`,
