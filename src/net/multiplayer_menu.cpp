@@ -202,7 +202,7 @@ void drawReadonlyArea(UIRenderer& ui, float x, float y, float w, float h, const 
         i += n;
         ++drawn;
     }
-    if (text.size() > static_cast<std::size_t>(maxChars * maxRows)) {
+    if (text.size() > static_cast<std::size_t>(maxChars) * static_cast<std::size_t>(maxRows)) {
         std::string more = "(...truncated, use Copy)";
         ui.drawText(more, x + pad, y + h - rowH - 2.0f, scale, glm::vec4(0.7f, 0.7f, 0.4f, 1.0f));
     }

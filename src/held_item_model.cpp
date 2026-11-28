@@ -24,7 +24,7 @@ bool HeldItemModel::load(const std::string& spritePath) {
     unsigned char* data = stbi_load(spritePath.c_str(), &w, &h, &channels, 4);
     stbi_set_flip_vertically_on_load(true);
     if (!data) {
-        std::cerr << "HeldItemModel: failed to load " << spritePath << std::endl;
+        std::cerr << "HeldItemModel: failed to load " << spritePath << '\n';
         return false;
     }
     std::vector<ItemMeshVertex> verts = extrudeSprite(data, w, h);

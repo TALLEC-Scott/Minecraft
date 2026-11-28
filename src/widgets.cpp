@@ -301,6 +301,8 @@ void Widgets::applyPendingKeys(TextInput& in) {
             case GLFW_KEY_END:
                 in.cursor = in.buffer.size();
                 break;
+            default:
+                break;
         }
     }
     pendingKeys.clear();

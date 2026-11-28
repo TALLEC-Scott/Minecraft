@@ -164,8 +164,10 @@ void Inventory::drawSurvival(UIRenderer& ui, int windowW, int windowH, double mx
     float craftRowW = n * STEP + CELL_SIZE * 1.5f + CELL_SIZE;
     float craftX = panelX + (panelW - craftRowW) / 2.0f;
     int hoveredCraft = -1;
-    for (int i = 0; i < n * n; i++)
-        if (cell(craftX + (i % n) * STEP, craftY + (i / n) * STEP, craft.cells[i])) hoveredCraft = i;
+    for (int i = 0; i < n * n; i++) {
+        int col = i % n, row = i / n;
+        if (cell(craftX + col * STEP, craftY + row * STEP, craft.cells[i])) hoveredCraft = i;
+    }
     std::string arrow = "->";
     float arrowX = craftX + n * STEP + (CELL_SIZE * 1.5f - ui.textWidth(arrow, 2.0f)) / 2.0f;
     float outY = craftY + (craftH - CELL_SIZE) / 2.0f;

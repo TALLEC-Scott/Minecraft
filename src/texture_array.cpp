@@ -40,7 +40,7 @@ static GLuint loadUiTexture(const char* path) {
     int w, h, channels;
     unsigned char* data = stbi_load(path, &w, &h, &channels, 4);
     if (!data) {
-        std::cerr << "TextureArray: failed to load " << path << std::endl;
+        std::cerr << "TextureArray: failed to load " << path << '\n';
         return 0;
     }
     GLuint tex = 0;
@@ -67,7 +67,7 @@ void TextureArray::initialize() {
         int w, h, channels;
         unsigned char* data = stbi_load(TEXTURE_PATHS[layer], &w, &h, &channels, 4);
         if (!data) {
-            std::cerr << "TextureArray: failed to load " << TEXTURE_PATHS[layer] << std::endl;
+            std::cerr << "TextureArray: failed to load " << TEXTURE_PATHS[layer] << '\n';
             // Fill with magenta to signal missing texture
             unsigned char magenta[16 * 16 * 4];
             for (int i = 0; i < 16 * 16; i++) {

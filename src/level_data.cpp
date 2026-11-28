@@ -90,7 +90,7 @@ static void readLine(const std::string& key, const std::string& val, LevelData& 
                 int count = std::stoi(token.substr(colon + 1));
                 if (validId(id) && count > 0)
                     slot = {static_cast<ItemId>(id), std::min(count, maxStackSize(static_cast<ItemId>(id)))};
-            } catch (const std::exception&) {
+            } catch (const std::exception&) { // NOLINT(bugprone-empty-catch): slot stays empty
             }
         }
     }
@@ -103,7 +103,7 @@ void readLevelData(std::istream& in, LevelData& data) {
         if (eq == std::string::npos) continue;
         try {
             readLine(line.substr(0, eq), line.substr(eq + 1), data);
-        } catch (const std::exception&) {
+        } catch (const std::exception&) { // NOLINT(bugprone-empty-catch)
             // Malformed number: keep the default for this key.
         }
     }

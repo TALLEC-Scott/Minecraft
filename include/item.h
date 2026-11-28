@@ -107,14 +107,14 @@ inline const ItemInfo* itemInfo(ItemId id) {
     return &items[id - FIRST_ITEM];
 }
 
-inline constexpr ItemId blockItem(block_type t) {
+constexpr ItemId blockItem(block_type t) {
     return static_cast<ItemId>(t);
 }
-inline constexpr bool isBlockItem(ItemId id) {
+constexpr bool isBlockItem(ItemId id) {
     return id < FIRST_ITEM;
 }
 // The block an item places; AIR for items (and the empty hand).
-inline constexpr block_type itemBlock(ItemId id) {
+constexpr block_type itemBlock(ItemId id) {
     return isBlockItem(id) ? static_cast<block_type>(id) : AIR;
 }
 inline ToolKind toolKind(ItemId id) {

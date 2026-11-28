@@ -260,6 +260,12 @@ else()
     )
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
+    # Third-party code: don't lint it
+    foreach(gt gtest gtest_main gmock gmock_main)
+      if(TARGET ${gt})
+        set_target_properties(${gt} PROPERTIES CXX_CLANG_TIDY "")
+      endif()
+    endforeach()
 
     enable_testing()
     include(GoogleTest)
