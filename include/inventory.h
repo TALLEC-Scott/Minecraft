@@ -80,6 +80,7 @@ class Inventory {
         SPRUCE_LOG,
         BIRCH_LOG,
         ACACIA_LOG,
+        JUNGLE_LOG,
         PLANKS,
         LEAVES,
         SPRUCE_LEAVES,
