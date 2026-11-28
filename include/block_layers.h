@@ -79,7 +79,8 @@ constexpr int DOUBLE_TALL_GRASS_BOTTOM_LAYER = VINE_LAYER + 1;
 constexpr int DOUBLE_TALL_GRASS_TOP_LAYER = DOUBLE_TALL_GRASS_BOTTOM_LAYER + 1;
 constexpr int LARGE_FERN_BOTTOM_LAYER = DOUBLE_TALL_GRASS_TOP_LAYER + 1;
 constexpr int LARGE_FERN_TOP_LAYER = LARGE_FERN_BOTTOM_LAYER + 1;
-constexpr int NUM_LAYERS = LARGE_FERN_TOP_LAYER + 1;
+constexpr int CACTUS_TOP_LAYER = LARGE_FERN_TOP_LAYER + 1; // top and bottom faces of CACTUS
+constexpr int NUM_LAYERS = CACTUS_TOP_LAYER + 1;
 // The shaders hard-code these; keep frag.shd / vert.shd in step if they move.
 static_assert(SPRUCE_LEAVES_LAYER == 47 && BIRCH_LEAVES_LAYER == 50 && FERN_LAYER == 51 && ACACIA_LEAVES_LAYER == 67 &&
               RED_AUTUMN_LEAVES_LAYER == 71 && ORANGE_AUTUMN_LEAVES_LAYER == 72 && JUNGLE_LEAVES_LAYER == 76 &&
@@ -102,7 +103,7 @@ inline int layerForFace(block_type t, int face) {
     }
     if (t == SNOW) return SNOW_LAYER;
     if (t == GRAVEL) return GRAVEL_LAYER;
-    if (t == CACTUS) return CACTUS_LAYER;
+    if (t == CACTUS) return (face == 4 || face == 5) ? CACTUS_TOP_LAYER : CACTUS_LAYER;
     if (t == TNT) {
         if (face == 4) return TNT_TOP_LAYER;
         if (face == 5) return TNT_BOTTOM_LAYER;

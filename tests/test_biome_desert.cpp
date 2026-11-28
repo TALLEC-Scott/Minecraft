@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "TerrainGenerator.h"
+#include "block_layers.h"
 #include "mining.h"
 #include "terrain_fill.h"
 
@@ -138,4 +139,12 @@ TEST(DesertBlocksTest, SandstoneAndDeadBush) {
     EXPECT_EQ(blockDrop(DEAD_BUSH, ITEM_EMPTY, 0.1f).count, 0);
     EXPECT_EQ(blockDrop(DEAD_BUSH, ITEM_EMPTY, 0.5f).id, ITEM_STICK);
     EXPECT_EQ(blockDrop(DEAD_BUSH, ITEM_EMPTY, 0.9f).count, 2);
+}
+
+TEST(DesertBlocks, CactusHasItsOwnTopAndBottom) {
+    using block_layers::layerForFace;
+    // Faces: 0..3 = sides, 4/5 = ±Y.
+    for (int face = 0; face < 4; ++face) EXPECT_EQ(layerForFace(CACTUS, face), block_layers::CACTUS_LAYER);
+    EXPECT_EQ(layerForFace(CACTUS, 4), block_layers::CACTUS_TOP_LAYER);
+    EXPECT_EQ(layerForFace(CACTUS, 5), block_layers::CACTUS_TOP_LAYER);
 }
