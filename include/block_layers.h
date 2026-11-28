@@ -69,7 +69,9 @@ constexpr int COARSE_DIRT_LAYER = JUNGLE_LOG_TOP_LAYER + 1;
 constexpr int RED_AUTUMN_LEAVES_LAYER = COARSE_DIRT_LAYER + 1;        // 71 (shaders: leaf cutout + sway)
 constexpr int ORANGE_AUTUMN_LEAVES_LAYER = RED_AUTUMN_LEAVES_LAYER + 1; // 72 (shaders: leaf cutout + sway)
 constexpr int ORANGE_TULIP_LAYER = ORANGE_AUTUMN_LEAVES_LAYER + 1;
-constexpr int NUM_LAYERS = ORANGE_TULIP_LAYER + 1;
+constexpr int CLAY_LAYER = ORANGE_TULIP_LAYER + 1;
+constexpr int BLUE_ORCHID_LAYER = CLAY_LAYER + 1;
+constexpr int NUM_LAYERS = BLUE_ORCHID_LAYER + 1;
 // The shaders hard-code these; keep frag.shd / vert.shd in step if they move.
 static_assert(SPRUCE_LEAVES_LAYER == 47 && BIRCH_LEAVES_LAYER == 50 && FERN_LAYER == 51 && ACACIA_LEAVES_LAYER == 67 &&
               RED_AUTUMN_LEAVES_LAYER == 71 && ORANGE_AUTUMN_LEAVES_LAYER == 72);
@@ -152,6 +154,8 @@ inline int layerForFace(block_type t, int face) {
     if (t == RED_AUTUMN_LEAVES) return RED_AUTUMN_LEAVES_LAYER;
     if (t == ORANGE_AUTUMN_LEAVES) return ORANGE_AUTUMN_LEAVES_LAYER;
     if (t == ORANGE_TULIP) return ORANGE_TULIP_LAYER;
+    if (t == CLAY) return CLAY_LAYER;
+    if (t == BLUE_ORCHID) return BLUE_ORCHID_LAYER;
     return static_cast<int>(t);
 }
 
@@ -188,6 +192,8 @@ inline int layerForType(block_type t) {
     if (t == RED_AUTUMN_LEAVES) return RED_AUTUMN_LEAVES_LAYER;
     if (t == ORANGE_AUTUMN_LEAVES) return ORANGE_AUTUMN_LEAVES_LAYER;
     if (t == ORANGE_TULIP) return ORANGE_TULIP_LAYER;
+    if (t == CLAY) return CLAY_LAYER;
+    if (t == BLUE_ORCHID) return BLUE_ORCHID_LAYER;
     return static_cast<int>(t);
 }
 

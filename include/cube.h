@@ -79,11 +79,13 @@ enum block_type : uint8_t {
     COARSE_DIRT,
     RED_AUTUMN_LEAVES,
     ORANGE_AUTUMN_LEAVES,
-    ORANGE_TULIP
+    ORANGE_TULIP,
+    CLAY,
+    BLUE_ORCHID
 };
-// Number of block_type values; keep ORANGE_TULIP (the last one) in sync.
+// Number of block_type values; keep BLUE_ORCHID (the last one) in sync.
 // Values are saved in chunk files and level.dat: append only.
-inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(ORANGE_TULIP) + 1;
+inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(BLUE_ORCHID) + 1;
 
 // Values index tables (BIOME_DEFS in biome.cpp, mob spawn masks). Not saved
 // (recomputed from the seed), so they may be reordered. One BiomeDef each.
@@ -199,6 +201,8 @@ inline uint32_t getBlockFlags(block_type t) {
         /* RED_AUTUMN_LEAVES    */ BF_SOLID | BF_TRANSLUCENT,
         /* ORANGE_AUTUMN_LEAVES */ BF_SOLID | BF_TRANSLUCENT,
         /* ORANGE_TULIP  */ BF_TRANSPARENT | BF_CROSS,
+        /* CLAY          */ BF_SOLID | BF_OPAQUE,
+        /* BLUE_ORCHID   */ BF_TRANSPARENT | BF_CROSS,
     };
     // clang-format on
     int idx = static_cast<int>(t);
@@ -297,6 +301,8 @@ inline StepSound getStepSound(block_type t) {
         /* RED_AUTUMN_LEAVES    */ STEP_GRASS,
         /* ORANGE_AUTUMN_LEAVES */ STEP_GRASS,
         /* ORANGE_TULIP  */ STEP_GRASS,
+        /* CLAY          */ STEP_GRAVEL,
+        /* BLUE_ORCHID   */ STEP_GRASS,
     };
     // clang-format on
     int idx = static_cast<int>(t);
