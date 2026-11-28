@@ -1,6 +1,9 @@
 #include "terrain_fill.h"
 
 #include <algorithm>
+
+#include "biome.h"
+#include "biome_tint.h"
 #include <cstdint>
 #include <cstdlib>
 
@@ -8,9 +11,10 @@ using namespace terrainfill;
 
 namespace {
 
-// Margin of extra columns sampled around the chunk: tree canopy radius
-// (3) + the footprint ring (1) + one more for the slope of those columns.
-constexpr int MARGIN = 5;
+// Margin of extra columns sampled around the chunk: the largest tree canopy
+// radius + the footprint ring (1) + one more for the slope of those columns.
+constexpr int MARGIN = biomegen::TREE_MAX_RADIUS + 2;
+static_assert(MARGIN >= TINT_BLEND_RADIUS, "the colour blend reads biomes from the margin");
 constexpr int EXT = CHUNK_SIZE + 2 * MARGIN;
 constexpr int CAVE_FLOOR = 5; // never carve into the bottom layers
 // Cave space at or below this height fills with lava instead of air
@@ -38,25 +42,6 @@ double unitFloat(uint64_t h) {
 
 constexpr uint64_t SALT_TREE = 1, SALT_CACTUS = 2, SALT_PLANT = 3;
 
-enum class TreeKind { Oak, Birch, Spruce };
-
-// Cold biomes grow spruce; birch forests are mostly birch with some oak,
-// forests the other way round. `bits` is spare tree-hash entropy.
-TreeKind treeKindFor(Biome b, uint64_t bits) {
-    const int roll = static_cast<int>(bits % 10);
-    switch (b) {
-    case BIOME_TAIGA:
-    case BIOME_TUNDRA:
-        return TreeKind::Spruce;
-    case BIOME_BIRCH_FOREST:
-        return roll < 8 ? TreeKind::Birch : TreeKind::Oak;
-    case BIOME_FOREST:
-        return roll < 2 ? TreeKind::Birch : TreeKind::Oak;
-    default:
-        return TreeKind::Oak;
-    }
-}
-
 struct Column {
     int height;
     Biome biome;
@@ -67,7 +52,7 @@ struct Column {
 
 // Surface rules: water floor, snow line, cliffs and high rock override the
 // biome's own surface block.
-void classify(Column& c, int sea, const BiomeParams& bp) {
+void classify(Column& c, int sea, const BiomeDef& bp) {
     int above = c.height - sea;
     // Bare rock: cliff faces anywhere, and moderate slopes in the high band
     // below the snow line.
@@ -79,7 +64,7 @@ void classify(Column& c, int sea, const BiomeParams& bp) {
     } else if (above >= SNOW_LINE) {
         c.surface = SNOW;
     } else {
-        c.surface = bp.surfaceBlock;
+        c.surface = bp.surface;
     }
     switch (c.surface) {
     case STONE:
@@ -92,15 +77,37 @@ void classify(Column& c, int sea, const BiomeParams& bp) {
         c.subsurface = GRAVEL;
         break;
     default:
-        c.subsurface = DIRT; // under grass and snow
+        c.subsurface = bp.subsurface; // under the biome's own surface, and snow
         break;
     }
 }
 
+// What a BiomeDef hook writes through (biome.h TreeSite / FeatureSite).
+struct GenContext {
+    Cube* blocks;
+    bool (&claimed)[CHUNK_SIZE][CHUNK_SIZE];
+
+    static bool inChunk(int i, int k) { return i >= 0 && i < CHUNK_SIZE && k >= 0 && k < CHUNK_SIZE; }
+    block_type get(int i, int j, int k) const {
+        if (!inChunk(i, k) || j < 0 || j >= CHUNK_HEIGHT) return AIR;
+        return blocks[blockIndex(i, j, k)].getType();
+    }
+    void set(int i, int j, int k, block_type t) const {
+        if (!inChunk(i, k) || j < 0 || j >= CHUNK_HEIGHT) return;
+        blocks[blockIndex(i, j, k)].setType(t);
+    }
+    void setIfAir(int i, int j, int k, block_type t) const {
+        if (!inChunk(i, k) || j < 0 || j >= CHUNK_HEIGHT) return;
+        Cube& b = blocks[blockIndex(i, j, k)];
+        if (b.getType() == AIR) b.setType(t);
+    }
+};
+
 } // namespace
 
 void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* blocks,
-                      int (&heights)[CHUNK_SIZE][CHUNK_SIZE], Biome (&biomes)[CHUNK_SIZE][CHUNK_SIZE]) {
+                      int (&heights)[CHUNK_SIZE][CHUNK_SIZE], Biome (&biomes)[CHUNK_SIZE][CHUNK_SIZE],
+                      BiomeTints* tints) {
     const int sea = terrain.getSeaLevel();
     const int ox = chunkX * CHUNK_SIZE, oz = chunkZ * CHUNK_SIZE;
     const uint64_t seed = terrain.getSeed();
@@ -123,7 +130,7 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
                 if (ni < -MARGIN || ni >= CHUNK_SIZE + MARGIN || nk < -MARGIN || nk >= CHUNK_SIZE + MARGIN) continue;
                 c.slope = std::max(c.slope, std::abs(col(ni, nk).height - c.height));
             }
-            classify(c, sea, terrain.getBiomeParams(c.biome));
+            classify(c, sea, biomeDef(c.biome));
         }
 
     // --- Terrain columns ---
@@ -167,7 +174,7 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
     // --- Shore pass: land touching water at or near sea level → sand/gravel ---
     for (int i = 0; i < CHUNK_SIZE; i++) {
         for (int k = 0; k < CHUNK_SIZE; k++) {
-            block_type shore = (biomes[i][k] == BIOME_TUNDRA) ? GRAVEL : SAND;
+            const block_type shore = biomeDef(biomes[i][k]).shore;
             for (int j = 1; j <= sea + 1 && j < CHUNK_HEIGHT; j++) {
                 Cube& b = blocks[blockIndex(i, j, k)];
                 block_type bt = b.getType();
@@ -187,24 +194,20 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
         }
     }
 
+    if (tints) blendBiomeTints([&](int i, int k) { return col(i, k).biome; }, *tints);
+
     // --- Vegetation ---
-    // `claimed` marks in-chunk columns under a canopy (or holding a cactus /
-    // plant) so ground cover never grows in the shade or overlaps.
+    // `claimed` marks in-chunk columns under a canopy (or holding a feature
+    // / plant) so ground cover never grows in the shade or overlaps.
     bool claimed[CHUNK_SIZE][CHUNK_SIZE] = {};
-    auto inChunk = [](int i, int k) { return i >= 0 && i < CHUNK_SIZE && k >= 0 && k < CHUNK_SIZE; };
-    auto setIfAir = [&](int i, int j, int k, block_type t) {
-        if (!inChunk(i, k) || j < 0 || j >= CHUNK_HEIGHT) return;
-        Cube& b = blocks[blockIndex(i, j, k)];
-        if (b.getType() == AIR) b.setType(t);
-    };
+    auto floorDiv = [](int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); };
+    GenContext ctx{blocks, claimed};
 
     // Trees: one candidate per TREE_CELL² world cell, at a hashed offset
     // (0..2 inside the cell, so trunks are ≥ 2 apart). Every chunk walks the
     // same cells in the same order and writes only its own blocks, so a
     // canopy that crosses a border is identical on both sides.
-    constexpr int MAX_RADIUS = 3;
-    const int reach = MAX_RADIUS + 1;
-    auto floorDiv = [](int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); };
+    const int reach = biomegen::TREE_MAX_RADIUS + 1;
     const int cx0 = floorDiv(ox - reach, TREE_CELL), cx1 = floorDiv(ox + CHUNK_SIZE - 1 + reach, TREE_CELL);
     const int cz0 = floorDiv(oz - reach, TREE_CELL), cz1 = floorDiv(oz + CHUNK_SIZE - 1 + reach, TREE_CELL);
     for (int cz = cz0; cz <= cz1; cz++) {
@@ -216,13 +219,15 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
             if (ti < -reach || ti >= CHUNK_SIZE + reach || tk < -reach || tk >= CHUNK_SIZE + reach) continue;
 
             const Column& tc = col(ti, tk);
-            float density = terrain.getBiomeParams(tc.biome).treeDensity;
-            if (density <= 0.0f || unitFloat(hash4(seed, wx, wz, SALT_TREE + 100)) >= density) continue;
+            const BiomeDef& def = biomeDef(tc.biome);
+            if (!def.growTree || def.treeDensity <= 0.0f) continue;
+            if (unitFloat(hash4(seed, wx, wz, SALT_TREE + 100)) >= def.treeDensity) continue;
             // Decide from column data only (never from blocks a neighbor chunk
             // may have changed), so both sides of a border agree. sea + 1 is
             // excluded: the shore pass turns those columns to sand.
             if (tc.height <= sea + 1) continue;
-            if (tc.surface != GRASS && tc.surface != SNOW) continue;
+            if (tc.surface != def.surface && tc.surface != SNOW) continue;
+            if (tc.surface == SAND || tc.surface == STONE || tc.surface == GRAVEL) continue;
             // Flat-enough ground under the trunk.
             bool steep = false;
             for (int dx = -1; dx <= 1 && !steep; dx++)
@@ -232,111 +237,75 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
             // Don't plant on a cave mouth.
             if (terrain.caveEntranceAllowed(wx, wz) && terrain.isCave(wx, tc.height, wz)) continue;
 
-            const TreeKind kind = treeKindFor(tc.biome, hsh >> 20);
-            const block_type log = kind == TreeKind::Spruce ? SPRUCE_LOG : kind == TreeKind::Birch ? BIRCH_LOG : WOOD;
-            const block_type leaves =
-                kind == TreeKind::Spruce ? SPRUCE_LEAVES : kind == TreeKind::Birch ? BIRCH_LEAVES : LEAVES;
-            const int surface = tc.height;
-
-            // Ring of leaves at height y, radius r, corners trimmed when r > 1.
-            auto leafRing = [&](int y, int r, bool skipCenter) {
-                for (int dx = -r; dx <= r; dx++)
-                    for (int dz = -r; dz <= r; dz++) {
-                        if (std::abs(dx) == r && std::abs(dz) == r && r > 1) continue;
-                        if (dx == 0 && dz == 0 && skipCenter) continue;
-                        setIfAir(ti + dx, y, tk + dz, leaves);
-                    }
-            };
-
-            int trunkH, radius;
-            if (kind == TreeKind::Spruce) {
-                trunkH = 6 + static_cast<int>((hsh >> 8) % 4);  // 6..9
-                radius = 2 + static_cast<int>((hsh >> 12) % 2); // 2..3
-                if (surface + trunkH + 2 >= CHUNK_HEIGHT) continue;
-            } else {
-                trunkH = kind == TreeKind::Birch ? 5 + static_cast<int>((hsh >> 8) % 3)  // 5..7
-                                                 : 4 + static_cast<int>((hsh >> 8) % 4); // 4..7
-                radius = kind == TreeKind::Birch ? 2 : 2 + static_cast<int>((hsh >> 12) % 2);
-            }
-            const int layers = 3 + static_cast<int>((hsh >> 16) % 3); // 3..5 (oak / birch)
-            if (kind != TreeKind::Spruce && surface + trunkH + layers + 2 >= CHUNK_HEIGHT) continue;
-
-            for (int dx = -radius - 1; dx <= radius + 1; dx++)
-                for (int dz = -radius - 1; dz <= radius + 1; dz++)
-                    if (inChunk(ti + dx, tk + dz)) claimed[ti + dx][tk + dz] = true;
-
-            // Trunk overwrites leaves from neighboring trees (order-independent).
-            if (inChunk(ti, tk))
-                for (int y = surface + 1; y <= surface + trunkH; y++) blocks[blockIndex(ti, y, tk)].setType(log);
-
-            const int top = surface + trunkH;
-            if (kind == TreeKind::Spruce) {
-                // Cone from the trunk top down to 3 above the ground; the
-                // radius widens downward with alternate rows pulled in, the
-                // stepped silhouette of a spruce. One leaf caps the trunk.
-                setIfAir(ti, top + 1, tk, leaves);
-                for (int d = 0; top - d >= surface + 3; d++) {
-                    int r = 1 + d / 2 - ((d % 2 == 1 && d >= 3) ? 1 : 0);
-                    leafRing(top - d, std::min(r, radius), true);
-                }
-            } else {
-                for (int ly = 0; ly < layers; ly++) leafRing(top + ly, std::max(1, radius - ly / 2), ly == 0);
-                for (int dx = -1; dx <= 1; dx++)
-                    for (int dz = -1; dz <= 1; dz++)
-                        if (std::abs(dx) + std::abs(dz) <= 1) setIfAir(ti + dx, top + layers, tk + dz, leaves);
-            }
+            biomegen::TreeSite site{ti, tk, tc.height, hsh >> 20, &ctx};
+            def.growTree(site);
         }
     }
 
-    // Cacti: desert only, one candidate per tree cell, inside this chunk.
+    // Features (cactus...): one candidate per tree cell, inside this chunk,
+    // at its own hashed offset; the biome decides whether anything grows.
     for (int cz = floorDiv(oz, TREE_CELL); cz <= floorDiv(oz + CHUNK_SIZE - 1, TREE_CELL); cz++) {
         for (int cx = floorDiv(ox, TREE_CELL); cx <= floorDiv(ox + CHUNK_SIZE - 1, TREE_CELL); cx++) {
             uint64_t hsh = hash4(seed, cx, cz, SALT_CACTUS);
             int ci = cx * TREE_CELL + static_cast<int>(hsh % 3) - ox;
             int ck = cz * TREE_CELL + static_cast<int>((hsh >> 4) % 3) - oz;
-            if (!inChunk(ci, ck) || claimed[ci][ck]) continue;
-            if (unitFloat(hash4(seed, cx, cz, SALT_CACTUS + 100)) >= 0.12) continue;
+            if (!GenContext::inChunk(ci, ck) || claimed[ci][ck]) continue;
             const Column& c = col(ci, ck);
-            if (c.biome != BIOME_DESERT || c.height <= sea || c.surface != SAND) continue;
-            if (blocks[blockIndex(ci, c.height, ck)].getType() != SAND) continue; // shore / cave
-            int cactusH = 2 + static_cast<int>((hsh >> 8) % 3);
-            if (c.height + cactusH >= CHUNK_HEIGHT) continue;
-            for (int y = c.height + 1; y <= c.height + cactusH; y++) setIfAir(ci, y, ck, CACTUS);
-            claimed[ci][ck] = true;
+            const BiomeDef& def = biomeDef(c.biome);
+            if (!def.decorate) continue;
+            biomegen::FeatureSite site{ci,  ck, c.height, blocks[blockIndex(ci, c.height, ck)].getType(), sea,
+                                       hash4(seed, cx, cz, SALT_CACTUS + 100), &ctx};
+            def.decorate(site);
         }
     }
 
-    // Ground cover: per-column roll on open grass.
+    // Ground cover: per-column roll on open ground above the water.
     for (int i = 0; i < CHUNK_SIZE; i++) {
         for (int k = 0; k < CHUNK_SIZE; k++) {
             if (claimed[i][k]) continue;
             const Column& c = col(i, k);
-            if (c.height <= sea || c.height + 1 >= CHUNK_HEIGHT) continue;
-            if (blocks[blockIndex(i, c.height, k)].getType() != GRASS) continue;
+            const BiomeDef& def = biomeDef(c.biome);
+            if (!def.groundCover || c.height <= sea || c.height + 1 >= CHUNK_HEIGHT) continue;
             if (blocks[blockIndex(i, c.height + 1, k)].getType() != AIR) continue;
-            int roll = static_cast<int>(hash4(seed, ox + i, oz + k, SALT_PLANT) % 100);
-            block_type pick = AIR;
-            switch (c.biome) {
-            case BIOME_PLAINS:
-                pick = roll < 10 ? TALL_GRASS : roll < 11 ? DANDELION : roll < 12 ? POPPY : AIR;
-                break;
-            case BIOME_FOREST:
-                pick = roll < 8 ? TALL_GRASS : roll < 9 ? POPPY : AIR;
-                break;
-            case BIOME_BIRCH_FOREST:
-                pick = roll < 8 ? TALL_GRASS : roll < 9 ? DANDELION : roll < 10 ? POPPY : AIR;
-                break;
-            case BIOME_TAIGA:
-                pick = roll < 6 ? FERN : roll < 10 ? TALL_GRASS : AIR;
-                break;
-            case BIOME_TUNDRA:
-            case BIOME_BEACH:
-                pick = roll < 2 ? TALL_GRASS : AIR;
-                break;
-            default:
-                break;
-            }
+            const block_type ground = blocks[blockIndex(i, c.height, k)].getType();
+            const auto roll = static_cast<uint32_t>(hash4(seed, ox + i, oz + k, SALT_PLANT) % 10000);
+            const block_type pick = def.groundCover(ground, roll);
             if (pick != AIR) blocks[blockIndex(i, c.height + 1, k)].setType(pick);
         }
     }
 }
+
+// --- BiomeDef hook plumbing (biome.h) ---
+
+namespace biomegen {
+
+void TreeSite::leaf(int di, int y, int dk, block_type t) const {
+    static_cast<GenContext*>(impl)->setIfAir(i + di, y, k + dk, t);
+}
+void TreeSite::log(int di, int y, int dk, block_type t) const {
+    static_cast<GenContext*>(impl)->set(i + di, y, k + dk, t);
+}
+void TreeSite::claim(int radius) const {
+    auto* ctx = static_cast<GenContext*>(impl);
+    for (int dx = -radius; dx <= radius; dx++)
+        for (int dz = -radius; dz <= radius; dz++)
+            if (GenContext::inChunk(i + dx, k + dz)) ctx->claimed[i + dx][k + dz] = true;
+}
+bool TreeSite::fits(int top) const {
+    return top < CHUNK_HEIGHT;
+}
+
+block_type FeatureSite::at(int y) const {
+    return static_cast<GenContext*>(impl)->get(i, y, k);
+}
+void FeatureSite::set(int y, block_type t) const {
+    static_cast<GenContext*>(impl)->setIfAir(i, y, k, t);
+}
+void FeatureSite::setAt(int di, int y, int dk, block_type t) const {
+    static_cast<GenContext*>(impl)->setIfAir(i + di, y, k + dk, t);
+}
+void FeatureSite::claim() const {
+    static_cast<GenContext*>(impl)->claimed[i][k] = true;
+}
+
+} // namespace biomegen

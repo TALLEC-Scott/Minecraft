@@ -68,9 +68,8 @@ enum class MobCategory : uint8_t {
 constexpr uint32_t biomeBit(Biome b) {
     return 1u << static_cast<uint32_t>(b);
 }
-inline constexpr uint32_t ALL_LAND_BIOMES =
-    biomeBit(BIOME_BEACH) | biomeBit(BIOME_PLAINS) | biomeBit(BIOME_FOREST) | biomeBit(BIOME_DESERT) |
-    biomeBit(BIOME_TUNDRA) | biomeBit(BIOME_TAIGA) | biomeBit(BIOME_BIRCH_FOREST);
+// Every biome but the ocean.
+inline constexpr uint32_t ALL_LAND_BIOMES = ((1u << BIOME_COUNT) - 1u) & ~biomeBit(BIOME_OCEAN);
 
 using MobFactory = std::unique_ptr<Mob> (*)();
 

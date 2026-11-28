@@ -1,5 +1,5 @@
 // Standalone tool: generates a top-down PNG map of the terrain
-// Build: g++ -std=c++17 -O2 -I Libraries/include mapgen.cpp TerrainGenerator.cpp perlin_noise.cpp -o mapgen
+// Build: scripts/build_tools.sh (needs zlib headers)
 // Usage: ./mapgen [size] [output.png]
 
 #include "TerrainGenerator.h"
@@ -98,7 +98,11 @@ int main(int argc, char* argv[]) {
         {210, 190, 100},  // DESERT - tan
         {200, 220, 230},  // TUNDRA - pale blue-white
         {50,  110,  90},  // TAIGA - blue-green
-        {150, 200, 110},  // BIRCH_FOREST - pale green
+        {20,  140,  40},  // RAINFOREST - vivid green
+        {120, 160,  50},  // SEASONAL_FOREST - olive
+        {70,   90,  60},  // SWAMPLAND - murky
+        {190, 170,  80},  // SAVANNA - straw
+        {150, 150,  90},  // SHRUBLAND - dusty
     };
 
     for (int y = 0; y < mapSize; y++) {

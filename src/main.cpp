@@ -47,6 +47,8 @@
 #include "ChunkManager.h"
 #include "TerrainGenerator.h"
 #include "texture_array.h"
+#include "biome_tint_map.h"
+#include "screenshot_options.h"
 #include "player.h"
 #include "game_state.h"
 #include "ui_renderer.h"
@@ -688,6 +690,7 @@ int main(int argc, char* argv[]) {
     std::string benchLabel = "benchmark"; // first non-flag argument
     bool benchLabelSet = false;
     std::string benchConfig; // recorded in the results so runs are self-describing
+    ScreenshotOptions shot;  // --screenshot DIR: capture frames of a staged scene, then exit
     // Parse the integer value following option argv[i]; false (with a
     // message) when it's missing, malformed or outside [lo, hi].
     auto intArg = [&](int& i, long long lo, long long hi, long long& out) {
@@ -726,6 +729,13 @@ int main(int argc, char* argv[]) {
         } else if (arg == "--greedy") {
             if (!intArg(i, 0, 1, v)) return 1;
             benchGreedy = v != 0;
+        } else if (arg == "--screenshot" || arg == "--shot-at" || arg == "--shot-time" || arg == "--shot-frames" ||
+                   arg == "--shot-item") {
+            if (i + 1 >= argc || !shot.parse(arg, argv[i + 1])) {
+                std::cerr << arg << ": bad or missing value (see screenshot_options.h)\n";
+                return 1;
+            }
+            ++i;
         } else if (arg == "--fancy-leaves") {
             if (!intArg(i, 0, 1, v)) return 1;
             benchFancyLeaves = v != 0;
@@ -873,6 +883,7 @@ int main(int argc, char* argv[]) {
 
     TextureArray::initialize();
     TextureArray::initLayerTextures();
+    BiomeTintMap::init();
 
     // Initialize UI
     // static storage on Emscripten (main never returns), auto on desktop
@@ -913,6 +924,9 @@ int main(int argc, char* argv[]) {
 #endif
             Shader shaderProgram("assets/Shaders/vert.shd", "assets/Shaders/frag.shd");
         g_shader = &shaderProgram;
+        shaderProgram.use();
+        shaderProgram.setInt("grassTintMap", BiomeTintMap::GRASS_UNIT);
+        shaderProgram.setInt("foliageTintMap", BiomeTintMap::FOLIAGE_UNIT);
 #ifdef __EMSCRIPTEN__
         static
 #endif
@@ -1143,6 +1157,26 @@ int main(int argc, char* argv[]) {
                           " caveCulling=" + (gameSettings.caveCulling ? "1" : "0") +
                           " renderDistance=" + std::to_string(gameSettings.renderDistance) +
                           " benchMobs=" + (benchMobs ? "1" : "0");
+        }
+        if (shot.enabled()) {
+            // Throwaway Creative world from the seed (--seed), like the
+            // benchmark's: user saves are never touched.
+            std::error_code ec;
+            std::filesystem::remove_all("saves/_screenshot", ec);
+            std::filesystem::create_directories(shot.dir, ec);
+            switchToWorld("_screenshot", worldSeed != 0 ? worldSeed : 42u, "_screenshot", GameMode::Creative);
+            w->mobManager->setSpawningEnabled(false);
+            menuObj.muteAll();
+            if (shot.hasPose) {
+                player.getCamera().setPosition(shot.eye);
+                player.setYawPitch(shot.yaw, shot.pitch);
+            }
+            glm::vec3 p = player.getPosition();
+            g_loadingSpawnCx = (int)std::floor(p.x / (float)CHUNK_SIZE);
+            g_loadingSpawnCz = (int)std::floor(p.z / (float)CHUNK_SIZE);
+            g_loadingStartTime = glfwGetTime();
+            g_loadingWorldName = "_screenshot";
+            currentState = GameState::Loading;
         }
 #endif
 
@@ -3148,6 +3182,48 @@ int main(int argc, char* argv[]) {
                 currentState = next;
             }
 
+#ifndef __EMSCRIPTEN__
+            if (shot.enabled() && currentState == GameState::Playing && w) {
+                // Staged capture: pin the camera, set the time and the held
+                // item, let chunks stream in, then save `frames` frames 50 ms
+                // apart as binary PPM and quit.
+                static int shotFrame = 0, shotsTaken = 0;
+                static double lastShot = 0.0;
+                ++shotFrame;
+                if (shotFrame == 1) {
+                    double now = netSession.syncedTime(glfwGetTime());
+                    netSession.advanceClock(daycycle::secondsUntil(now, shot.night ? daycycle::MIDNIGHT : daycycle::NOON));
+                    if (shot.item != 0) {
+                        auto& inv = player.getInventory();
+                        inv.slots[(size_t)player.getSelectedSlot()] = {static_cast<ItemId>(shot.item), 1};
+                    }
+                }
+                if (shot.hasPose) {
+                    // Fly in place: no gravity, no drift.
+                    player.getCamera().setWalkMode(false);
+                    player.getCamera().setPosition(shot.eye);
+                    player.getCamera().resetMotion();
+                    player.setYawPitch(shot.yaw, shot.pitch);
+                }
+                double now = glfwGetTime();
+                if (shotFrame > ScreenshotOptions::SETTLE_FRAMES && now - lastShot >= 0.05) {
+                    lastShot = now;
+                    int fbw = 0, fbh = 0;
+                    glfwGetFramebufferSize(window, &fbw, &fbh);
+                    std::vector<unsigned char> px((size_t)fbw * fbh * 3);
+                    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+                    glReadPixels(0, 0, fbw, fbh, GL_RGB, GL_UNSIGNED_BYTE, px.data());
+                    char name[32];
+                    std::snprintf(name, sizeof name, "/shot_%03d.ppm", shotsTaken);
+                    std::ofstream out(shot.dir + name, std::ios::binary);
+                    out << "P6\n" << fbw << " " << fbh << "\n255\n";
+                    for (int y = fbh - 1; y >= 0; --y)
+                        out.write(reinterpret_cast<const char*>(px.data() + (size_t)y * fbw * 3),
+                                  (std::streamsize)fbw * 3);
+                    if (++shotsTaken >= shot.frames) glfwSetWindowShouldClose(window, GLFW_TRUE);
+                }
+            }
+#endif
             {
                 ZoneScopedN("glfwSwapBuffers");
                 glfwSwapBuffers(window);

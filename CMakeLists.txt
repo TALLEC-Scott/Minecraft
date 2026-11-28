@@ -36,6 +36,21 @@ set(COMMON_SOURCES
     src/world.cpp
     src/TerrainGenerator.cpp
     src/terrain_fill.cpp
+    src/biome.cpp
+    src/tree_shapes.cpp
+    src/biomes/ocean.cpp
+    src/biomes/beach.cpp
+    src/biomes/plains.cpp
+    src/biomes/forest.cpp
+    src/biomes/desert.cpp
+    src/biomes/tundra.cpp
+    src/biomes/taiga.cpp
+    src/biomes/rainforest.cpp
+    src/biomes/seasonal_forest.cpp
+    src/biomes/swampland.cpp
+    src/biomes/savanna.cpp
+    src/biomes/shrubland.cpp
+    src/biome_tint_map.cpp
     src/perlin_noise.cpp
     src/ChunkManager.cpp
     src/texture_array.cpp
@@ -287,6 +302,7 @@ else()
         tests/test_mob_creeper_spider.cpp
         tests/test_player_health.cpp
         tests/test_worldgen.cpp
+        tests/test_biome_registry.cpp
         tests/test_chat_commands.cpp
         tests/test_chat_history.cpp
         tests/test_items.cpp
@@ -294,6 +310,20 @@ else()
         tests/test_audio_assets.cpp
         src/TerrainGenerator.cpp
         src/terrain_fill.cpp
+        src/biome.cpp
+        src/tree_shapes.cpp
+        src/biomes/ocean.cpp
+        src/biomes/beach.cpp
+        src/biomes/plains.cpp
+        src/biomes/forest.cpp
+        src/biomes/desert.cpp
+        src/biomes/tundra.cpp
+        src/biomes/taiga.cpp
+        src/biomes/rainforest.cpp
+        src/biomes/seasonal_forest.cpp
+        src/biomes/swampland.cpp
+        src/biomes/savanna.cpp
+        src/biomes/shrubland.cpp
         src/section_visibility.cpp
         src/perlin_noise.cpp
         src/game_state.cpp

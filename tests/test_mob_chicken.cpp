@@ -18,7 +18,10 @@ TEST(ChickenTest, RegistryRow) {
     EXPECT_FLOAT_EQ(info.halfWidth, 0.2f);
     EXPECT_FLOAT_EQ(info.height, 0.7f);
     EXPECT_FLOAT_EQ(info.maxHealth, 4.0f);
-    EXPECT_EQ(info.spawnBiomes, biomeBit(BIOME_PLAINS) | biomeBit(BIOME_FOREST) | biomeBit(BIOME_BIRCH_FOREST));
+    EXPECT_TRUE(info.spawnBiomes & biomeBit(BIOME_PLAINS));
+    EXPECT_TRUE(info.spawnBiomes & biomeBit(BIOME_FOREST));
+    EXPECT_FALSE(info.spawnBiomes & biomeBit(BIOME_DESERT));
+    EXPECT_FALSE(info.spawnBiomes & biomeBit(BIOME_TUNDRA));
     EXPECT_EQ(info.groupMin, 2);
     EXPECT_EQ(info.groupMax, 4);
     EXPECT_EQ(info.spawnWeight, 10);

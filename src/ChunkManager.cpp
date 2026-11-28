@@ -3,6 +3,7 @@
 //
 
 #include "ChunkManager.h"
+#include "biome_tint_map.h"
 #include <cmath>
 #include "world.h"
 #include "tracy_shim.h"
@@ -345,6 +346,7 @@ void ChunkManager::drainResults() {
             continue;
         }
 
+        BiomeTintMap::upload(pos.x, pos.y, data.tints);
         chunks[pos] = Chunk(std::move(data));
 
         // Cross-chunk light propagation. First pull neighbor light INTO the

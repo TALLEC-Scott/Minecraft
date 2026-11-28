@@ -8,13 +8,18 @@
 #include "TerrainGenerator.h"
 #include "cube.h"
 
+struct BiomeTints;
+
 // Fills `blocks` (CHUNK_SIZE × CHUNK_HEIGHT × CHUNK_SIZE, indexed
 // x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z, default-constructed
 // to AIR) for chunk (chunkX, chunkZ), and reports each column's surface
 // height and biome. Deterministic in (seed, chunkX, chunkZ); trees that
 // straddle chunk borders come out identical from either side.
+// If `tints` is given, it also gets the blended grass / foliage colours of
+// each column (biome_tint.h).
 void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* blocks,
-                      int (&heights)[CHUNK_SIZE][CHUNK_SIZE], Biome (&biomes)[CHUNK_SIZE][CHUNK_SIZE]);
+                      int (&heights)[CHUNK_SIZE][CHUNK_SIZE], Biome (&biomes)[CHUNK_SIZE][CHUNK_SIZE],
+                      BiomeTints* tints = nullptr);
 
 namespace terrainfill {
 // Surface-rule constants (blocks relative to sea level / neighbor steps),

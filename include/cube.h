@@ -69,7 +69,8 @@ enum block_type : uint8_t {
 // Values are saved in chunk files and level.dat: append only.
 inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(DIAMOND_ORE) + 1;
 
-// Values index tables (BIOME_TABLE, mob spawn masks): append before BIOME_COUNT.
+// Values index tables (BIOME_DEFS in biome.cpp, mob spawn masks). Not saved
+// (recomputed from the seed), so they may be reordered. One BiomeDef each.
 enum Biome {
     BIOME_OCEAN,
     BIOME_BEACH,
@@ -78,7 +79,11 @@ enum Biome {
     BIOME_DESERT,
     BIOME_TUNDRA,
     BIOME_TAIGA,
-    BIOME_BIRCH_FOREST,
+    BIOME_RAINFOREST,
+    BIOME_SEASONAL_FOREST,
+    BIOME_SWAMPLAND,
+    BIOME_SAVANNA,
+    BIOME_SHRUBLAND,
     BIOME_COUNT
 };
 

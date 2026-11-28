@@ -131,7 +131,7 @@ ChunkData generateChunkData(int chunkX, int chunkZ, TerrainGenerator& terrain) {
     d.chunkZ = chunkZ;
 
     // Terrain, caves, ore, shores and vegetation (GL-free, see terrain_fill.cpp).
-    fillChunkTerrain(terrain, chunkX, chunkZ, flatBlocks.get(), d.heights, d.biomes);
+    fillChunkTerrain(terrain, chunkX, chunkZ, flatBlocks.get(), d.heights, d.biomes, &d.tints);
 
     // Compute maxSolidY
     d.maxSolidY = 0;
