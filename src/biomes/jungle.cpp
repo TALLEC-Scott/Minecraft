@@ -244,13 +244,16 @@ void decorate(const biomegen::FeatureSite& f) {
 
 block_type groundCover(const biomegen::GroundSite& g) {
     if (g.ground != GRASS) return AIR;
-    // Mostly tall grass between the bushes; ferns (which read as little
-    // fir saplings) only now and then.
+    // Most of the floor is grass between the bushes, on the (lush) climate
+    // base (biome.h climateGrass): x1.15 .. x1.5 in 8x8 patches, nearly
+    // every open column in the thickest, with more two-block grass than the
+    // wet climate alone gives. Ferns (whose short sprite reads as a little
+    // fir sapling) only as the odd large fern.
     const uint32_t roll = g.roll;
-    if (roll < 250) return FERN;
-    if (roll < 8000) return TALL_GRASS;
-    if (roll < 8060) return POPPY;
-    return AIR;
+    if (roll < 60) return POPPY;
+    if (roll < 200) return LARGE_FERN;
+    const double patch = static_cast<double>(mix(g.seed, g.wx >> 3, 7, g.wz >> 3) % 100) / 100.0;
+    return biomegen::climateGrass(g, 1.15 + 0.35 * patch, 2.0);
 }
 
 } // namespace

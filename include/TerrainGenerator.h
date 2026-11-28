@@ -15,6 +15,17 @@ class TerrainGenerator {
     int getHeightAndBiome(int x, int y, Biome& outBiome);
     double getTemperature(int x, int y);
     double getMoisture(int x, int y);
+    // The climate a column's vegetation feels: temperature after altitude
+    // cooling (the same `cooled` pickBiome uses for snow caps, so mountains
+    // get paler, sparser grass toward the tundra) and humidity, both 0..1.
+    struct ColumnClimate {
+        double temperature;
+        double humidity;
+    };
+    // Height, biome and (if `climate` is given) the column's climate in one
+    // sample: land columns compute the climate for their biome anyway, so
+    // it's free there; ocean / beach columns pay for it only when asked.
+    int getHeightBiomeClimate(int x, int y, Biome& outBiome, ColumnClimate* climate);
     // Raw 2D Perlin offset to [-0.5, 1.5] (noise + 0.5). Only the cloud
     // layer uses it, and its 0.65 coverage threshold is tuned to this range.
     double getNoise(int x, int y);
@@ -54,8 +65,9 @@ class TerrainGenerator {
         double relief;          // blocks of mountain relief added at this column
         int height;
         Biome biome;
+        ColumnClimate climate; // set on land, or when asked for (sampleColumn)
     };
-    ColumnSample sampleColumn(int x, int y);
+    ColumnSample sampleColumn(int x, int y, bool wantClimate = false);
 
     double octaveNoise(double x, double y, int octaves, double persistence, double lacunarity);
     // Ridged multifractal: 1 - |noise| per octave, squared, so crests form

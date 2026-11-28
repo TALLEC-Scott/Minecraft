@@ -187,9 +187,11 @@ block_type groundCover(const GroundSite& g) {
     // Blue orchids grow in scattered patches, as in Minecraft swamps.
     const bool orchidPatch = mix(g.seed, floorDiv(g.wx, 8), floorDiv(g.wz, 8), SALT_ORCHID) % 100 < 22;
     if (orchidPatch && g.roll < 450) return BLUE_ORCHID;
-    if (g.roll < 3300) return TALL_GRASS;
-    if (g.roll < 3450) return FERN; // rare: the fern sprite reads as a little sapling
-    return AIR;
+    // The odd large fern (the short fern sprite reads as a little sapling).
+    if (g.roll >= 9900) return LARGE_FERN;
+    // Grass on a share of the wet climate's base (biome.h climateGrass):
+    // patchy, between the pools, and seldom two blocks tall.
+    return biomegen::climateGrass(g, 0.6, 0.5);
 }
 
 } // namespace

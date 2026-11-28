@@ -123,12 +123,13 @@ bool growTree(const biomegen::TreeSite& s) {
     return acacia(s);
 }
 
-// Tall grass in drifting patches (15..60%), a rare dandelion.
+// Grass in drifting golden swathes over the climate's base (x0.4 .. x1.4,
+// the thick swathes richest in two-block grass), a rare dandelion.
 block_type groundCover(const biomegen::GroundSite& g) {
     if (g.ground != GRASS) return AIR;
-    const float density = 0.15f + 0.45f * patchNoise(g.seed, g.wx, g.wz, 12, SALT_GRASS);
-    if (static_cast<float>(g.roll) < density * 10000.0f) return TALL_GRASS;
-    return g.roll >= 9985 ? DANDELION : AIR;
+    if (g.roll >= 9985) return DANDELION;
+    const double swathe = patchNoise(g.seed, g.wx, g.wz, 12, SALT_GRASS);
+    return biomegen::climateGrass(g, 0.4 + 1.0 * swathe, 0.5 + 1.0 * swathe);
 }
 
 } // namespace

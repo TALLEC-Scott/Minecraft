@@ -98,6 +98,8 @@ class Inventory {
         CORNFLOWER,
         BLUE_ORCHID,
         VINE,
+        DOUBLE_TALL_GRASS,
+        LARGE_FERN,
         TNT,
         CRAFTING_TABLE,
         OBSIDIAN,

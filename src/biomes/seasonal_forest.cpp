@@ -203,10 +203,9 @@ block_type groundCover(const GroundSite& g) {
     if (open < CLEARING) flowers = 1200;
     if (drift > 0.68) flowers += static_cast<uint32_t>((drift - 0.68) * 9000.0); // up to ~2900
     if (g.roll < flowers) return flowerKind(g.seed, g.wx, g.wz, g.roll);
-    // Grass: thicker in the meadows.
-    const uint32_t grass = open < CLEARING ? 2600 : 1600;
-    if (g.roll < flowers + grass) return TALL_GRASS;
-    return AIR;
+    // Grass on the climate's base: thicker and taller in the meadows.
+    const bool meadow = open < CLEARING;
+    return biomegen::climateGrass(g, meadow ? 0.9 : 0.5, meadow ? 1.4 : 0.6);
 }
 
 } // namespace seasonal_forest

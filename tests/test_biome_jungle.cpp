@@ -238,8 +238,8 @@ TEST_F(JungleTest, FloorIsMostlyUndergrowth) {
                 const block_type above = c->at(x, h + 1, z);
                 land++;
                 if (isLeaves(above) || isLog(above)) bush++;
-                if (above == FERN) ferns++;
-                if (above == TALL_GRASS) grass++;
+                if (above == FERN || above == LARGE_FERN) ferns++;
+                if (above == TALL_GRASS || above == DOUBLE_TALL_GRASS) grass++;
                 if (above == AIR) bare++;
             }
     ASSERT_GT(land, 1000);

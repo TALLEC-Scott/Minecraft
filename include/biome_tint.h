@@ -1,7 +1,8 @@
 #pragma once
 
 // Per-column grass and foliage colour multipliers (BiomeDef::grassTint /
-// foliageTint), box-blurred across biome borders so colours fade from one
+// foliageTint, shifted by the column's own climate: climateTint in
+// biome.h), box-blurred across biome borders so colours fade from one
 // biome into the next instead of changing at a hard edge, like Minecraft's
 // biome blend. Computed with the chunk on a worker thread (GL-free), then
 // uploaded into BiomeTintMap's world-space textures for frag.shd.
@@ -28,9 +29,19 @@ struct BiomeTints {
     uint8_t foliage[CHUNK_SIZE][CHUNK_SIZE][3];
 };
 
-// `biomeAt(i, k)` must answer for chunk-local columns i, k in
+// One column's unblurred colours.
+struct ColumnTint {
+    glm::vec3 grass, foliage;
+};
+
+// The colours of a column with biome `b` and climate (t, h).
+inline ColumnTint columnTint(Biome b, double temperature, double humidity) {
+    return {climateTint(b, temperature, humidity, false), climateTint(b, temperature, humidity, true)};
+}
+
+// `tintAt(i, k)` -> ColumnTint must answer for chunk-local columns i, k in
 // [-TINT_BLEND_RADIUS, CHUNK_SIZE + TINT_BLEND_RADIUS).
-template <typename BiomeAt> void blendBiomeTints(BiomeAt&& biomeAt, BiomeTints& out) {
+template <typename TintAt> void blendColumnTints(TintAt&& tintAt, BiomeTints& out) {
     constexpr int R = TINT_BLEND_RADIUS;
     constexpr int W = CHUNK_SIZE + 2 * R;
     // Rows first: sum over i of each window, for every k in the margin.
@@ -38,9 +49,9 @@ template <typename BiomeAt> void blendBiomeTints(BiomeAt&& biomeAt, BiomeTints& 
     static thread_local glm::vec3 g[W][W], f[W][W];
     for (int i = 0; i < W; i++)
         for (int k = 0; k < W; k++) {
-            const BiomeDef& d = biomeDef(biomeAt(i - R, k - R));
-            g[i][k] = d.grassTint;
-            f[i][k] = d.foliageTint;
+            const ColumnTint c = tintAt(i - R, k - R);
+            g[i][k] = c.grass;
+            f[i][k] = c.foliage;
         }
     for (int x = 0; x < CHUNK_SIZE; x++)
         for (int k = 0; k < W; k++) {
@@ -65,4 +76,14 @@ template <typename BiomeAt> void blendBiomeTints(BiomeAt&& biomeAt, BiomeTints& 
                 out.foliage[x][z][c] = encodeTint(sf[c] * INV);
             }
         }
+}
+
+// The biomes' own tints only (no climate shift), blended the same way.
+template <typename BiomeAt> void blendBiomeTints(BiomeAt&& biomeAt, BiomeTints& out) {
+    blendColumnTints(
+        [&](int i, int k) {
+            const BiomeDef& d = biomeDef(biomeAt(i, k));
+            return ColumnTint{d.grassTint, d.foliageTint};
+        },
+        out);
 }

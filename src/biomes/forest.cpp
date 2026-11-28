@@ -174,12 +174,12 @@ block_type groundCover(const GroundSite& g) {
     if (patch % 100 < 12) {
         const block_type flower = ((patch >> 8) & 1) != 0 ? POPPY : DANDELION;
         if (g.roll < 900) return flower;
-        return g.roll < 2500 ? TALL_GRASS : AIR;
+        return biomegen::climateGrass(g, 0.4, 0.6);
     }
-    if (g.roll < 1800) return TALL_GRASS;
-    if (g.roll < 1830) return POPPY;
-    if (g.roll < 1860) return DANDELION;
-    return AIR;
+    if (g.roll < 30) return POPPY;
+    if (g.roll < 60) return DANDELION;
+    // The shaded floor: a little under half the climate's grass, few tall.
+    return biomegen::climateGrass(g, 0.45, 0.6);
 }
 
 } // namespace forest
