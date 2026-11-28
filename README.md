@@ -20,7 +20,7 @@ https://github.com/user-attachments/assets/4a94017a-34d2-41fa-8707-44ceb98dd80f
 
 #### v0.6
 
-<img src="Minecraft_Screenshot_5.png" width="600" />
+<img src="docs/images/Minecraft_Screenshot_5.png" width="600" />
 
 #### v0.5
 
@@ -28,23 +28,23 @@ https://github.com/user-attachments/assets/c95a33fa-b7e2-41ac-b8ba-79bb7edf997f
 
 #### v0.4
 
-<img src="Minecraft_0.4.png" width="500" />
+<img src="docs/images/Minecraft_0.4.png" width="500" />
 
 #### v0.3
 
-<img src="Minecraft_Screenshot_4.png" width="600" />
+<img src="docs/images/Minecraft_Screenshot_4.png" width="600" />
 
 #### v0.2
 
-[![Watch the demo](docs/v02-thumb.jpg)](https://i.imgur.com/WYfonMc.mp4)
+[![Watch the demo](docs/images/v02-thumb.jpg)](https://i.imgur.com/WYfonMc.mp4)
 
 #### v0.1
 
 <p>
-  <img src="Minecraft_Screenshot_1.png" width="300" />
-  <img src="Minecraft_Screenshot_2.png" width="300" />
-  <img src="Minecraft_Screenshot_6.png" width="300" />
-  <img src="Minecraft_0.1.png" width="300" />
+  <img src="docs/images/Minecraft_Screenshot_1.png" width="300" />
+  <img src="docs/images/Minecraft_Screenshot_2.png" width="300" />
+  <img src="docs/images/Minecraft_Screenshot_6.png" width="300" />
+  <img src="docs/images/Minecraft_0.1.png" width="300" />
 </p>
 
 </details>
