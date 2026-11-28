@@ -86,6 +86,7 @@ class Inventory {
         BIRCH_LEAVES,
         ACACIA_LEAVES,
         SNOW,
+        ICE,
         CACTUS,
         FERN,
         OXEYE_DAISY,

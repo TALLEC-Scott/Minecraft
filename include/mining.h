@@ -56,6 +56,7 @@ inline BlockMining blockMining(block_type t) {
         /* OAK_LOG_Z      */ {2.0f,  ToolKind::Axe,     false},
         /* PODZOL         */ {0.5f,  ToolKind::Shovel,  false},
         /* MOSSY_COBBLESTONE */ {2.0f, ToolKind::Pickaxe, true},
+        /* ICE            */ {0.5f,  ToolKind::Pickaxe, false},
         /* ACACIA_LOG     */ {2.0f,  ToolKind::Axe,     false},
         /* ACACIA_LEAVES  */ {0.2f,  ToolKind::None,    false},
     };
@@ -123,6 +124,7 @@ inline ItemDrop blockDrop(block_type t, ItemId held, float roll) {
     case ACACIA_LEAVES:
     case TALL_GRASS:
     case FERN:
+    case ICE: // Minecraft: ice drops nothing without Silk Touch
         return {};
     default:
         return {blockItem(t), 1};
