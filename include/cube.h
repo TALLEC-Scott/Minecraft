@@ -76,11 +76,14 @@ enum block_type : uint8_t {
     ACACIA_LOG,
     ACACIA_LEAVES,
     JUNGLE_LOG,
-    COARSE_DIRT
+    COARSE_DIRT,
+    RED_AUTUMN_LEAVES,
+    ORANGE_AUTUMN_LEAVES,
+    ORANGE_TULIP
 };
-// Number of block_type values; keep COARSE_DIRT (the last one) in sync.
+// Number of block_type values; keep ORANGE_TULIP (the last one) in sync.
 // Values are saved in chunk files and level.dat: append only.
-inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(COARSE_DIRT) + 1;
+inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(ORANGE_TULIP) + 1;
 
 // Values index tables (BIOME_DEFS in biome.cpp, mob spawn masks). Not saved
 // (recomputed from the seed), so they may be reordered. One BiomeDef each.
@@ -106,7 +109,8 @@ inline bool isLog(block_type t) {
            t == JUNGLE_LOG;
 }
 inline bool isLeaves(block_type t) {
-    return t == LEAVES || t == SPRUCE_LEAVES || t == BIRCH_LEAVES || t == ACACIA_LEAVES;
+    return t == LEAVES || t == SPRUCE_LEAVES || t == BIRCH_LEAVES || t == ACACIA_LEAVES || t == RED_AUTUMN_LEAVES ||
+           t == ORANGE_AUTUMN_LEAVES;
 }
 
 // Water level encoding: bits 0-2 hold the flow level (0-7), bit 7 is the
@@ -192,6 +196,9 @@ inline uint32_t getBlockFlags(block_type t) {
         /* ACACIA_LEAVES */ BF_SOLID | BF_TRANSLUCENT,
         /* JUNGLE_LOG    */ BF_SOLID | BF_OPAQUE,
         /* COARSE_DIRT   */ BF_SOLID | BF_OPAQUE,
+        /* RED_AUTUMN_LEAVES    */ BF_SOLID | BF_TRANSLUCENT,
+        /* ORANGE_AUTUMN_LEAVES */ BF_SOLID | BF_TRANSLUCENT,
+        /* ORANGE_TULIP  */ BF_TRANSPARENT | BF_CROSS,
     };
     // clang-format on
     int idx = static_cast<int>(t);
@@ -287,6 +294,9 @@ inline StepSound getStepSound(block_type t) {
         /* ACACIA_LEAVES */ STEP_GRASS,
         /* JUNGLE_LOG    */ STEP_WOOD,
         /* COARSE_DIRT   */ STEP_GRAVEL,
+        /* RED_AUTUMN_LEAVES    */ STEP_GRASS,
+        /* ORANGE_AUTUMN_LEAVES */ STEP_GRASS,
+        /* ORANGE_TULIP  */ STEP_GRASS,
     };
     // clang-format on
     int idx = static_cast<int>(t);

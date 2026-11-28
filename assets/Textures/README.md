@@ -43,6 +43,9 @@ modified versions of them, stay under CC BY-SA 4.0; the rest of the project is u
 | `jungle_log.png` | `ITEMS/mcl_core/textures/default_jungletree.png` (unmodified) |
 | `jungle_log_top.png` | `ITEMS/mcl_core/textures/default_jungletree_top.png` (unmodified) |
 | `coarse_dirt.png` | `ITEMS/mcl_core/textures/mcl_core_coarse_dirt.png` (unmodified) |
+| `red_autumn_leaves.png` | `ITEMS/mcl_core/textures/default_leaves.png`, tinted ×`#E85A28` |
+| `orange_autumn_leaves.png` | `ITEMS/mcl_core/textures/default_leaves.png`, tinted ×`#FFB028` |
+| `orange_tulip.png` | `ITEMS/mcl_flowers/textures/flowers_tulip.png` (unmodified) |
 
 "Tinted" files are the grayscale originals multiplied by a fixed colour (the game has no runtime
 biome tint), made with `scripts/tint_textures.py`.

@@ -233,6 +233,12 @@ inline const char* itemName(ItemId id) {
         return "Jungle Log";
     case COARSE_DIRT:
         return "Coarse Dirt";
+    case RED_AUTUMN_LEAVES:
+        return "Red Autumn Leaves";
+    case ORANGE_AUTUMN_LEAVES:
+        return "Orange Autumn Leaves";
+    case ORANGE_TULIP:
+        return "Orange Tulip";
     default:
         return "?";
     }
