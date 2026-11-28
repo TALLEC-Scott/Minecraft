@@ -151,7 +151,7 @@ TEST_F(TerrainDensityTest, SurfaceBlocksSitOnTheRealTop) {
                 if (top == AIR || top == LAVA || h <= SEA + 1) continue; // cave mouth / shore
                 checked++;
                 EXPECT_TRUE(top == GRASS || top == SNOW || top == STONE || top == DIRT || top == SAND ||
-                            top == GRAVEL)
+                            top == GRAVEL || top == COAL_ORE || top == IRON_ORE)
                     << "top " << top << " at " << x << "," << h << "," << z;
             }
     }
@@ -235,8 +235,8 @@ TEST_F(TerrainDensityTest, FlatAndWetLandIsUntouched) {
                 if (jag > 0.5f) plainsBiomeJagged++;
             }
         }
-    // Only the odd hilly cliff in plains gets real overhangs.
-    EXPECT_LT(plainsBiomeJagged * 12, plainsBiome) << "plains should be almost entirely flat";
+    // Only the odd hilly escarpment in plains gets real overhangs.
+    EXPECT_LT(plainsBiomeJagged * 7, plainsBiome) << "plains should be almost entirely flat";
 
     // Spawn area (plains / forest): chunks with no jagged column generate
     // exactly on the heightmap.
@@ -255,4 +255,29 @@ TEST_F(TerrainDensityTest, FlatAndWetLandIsUntouched) {
                 }
         }
     EXPECT_GT(plainCols, 1000);
+}
+
+TEST_F(TerrainDensityTest, ExposedRockShowsCoal) {
+    // Cliff faces, bare peaks and overhang undersides are stone with ore in
+    // it, not plain stone: count rock blocks touching air above the water.
+    long rock = 0, coal = 0;
+    for (int dx = 0; dx < 3; dx++)
+        for (int dz = 0; dz < 3; dz++) {
+            GenChunk c(terrain, MOUNTAIN_CX - 1 + dx, MOUNTAIN_CZ - 1 + dz);
+            for (int x = 1; x < CHUNK_SIZE - 1; x++)
+                for (int z = 1; z < CHUNK_SIZE - 1; z++)
+                    for (int y = SEA + 4; y < CHUNK_HEIGHT - 1; y++) {
+                        const block_type t = c.at(x, y, z);
+                        if (t != STONE && t != COAL_ORE && t != IRON_ORE) continue;
+                        const bool exposed = c.at(x + 1, y, z) == AIR || c.at(x - 1, y, z) == AIR ||
+                                             c.at(x, y + 1, z) == AIR || c.at(x, y - 1, z) == AIR ||
+                                             c.at(x, y, z + 1) == AIR || c.at(x, y, z - 1) == AIR;
+                        if (!exposed) continue;
+                        rock++;
+                        if (t == COAL_ORE) coal++;
+                    }
+        }
+    ASSERT_GT(rock, 1000);
+    EXPECT_GT(coal, 0);
+    EXPECT_GT(static_cast<double>(coal) / rock, 0.002) << coal << " coal of " << rock << " exposed rock";
 }

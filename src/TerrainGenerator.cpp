@@ -118,9 +118,9 @@ constexpr double PEAK_SOFT_CAP = 108.0;
 // Jaggedness: relief (blocks) over which overhangs fade in, share of the
 // cliff mask that counts, the band above sea level over which they fade in,
 // and how far past the river bank (× RIVER_BANK in noise units) they stay off.
-constexpr double JAG_RELIEF_LO = 12.0;
-constexpr double JAG_RELIEF_HI = 34.0;
-constexpr double JAG_CLIFF_SHARE = 0.7;
+constexpr double JAG_RELIEF_LO = 9.0;
+constexpr double JAG_RELIEF_HI = 24.0;
+constexpr double JAG_CLIFF_SHARE = 1.0;
 constexpr double JAG_CLIFF_RELIEF_LO = 8.0;
 constexpr double JAG_CLIFF_RELIEF_HI = 16.0;
 constexpr double JAG_SEA_LO = 4.0;
@@ -287,10 +287,12 @@ int TerrainGenerator::getHeightAndBiome(int x, int z, Biome& outBiome, float& ou
 }
 
 double TerrainGenerator::overhangNoise(int x, int y, int z) {
-    // Horizontal wavelength ~32 blocks, vertical ~14: blobs flattened into
-    // shelves, so cuts read as ledges and overhangs rather than round holes.
-    double n = perlinNoise.noise(x * 0.031 + 11000.0, y * 0.07 + 11000.0, z * 0.031 + 11000.0);
-    n += 0.5 * perlinNoise.noise(x * 0.075 + 12000.0, y * 0.15 + 12000.0, z * 0.075 + 12000.0);
+    // Horizontal wavelength ~56 blocks, vertical ~20: big blobs flattened
+    // into thick shelves, so the ground juts out in slabs and is cut into
+    // deep notches rather than round holes. The second octave roughens them
+    // into crags.
+    double n = perlinNoise.noise(x * 0.018 + 11000.0, y * 0.05 + 11000.0, z * 0.018 + 11000.0);
+    n += 0.45 * perlinNoise.noise(x * 0.045 + 12000.0, y * 0.11 + 12000.0, z * 0.045 + 12000.0);
     return std::clamp(n * 1.25, -1.0, 1.0);
 }
 

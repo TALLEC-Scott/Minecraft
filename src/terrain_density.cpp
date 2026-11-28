@@ -6,7 +6,7 @@
 
 namespace terraindensity {
 
-static_assert(2 * static_cast<int>(AMPLITUDE) + 3 <= 64, "a column's band must fit its 64-bit mask");
+static_assert(static_cast<int>(AMPLITUDE * (1.0 + CUT_SHARE)) + 3 <= 64, "a column's band must fit its 64-bit mask");
 
 namespace {
 
@@ -59,9 +59,9 @@ void shapeColumns(TerrainGenerator& terrain, int wx0, int wz0, int n, const int*
     int gLo = CHUNK_HEIGHT, gHi = -1;
     for (size_t c = 0; c < wh.size(); c++) {
         if (wj[c] <= 0.0f || wh[c] < bandMin) continue;
-        const int reach = static_cast<int>(std::ceil(AMPLITUDE * wj[c]));
-        lo[c] = std::max(bandMin, wh[c] - reach);
-        hi[c] = std::min(CEILING, wh[c] + reach);
+        const double reach = AMPLITUDE * wj[c];
+        lo[c] = std::max(bandMin, wh[c] - static_cast<int>(std::ceil(reach * CUT_SHARE)));
+        hi[c] = std::min(CEILING, wh[c] + static_cast<int>(std::ceil(reach)));
         if (hi[c] < lo[c]) continue;
         gLo = std::min(gLo, lo[c]);
         gHi = std::max(gHi, hi[c]);
@@ -117,9 +117,18 @@ void shapeColumns(TerrainGenerator& terrain, int wx0, int wz0, int n, const int*
                     return n0 + (n1 - n0) * fz;
                 };
                 const float p0 = plane(b), p1 = plane(b + 1);
-                const float noise = p0 + (p1 - p0) * fy;
+                float noise = p0 + (p1 - p0) * fy;
+                if (noise < 0.0f)
+                    noise *= static_cast<float>(CUT_SHARE);
+                else // taper toward the ceiling so crags round off instead of being sliced flat
+                    noise *= std::min(1.0f, static_cast<float>(CEILING - y) / CEILING_TAPER);
                 if (target - static_cast<float>(y) + amp * noise > 0.0f) cell(i, k, y) = SOLID_CELL;
             }
+            // One-block-thick sheets (air right above and below) read as
+            // paper-thin floating plates at a distance: drop them.
+            for (int y = lo[c] + 1; y < hi[c]; y++)
+                if (cell(i, k, y) == SOLID_CELL && cell(i, k, y - 1) == AIR_CELL && cell(i, k, y + 1) == AIR_CELL)
+                    cell(i, k, y) = AIR_CELL;
         }
 
     // --- Grounded: band blocks connected to the ground (SEEN cells) ---

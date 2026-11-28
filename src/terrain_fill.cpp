@@ -199,9 +199,11 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
                 } else if (j >= CAVE_FLOOR && j <= caveCeil && terrain.isCave(gx, j, gz)) {
                     b.setType(j <= LAVA_LEVEL ? LAVA : AIR);
                 } else if (depth == 0) {
-                    b.setType(firstRun ? c.surface : lowerSurface);
+                    const block_type t = firstRun ? c.surface : lowerSurface;
+                    // Bare rock shows its ore, like any other stone.
+                    b.setType(t == STONE ? terrain.oreAt(gx, j, gz) : t);
                 } else if (depth < soil) {
-                    b.setType(c.subsurface);
+                    b.setType(c.subsurface == STONE ? terrain.oreAt(gx, j, gz) : c.subsurface);
                 } else {
                     b.setType(terrain.oreAt(gx, j, gz));
                 }

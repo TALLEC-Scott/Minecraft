@@ -4,17 +4,21 @@
 // heightmap surface (Minecraft's "the ground isn't a heightmap" look).
 //
 // The heightmap height h stays the target surface, so climate, biomes,
-// coasts and rivers don't move. Near it, in a band of ±AMPLITUDE·jagged
-// blocks, a block at y is solid when
+// coasts and rivers don't move. Near it a block at y is solid when
 //
-//     density = (h + 0.5 − y) + AMPLITUDE · jagged · N(x, y, z)  >  0
+//     density = (h + 0.5 − y) + AMPLITUDE · jagged · N'(x, y, z)  >  0
+//
+// where N' = N where N > 0 and CUT_SHARE · N where N < 0: the ground can
+// rise up to AMPLITUDE·jagged blocks above h (shelves and overhangs jutting
+// far out from the slope) but is cut at most CUT_SHARE as deep below it
+// (notches, arches) — mountains don't get hollowed out.
 //
 // N is TerrainGenerator::overhangNoise, sampled on a world-aligned lattice
 // (LATTICE blocks) and trilinearly interpolated — as Minecraft does —
 // which keeps it cheap and gives the faceted, planar faces of its cliffs.
 // `jagged` (0..1, TerrainGenerator::getShape) is 0 on plains, near water,
 // on beaches / ocean and along rivers, so those columns are untouched; the
-// band never reaches below sea + 2 nor above CEILING.
+// band never reaches below sea + BAND_FLOOR nor above CEILING.
 //
 // Floating specks: solid pieces not connected to the ground whose
 // footprint fits in FLOAT_MAX × FLOAT_MAX columns are removed. Columns are
@@ -28,11 +32,13 @@
 
 namespace terraindensity {
 
-inline constexpr double AMPLITUDE = 18.0; // blocks the surface can move at jagged = 1
+inline constexpr double AMPLITUDE = 36.0; // blocks the ground can rise above h at jagged = 1
+inline constexpr double CUT_SHARE = 0.45; // ... and the share of that it can be cut below h
 inline constexpr int LATTICE = 4;         // noise lattice spacing (blocks, all axes)
 inline constexpr int FLOAT_MAX = 5;       // max footprint of a removed floating piece
 inline constexpr int BAND_FLOOR = 2;      // the band starts at least this far above sea level
-inline constexpr int CEILING = 114;       // no density-solid block above this
+inline constexpr int CEILING = 120;       // no density-solid block above this (room for small trees)
+inline constexpr float CEILING_TAPER = 24.0f; // the upward push fades out over this many blocks below CEILING
 
 // One column's solid profile after shaping.
 struct ColumnBand {
