@@ -1,7 +1,7 @@
 // Swampland: low, flat, wet ground under murky olive grass. Shallow pools
 // (one block of still water, some with a clay floor) are cut into the
 // ground, swamp oaks spread a wide canopy high enough to walk under and
-// trail vines from its edge, and the open ground is thick with tall grass and ferns, with patches of
+// trail vines from its edge, and the open ground is thick with tall grass (ferns only here and there), with patches of
 // blue orchids.
 
 #include "biome_defs.h"
@@ -187,8 +187,8 @@ block_type groundCover(const GroundSite& g) {
     // Blue orchids grow in scattered patches, as in Minecraft swamps.
     const bool orchidPatch = mix(g.seed, floorDiv(g.wx, 8), floorDiv(g.wz, 8), SALT_ORCHID) % 100 < 22;
     if (orchidPatch && g.roll < 450) return BLUE_ORCHID;
-    if (g.roll < 2600) return TALL_GRASS;
-    if (g.roll < 3500) return FERN;
+    if (g.roll < 3300) return TALL_GRASS;
+    if (g.roll < 3450) return FERN; // rare: the fern sprite reads as a little sapling
     return AIR;
 }
 

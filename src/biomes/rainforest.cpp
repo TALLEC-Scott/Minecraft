@@ -1,9 +1,9 @@
 // Rainforest: the hot, wet corner of the climate table. A layered jungle:
 // emergent giants on 2×2 jungle-log trunks with broad flat crowns, branch
 // clusters and buttress roots; a middle storey of smaller jungle trees; low
-// lumpy jungle-leaf bushes on the floor; vines draped down crown rims,
-// branch balls and trunks; and a floor of tall grass and ferns that still
-// leaves bare grass to walk on.
+// lumpy jungle-leaf bushes covering most of the floor; vines draped down
+// crown rims, branch balls and trunks; and deep green grass with tall grass
+// (ferns only here and there) between the bushes.
 
 #include <cstdint>
 #include <cstdlib>
@@ -165,22 +165,20 @@ bool jungleTree(const TreeSite& s) {
 // Floor bush (Minecraft's jungle bush): a jungle log hidden in a lumpy
 // mound of jungle leaves, about 3×3 and 1..2 high: a 3×3 layer with
 // random corners missing and a few lumps sticking out a block further,
-// under a smaller, uneven top.
-bool bush(const TreeSite& s) {
-    const int y = s.surface + 1;
-    if (!s.fits(y + 2)) return false;
-    s.claim(0);
-    s.log(0, y, 0, JUNGLE_LOG);
+// under a smaller, uneven top. `leaf(dx, y, dz)` / `log(dx, y, dz)` write
+// relative to the bush's centre column; y is the layer over the ground.
+template <typename Leaf, typename Log> void bushShape(uint64_t bits, int y, Leaf&& leaf, Log&& log) {
+    log(0, y, 0);
     for (int dx = -2; dx <= 2; dx++)
         for (int dz = -2; dz <= 2; dz++) {
             const int ax = std::abs(dx), az = std::abs(dz);
-            const uint32_t h = mix(s.bits, dx, 1, dz);
+            const uint32_t h = mix(bits, dx, 1, dz);
             bool lower = false;
             if (ax <= 1 && az <= 1)
                 lower = ax + az < 2 || h % 5 < 3; // 3×3, corners 3 in 5
             else if (ax + az == 2)
                 lower = h % 3 == 0; // lumps on the sides
-            if (lower) s.leaf(dx, y, dz, JUNGLE_LEAVES);
+            if (lower) leaf(dx, y, dz);
             bool upper = false;
             if (ax + az == 0)
                 upper = true; // over the log
@@ -188,35 +186,77 @@ bool bush(const TreeSite& s) {
                 upper = (h >> 8) % 4 != 0; // most of the plus
             else if (ax == 1 && az == 1)
                 upper = (h >> 8) % 5 == 0; // a rare corner
-            if (upper) s.leaf(dx, y + 1, dz, JUNGLE_LEAVES);
+            if (upper) leaf(dx, y + 1, dz);
         }
-    if ((s.bits >> 12) % 4 == 0) s.leaf(0, y + 2, 0, JUNGLE_LEAVES); // a taller one now and then
+    if ((bits >> 12) % 4 == 0) leaf(0, y + 2, 0); // a taller one now and then
+}
+
+bool bush(const TreeSite& s) {
+    const int y = s.surface + 1;
+    if (!s.fits(y + 2)) return false;
+    s.claim(0);
+    bushShape(
+        s.bits, y, [&](int dx, int ly, int dz) { s.leaf(dx, ly, dz, JUNGLE_LEAVES); },
+        [&](int dx, int ly, int dz) { s.log(dx, ly, dz, JUNGLE_LOG); });
     return true;
 }
 
 bool growTree(const TreeSite& s) {
+    // Mostly undergrowth: the floor between the trunks is a sea of bushes.
     const int pick = static_cast<int>((s.bits >> 40) % 100);
-    if (pick < 9) return giantTree(s);
-    if (pick < 36) return bush(s);
+    if (pick < 10) return giantTree(s);
+    if (pick < 55) return bush(s);
     return jungleTree(s);
+}
+
+// More bushes between the trees: up to three per feature cell, at the site
+// and two diagonal steps off it, on open grass. Features only write inside the
+// chunk, so a mound's 3×3 core keeps a column away from the chunk edge
+// (only an outer lump can be cut), and lumps stay on rainforest columns.
+void featureBush(const biomegen::FeatureSite& f, int di, int dk, uint64_t bits) {
+    const int ci = f.i + di, ck = f.k + dk;
+    if (ci < 1 || ci > CHUNK_SIZE - 2 || ck < 1 || ck > CHUNK_SIZE - 2) return;
+    if (f.biomeAt(di, dk) != BIOME_RAINFOREST) return;
+    // That column's open grass surface (near this cell's).
+    int y = -1;
+    for (int t = f.surface + 2; t >= f.surface - 2; t--)
+        if (f.atNear(di, t, dk) == GRASS && f.atNear(di, t + 1, dk) == AIR) {
+            y = t + 1;
+            break;
+        }
+    if (y < 0 || y + 2 >= CHUNK_HEIGHT) return;
+    bushShape(
+        bits, y,
+        [&](int dx, int ly, int dz) {
+            if (f.biomeAt(di + dx, dk + dz) == BIOME_RAINFOREST) f.setAt(di + dx, ly, dk + dz, JUNGLE_LEAVES);
+        },
+        [&](int dx, int ly, int dz) { f.setAt(di + dx, ly, dk + dz, JUNGLE_LOG); });
+}
+
+void decorate(const biomegen::FeatureSite& f) {
+    if (f.ground != GRASS) return;
+    if (f.bits % 8 != 0) featureBush(f, 0, 0, f.bits >> 3);
+    const int dirs[4][2] = {{2, 2}, {-2, 2}, {2, -2}, {-2, -2}};
+    const int* d = dirs[(f.bits >> 40) % 4];
+    if ((f.bits >> 42) % 4 != 0) featureBush(f, d[0], d[1], f.bits >> 20);
+    if ((f.bits >> 44) % 2 != 0) featureBush(f, -d[0], d[1], f.bits >> 30);
 }
 
 block_type groundCover(const biomegen::GroundSite& g) {
     if (g.ground != GRASS) return AIR;
-    // Patches (8×8 cells) lean towards ferns or towards grass.
-    const uint32_t patch = mix(g.seed, g.wx >> 3, 7, g.wz >> 3) % 3;
-    const uint32_t fern = patch == 0 ? 2600 : patch == 1 ? 1200 : 500;
+    // Mostly tall grass between the bushes; ferns (which read as little
+    // fir saplings) only now and then.
     const uint32_t roll = g.roll;
-    if (roll < fern) return FERN;
-    if (roll < fern + 3300) return TALL_GRASS;
-    if (roll < fern + 3340) return POPPY;
+    if (roll < 250) return FERN;
+    if (roll < 8000) return TALL_GRASS;
+    if (roll < 8060) return POPPY;
     return AIR;
 }
 
 } // namespace
 
 const BiomeDef RAINFOREST_DEF = {
-    "Rainforest",          GRASS, DIRT, SAND, 0.75f, &growTree, nullptr, &groundCover,
-    {0.58f, 1.08f, 0.55f}, // grass tint
+    "Rainforest",          GRASS, DIRT, SAND, 0.85f, &growTree, &decorate, &groundCover,
+    {0.45f, 0.85f, 0.40f}, // grass tint: deep jungle green
     {0.48f, 1.32f, 0.26f}, // foliage tint
 };

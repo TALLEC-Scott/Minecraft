@@ -226,8 +226,10 @@ TEST_F(RainforestTest, BushesAreMoundsNotCubes) {
     EXPECT_LT(small, bushes / 4) << "some squeezed by slopes or neighbours, not lone cubes";
 }
 
-TEST_F(RainforestTest, LushButWalkableFloor) {
-    int open = 0, ferns = 0, grass = 0, bare = 0;
+TEST_F(RainforestTest, FloorIsMostlyUndergrowth) {
+    // Land columns: most are under a bush, a trunk or tall grass; bare
+    // grass is the exception and ferns (sapling-like sprites) are rare.
+    int land = 0, bush = 0, ferns = 0, grass = 0, bare = 0;
     for (const auto& c : *chunks)
         for (int x = 0; x < CHUNK_SIZE; x++)
             for (int z = 0; z < CHUNK_SIZE; z++) {
@@ -235,15 +237,27 @@ TEST_F(RainforestTest, LushButWalkableFloor) {
                 const int h = c->heights[x][z];
                 if (h <= SEA + 1 || c->at(x, h, z) != GRASS) continue;
                 const block_type above = c->at(x, h + 1, z);
-                open++;
+                land++;
+                if (isLeaves(above) || isLog(above)) bush++;
                 if (above == FERN) ferns++;
                 if (above == TALL_GRASS) grass++;
                 if (above == AIR) bare++;
             }
-    ASSERT_GT(open, 1000);
-    EXPECT_GT(ferns, open / 20);
-    EXPECT_GT(grass, open / 5);
-    EXPECT_GT(bare, open / 5) << "some floor stays open";
+    ASSERT_GT(land, 1000);
+    EXPECT_GT(bush, land * 2 / 5) << "bushes cover much of the floor";
+    EXPECT_GT(grass, land / 5);
+    EXPECT_GT(ferns, 0);
+    EXPECT_LT(ferns, land / 30);
+    EXPECT_LT(bare, land / 4) << "open floor is the exception";
+}
+
+TEST_F(RainforestTest, GrassIsDeepJungleGreen) {
+    // Darker than the neighbouring forests' grass, still green.
+    const glm::vec3 rain = biomeDef(BIOME_RAINFOREST).grassTint;
+    EXPECT_LT(rain.g, biomeDef(BIOME_FOREST).grassTint.g);
+    EXPECT_LT(rain.g, biomeDef(BIOME_SEASONAL_FOREST).grassTint.g);
+    EXPECT_GT(rain.g, rain.r * 1.5f);
+    EXPECT_GT(rain.g, rain.b * 1.5f);
 }
 
 TEST(RainforestBlocksTest, JungleLog) {
