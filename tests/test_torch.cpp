@@ -84,16 +84,30 @@ TEST(TorchTest, WallTorchLeansAwayFromItsWall) {
     }
 }
 
-TEST(TorchTest, TipPulsesBetweenOrangeAndRed) {
-    float minGreen = 10.0f, maxGreen = 0.0f;
-    for (int i = 0; i < 100; ++i) {
-        glm::vec3 c = torch::tipColor(i * 0.02, 0.0f);
-        EXPECT_GT(c.r, c.g) << "always warm";
-        minGreen = std::min(minGreen, c.g);
-        maxGreen = std::max(maxGreen, c.g);
+TEST(TorchTest, TipIsAFixedGradientHottestOnTop) {
+    for (int i = 0; i < 200; ++i) {
+        torch::TipColors c = torch::tipColor(i * 0.037);
+        EXPECT_GT(c.face.g, c.top.g) << "top face paler than the top ring";
+        EXPECT_GT(c.top.g, c.bottom.g) << "top ring brighter than the bottom ring";
+        EXPECT_GT(c.top.r, c.top.g) << "rings stay warm";
+        // Hue fixed: each colour is its base hue scaled.
+        EXPECT_NEAR(c.top.g / c.top.r, torch::TIP_TOP_HUE.g / torch::TIP_TOP_HUE.r, 1e-4f);
+        EXPECT_NEAR(c.bottom.b / c.bottom.r, torch::TIP_BOTTOM_HUE.b / torch::TIP_BOTTOM_HUE.r, 1e-4f);
     }
-    EXPECT_GT(maxGreen - minGreen, 0.4f) << "visibly pulses";
-    EXPECT_NE(torch::tipPhase({0, 64, 0}), torch::tipPhase({1, 64, 0})) << "neighbours out of step";
+}
+
+TEST(TorchTest, TipBrightnessPulsesGentlyWithAnOccasionalFlare) {
+    float lo = 10.0f, hi = 0.0f, hiNoFlare = 0.0f;
+    for (int i = 0; i < 4000; ++i) {
+        double t = i * 0.005;
+        float k = torch::tipBrightness(t);
+        lo = std::min(lo, k);
+        hi = std::max(hi, k);
+        if (std::sin(t * 6.283185307179586 / torch::TIP_FLARE_PERIOD) < 0.5) hiNoFlare = std::max(hiNoFlare, k);
+    }
+    EXPECT_NEAR(lo, 0.76f, 0.02f) << "dips ~12%";
+    EXPECT_NEAR(hiNoFlare, 1.0f, 0.02f) << "swells ~12% outside a flare";
+    EXPECT_GT(hi, hiNoFlare + 0.1f) << "flares brighter";
 }
 
 TEST(HeldLightTest, WhatGlowsInHand) {

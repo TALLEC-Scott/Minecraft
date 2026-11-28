@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 // Torches (Minecraft's torch / wall_torch): a BF_CROSS block (no collision,
 // no sky shadow) that emits light 14, drawn as a 3D stick rather than
 // meshed (see TorchModel). A torch stands on the block below it or
@@ -68,21 +70,38 @@ inline glm::vec3 tip(glm::ivec3 cell, uint8_t state) {
     return glm::vec3(placedModel(cell, state) * glm::vec4(0.0f, STICK_HEIGHT, 0.0f, 1.0f));
 }
 
-// The glowing cap is the stick's top TIP_HEIGHT (the flame pixels).
+// The glowing cap is the stick's top TIP_HEIGHT (the flame pixels): a
+// 2×2×2 cube, 4 pixels on each of its top, left, right, front and back.
 inline constexpr float TIP_HEIGHT = 2.0f / 16.0f;
 
-// Colour multiplier for the cap: pulses between orange and red, about
-// twice a second. `phase` (radians) keeps neighbouring torches out of step.
-inline glm::vec3 tipColor(double time, float phase) {
-    float pulse = 0.5f + 0.5f * static_cast<float>(std::sin(time * 4.0 + phase));
-    return glm::mix(glm::vec3(1.3f, 0.95f, 0.55f), glm::vec3(1.4f, 0.3f, 0.12f), pulse);
+// The cap glows flat (not textured) as a fixed temperature gradient: the
+// top face hottest (pale yellow), the sides' upper pixel row bright orange,
+// the lower row a deep red-orange. The hues never change; only the
+// brightness breathes (about ±12% every 1.2 s, all rings together) with a
+// short brighter flare every 3.7 s. A function of time alone, so every
+// torch is in sync (and the colours are computed once per frame).
+struct TipColors {
+    glm::vec3 top, bottom, face;
+};
+inline const glm::vec3 TIP_FACE_HUE{1.0f, 0.95f, 0.68f};
+inline const glm::vec3 TIP_TOP_HUE{1.0f, 0.56f, 0.12f};
+inline const glm::vec3 TIP_BOTTOM_HUE{0.55f, 0.17f, 0.035f};
+inline constexpr double TIP_PULSE_PERIOD = 1.2;
+inline constexpr double TIP_FLARE_PERIOD = 3.7;
+inline float tipBrightness(double time) {
+    constexpr double TAU = 6.283185307179586;
+    float pulse = static_cast<float>(std::sin(time * TAU / TIP_PULSE_PERIOD));
+    // pow of a sine: flat most of the period, a sharp short spike at its crest.
+    float flare = static_cast<float>(std::pow(std::max(std::sin(time * TAU / TIP_FLARE_PERIOD), 0.0), 16.0));
+    return 0.88f + 0.12f * pulse + 0.22f * flare;
 }
-inline float tipPhase(glm::ivec3 cell) {
-    // Unsigned multiplies: they wrap, where signed overflow would be UB.
-    uint32_t h = static_cast<uint32_t>(cell.x) * 73856093u ^ static_cast<uint32_t>(cell.y) * 19349663u ^
-                 static_cast<uint32_t>(cell.z) * 83492791u;
-    return static_cast<float>(h % 628u) * 0.01f;
+inline TipColors tipColor(double time) {
+    float k = tipBrightness(time);
+    return {k * TIP_TOP_HUE, k * TIP_BOTTOM_HUE, k * TIP_FACE_HUE};
 }
+// Vertex brightness marking the tip's top face for the billboard shader
+// (glowMode 3 gives it `tintColorFace`).
+inline constexpr float TIP_TOP_FACE_BOOST = 1.2f;
 
 } // namespace torch
 

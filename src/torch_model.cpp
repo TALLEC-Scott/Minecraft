@@ -35,9 +35,10 @@ struct Part {
 };
 // Body: rows 8-15 (wood), bottom face = the stick's end. Tip: rows 6-7
 // (the flame), top face = the flame seen from above.
+constexpr float TIP_V0 = 10 * PX - torch::TIP_HEIGHT;
 const Part PARTS[2] = {
-    {0.0f, torch::STICK_HEIGHT - torch::TIP_HEIGHT, 0 * PX, 8 * PX, 0 * PX, 4},
-    {torch::STICK_HEIGHT - torch::TIP_HEIGHT, torch::STICK_HEIGHT, 8 * PX, 10 * PX, 8 * PX, 5},
+    {0.0f, torch::STICK_HEIGHT - torch::TIP_HEIGHT, 0 * PX, TIP_V0, 0 * PX, 4},
+    {torch::STICK_HEIGHT - torch::TIP_HEIGHT, torch::STICK_HEIGHT, TIP_V0, 10 * PX, 8 * PX, 5},
 };
 constexpr int FACES_PER_PART = 5;
 constexpr int INDICES_PER_PART = FACES_PER_PART * 6;
@@ -71,7 +72,11 @@ void TorchModel::init() {
                 const float world[WORLD_FLOATS] = {
                     p.x * 2.0f, p.y * 2.0f, p.z * 2.0f, u, v, static_cast<float>(f.faceIdx), layer,
                     3.0f /* AO_CURVE[3]: no occlusion */, 0.0f /* light: set per draw */};
-                const float view[VIEW_FLOATS] = {p.x, p.y, p.z, u, v, f.n[0], f.n[1], f.n[2], layer, 1.0f};
+                // The tip's top face is marked by its brightness (billboard
+                // glowMode 3 gives it its own colour; the rings come from v).
+                bool topFace = &part == &PARTS[1] && f.faceIdx == 4;
+                const float view[VIEW_FLOATS] = {
+                    p.x, p.y, p.z, u, v, f.n[0], f.n[1], f.n[2], layer, topFace ? torch::TIP_TOP_FACE_BOOST : 1.0f};
                 worldVerts.insert(worldVerts.end(), world, world + WORLD_FLOATS);
                 viewVerts.insert(viewVerts.end(), view, view + VIEW_FLOATS);
             }
@@ -115,7 +120,8 @@ void TorchModel::init() {
     glReady = true;
 }
 
-void TorchModel::drawWorld(const Shader& chunkShader, const glm::mat4& model, float packedLight, glm::vec3 tipColor) {
+void TorchModel::drawWorld(const Shader& chunkShader, const glm::mat4& model, float packedLight,
+                           const torch::TipColors& tipColor) {
     init();
     chunkShader.setMat4("model", model);
     chunkShader.setFloat("entityTint", 1.0f);
@@ -123,26 +129,32 @@ void TorchModel::drawWorld(const Shader& chunkShader, const glm::mat4& model, fl
     glBindVertexArray(worldVao);
     glVertexAttrib1f(5, packedLight);
     glDrawElements(GL_TRIANGLES, INDICES_PER_PART, GL_UNSIGNED_INT, nullptr);
-    // The flame cap: full block light, so it glows in the dark too.
-    float sky = static_cast<float>(static_cast<int>(packedLight) / 16);
-    glVertexAttrib1f(5, sky * 16.0f + 15.0f);
-    chunkShader.setVec3("entityColor", tipColor);
+    // The flame cap: flat glowing rings + top face (frag.shd `glowColor`
+    // upper ring, `glowColorLow` lower, `glowColorFace` top), lit by
+    // nothing, so it shines the same day and night.
+    chunkShader.setVec4("glowColor", glm::vec4(tipColor.top, 1.0f));
+    chunkShader.setVec3("glowColorLow", tipColor.bottom);
+    chunkShader.setVec3("glowColorFace", tipColor.face);
     glDrawElements(GL_TRIANGLES, INDICES_PER_PART, GL_UNSIGNED_INT,
                    (void*)(INDICES_PER_PART * sizeof(unsigned int)));
-    chunkShader.setVec3("entityColor", glm::vec3(1.0f));
+    chunkShader.setVec4("glowColor", glm::vec4(0.0f));
     glBindVertexArray(0);
 }
 
 void TorchModel::drawView(const Shader& billboardShader, const glm::mat4& model, glm::vec3 bodyTint,
-                          glm::vec3 tipColor) {
+                          const torch::TipColors& tipColor) {
     init();
     billboardShader.setMat4("model", model);
     billboardShader.setVec3("tintColor", bodyTint);
     glBindVertexArray(viewVao);
     glDrawElements(GL_TRIANGLES, INDICES_PER_PART, GL_UNSIGNED_INT, nullptr);
-    billboardShader.setVec3("tintColor", tipColor);
+    billboardShader.setVec3("tintColor", tipColor.top);
+    billboardShader.setVec3("tintColorLow", tipColor.bottom);
+    billboardShader.setVec3("tintColorFace", tipColor.face);
+    billboardShader.setFloat("glowMode", 3.0f); // torch tip rings
     glDrawElements(GL_TRIANGLES, INDICES_PER_PART, GL_UNSIGNED_INT,
                    (void*)(INDICES_PER_PART * sizeof(unsigned int)));
+    billboardShader.setFloat("glowMode", 0.0f);
     glBindVertexArray(0);
 }
 

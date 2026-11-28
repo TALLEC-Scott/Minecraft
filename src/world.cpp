@@ -349,6 +349,7 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
     // Torches: 3D sticks, not in the chunk mesh. Drawn before the water so
     // water in front of one blends over it.
     if (torchModel) {
+        const torch::TipColors tip = torch::tipColor(time); // all torches pulse in sync
         for (auto& vc : visible) {
             Chunk& c = *vc.chunk;
             for (const glm::ivec3& t : c.torchCells()) {
@@ -357,7 +358,7 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
                 if (!aabbInFrustum(planes, glm::vec3(cell) - 0.5f, glm::vec3(cell) + 0.5f)) continue;
                 auto light = static_cast<float>(c.getSkyLight(t.x, t.y, t.z) * 16 + c.getBlockLight(t.x, t.y, t.z));
                 torchModel->drawWorld(shaderProgram, torch::placedModel(cell, c.getWaterLevel(t.x, t.y, t.z)), light,
-                                      torch::tipColor(time, torch::tipPhase(cell)));
+                                      tip);
             }
         }
         shaderProgram.setMat4("model", glm::mat4(1.0f));
