@@ -55,12 +55,16 @@ constexpr int PODZOL_TOP_LAYER = WOOD_SIDEWAYS_LAYER + 1;
 constexpr int PODZOL_SIDE_LAYER = PODZOL_TOP_LAYER + 1;
 constexpr int MOSSY_COBBLESTONE_LAYER = PODZOL_SIDE_LAYER + 1;
 constexpr int ICE_LAYER = MOSSY_COBBLESTONE_LAYER + 1;
-constexpr int ACACIA_LOG_LAYER = ICE_LAYER + 1;
+constexpr int SANDSTONE_LAYER = ICE_LAYER + 1; // side
+constexpr int SANDSTONE_TOP_LAYER = SANDSTONE_LAYER + 1;
+constexpr int SANDSTONE_BOTTOM_LAYER = SANDSTONE_TOP_LAYER + 1;
+constexpr int DEAD_BUSH_LAYER = SANDSTONE_BOTTOM_LAYER + 1; // plant sprite (solid-pass cutout)
+constexpr int ACACIA_LOG_LAYER = DEAD_BUSH_LAYER + 1;
 constexpr int ACACIA_LOG_TOP_LAYER = ACACIA_LOG_LAYER + 1;
-constexpr int ACACIA_LEAVES_LAYER = ACACIA_LOG_TOP_LAYER + 1; // colour baked in (no biome tint, no sway)
+constexpr int ACACIA_LEAVES_LAYER = ACACIA_LOG_TOP_LAYER + 1; // 67 (shaders: leaf cutout + sway; colour baked in)
 constexpr int NUM_LAYERS = ACACIA_LEAVES_LAYER + 1;
 // The shaders hard-code these; keep frag.shd / vert.shd in step if they move.
-static_assert(SPRUCE_LEAVES_LAYER == 47 && BIRCH_LEAVES_LAYER == 50 && FERN_LAYER == 51);
+static_assert(SPRUCE_LEAVES_LAYER == 47 && BIRCH_LEAVES_LAYER == 50 && FERN_LAYER == 51 && ACACIA_LEAVES_LAYER == 67);
 
 // Face-aware: grass uses different textures per face (top=grass,
 // bottom=dirt, sides=grass_side). Wood is top/bottom vs sides. Other
@@ -127,6 +131,12 @@ inline int layerForFace(block_type t, int face) {
     }
     if (t == MOSSY_COBBLESTONE) return MOSSY_COBBLESTONE_LAYER;
     if (t == ICE) return ICE_LAYER;
+    if (t == SANDSTONE) {
+        if (face == 4) return SANDSTONE_TOP_LAYER;
+        if (face == 5) return SANDSTONE_BOTTOM_LAYER;
+        return SANDSTONE_LAYER;
+    }
+    if (t == DEAD_BUSH) return DEAD_BUSH_LAYER;
     if (t == ACACIA_LOG) return (face == 4 || face == 5) ? ACACIA_LOG_TOP_LAYER : ACACIA_LOG_LAYER;
     if (t == ACACIA_LEAVES) return ACACIA_LEAVES_LAYER;
     return static_cast<int>(t);
@@ -156,6 +166,8 @@ inline int layerForType(block_type t) {
     if (t == PODZOL) return PODZOL_SIDE_LAYER;
     if (t == MOSSY_COBBLESTONE) return MOSSY_COBBLESTONE_LAYER;
     if (t == ICE) return ICE_LAYER;
+    if (t == SANDSTONE) return SANDSTONE_LAYER;
+    if (t == DEAD_BUSH) return DEAD_BUSH_LAYER;
     if (t == ACACIA_LOG) return ACACIA_LOG_LAYER;
     if (t == ACACIA_LEAVES) return ACACIA_LEAVES_LAYER;
     return static_cast<int>(t);

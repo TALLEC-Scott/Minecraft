@@ -47,6 +47,15 @@ more than three times longer.
 | <img src="../../assets/Textures/fern.png" width="16"> | Fern | 28 | 0 | any | instant | instant | instant | nothing | plant |
 | <img src="../../assets/Textures/iron_ore.png" width="16"> | Iron Ore | 29 | 3 | pickaxe (needs tool) | 15 s | 7.5 s | 1.15 s | Iron Ingot | solid |
 | <img src="../../assets/Textures/diamond_ore.png" width="16"> | Diamond Ore | 30 | 3 | pickaxe (needs tool) | 15 s | 7.5 s | 3.75 s | nothing | solid |
+| <img src="../../assets/Textures/oxeye_daisy.png" width="16"> | Oxeye Daisy | 31 | 0 | any | instant | instant | instant | Oxeye Daisy | plant |
+| <img src="../../assets/Textures/cornflower.png" width="16"> | Cornflower | 32 | 0 | any | instant | instant | instant | Cornflower | plant |
+| <img src="../../assets/Textures/wood_sideways.png" width="16"> | Oak Log | 33 | 2 | axe | 3 s | 1.5 s | 0.75 s | Wood | solid |
+| <img src="../../assets/Textures/wood.png" width="16"> | Oak Log | 34 | 2 | axe | 3 s | 1.5 s | 0.75 s | Wood | solid |
+| <img src="../../assets/Textures/podzol_top.png" width="16"> | Podzol | 35 | 0.5 | shovel | 0.75 s | 0.4 s | 0.2 s | Dirt | solid |
+| <img src="../../assets/Textures/mossy_cobblestone.png" width="16"> | Mossy Cobblestone | 36 | 2 | pickaxe (needs tool) | 10 s | 1.5 s | 0.75 s | Mossy Cobblestone | solid |
+| <img src="../../assets/Textures/ice.png" width="16"> | Ice | 37 | 0.5 | pickaxe | 0.75 s | 0.4 s | 0.2 s | nothing | solid |
+| <img src="../../assets/Textures/sandstone_top.png" width="16"> | Sandstone | 38 | 0.8 | pickaxe (needs tool) | 4 s | 0.6 s | 0.3 s | Sandstone | solid |
+| <img src="../../assets/Textures/dead_bush.png" width="16"> | Dead Bush | 39 | 0 | any | instant | instant | instant | Stick | plant |
 
 ## Tools and weapons
 
@@ -105,6 +114,7 @@ larger ones need a crafting table.
 | Stick ×4 | Oak Planks<br>Oak Planks | inventory |
 | Torch ×4 | Coal<br>Stick | inventory |
 | Crafting Table | Oak Planks · Oak Planks<br>Oak Planks · Oak Planks | inventory |
+| Sandstone | Sand · Sand<br>Sand · Sand | inventory |
 | Wooden Pickaxe | Oak Planks · Oak Planks · Oak Planks<br>— · Stick · —<br>— · Stick · — | crafting table |
 | Wooden Axe | Oak Planks · Oak Planks<br>Oak Planks · Stick<br>— · Stick | crafting table |
 | Wooden Shovel | Oak Planks<br>Stick<br>Stick | crafting table |

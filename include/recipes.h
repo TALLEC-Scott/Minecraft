@@ -33,6 +33,7 @@ inline const std::vector<Recipe>& allRecipes() {
             {1, 2, {ITEM_COAL, ITEM_STICK}, {blockItem(TORCH), 4}}, // coal over a stick
             {2, 2, {blockItem(PLANKS), blockItem(PLANKS), blockItem(PLANKS), blockItem(PLANKS)},
              {blockItem(CRAFTING_TABLE), 1}},
+            {2, 2, {blockItem(SAND), blockItem(SAND), blockItem(SAND), blockItem(SAND)}, {blockItem(SANDSTONE), 1}},
         };
         struct Tier {
             ItemId material, pickaxe, axe, shovel, sword;

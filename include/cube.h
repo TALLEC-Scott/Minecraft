@@ -71,6 +71,8 @@ enum block_type : uint8_t {
     PODZOL,
     MOSSY_COBBLESTONE,
     ICE,
+    SANDSTONE,
+    DEAD_BUSH,
     ACACIA_LOG,
     ACACIA_LEAVES
 };
@@ -181,6 +183,8 @@ inline uint32_t getBlockFlags(block_type t) {
         /* PODZOL        */ BF_SOLID | BF_OPAQUE,
         /* MOSSY_COBBLESTONE */ BF_SOLID | BF_OPAQUE,
         /* ICE           */ BF_SOLID | BF_OPAQUE,
+        /* SANDSTONE     */ BF_SOLID | BF_OPAQUE,
+        /* DEAD_BUSH     */ BF_TRANSPARENT | BF_CROSS,
         /* ACACIA_LOG    */ BF_SOLID | BF_OPAQUE,
         /* ACACIA_LEAVES */ BF_SOLID | BF_TRANSLUCENT,
     };
@@ -272,6 +276,8 @@ inline StepSound getStepSound(block_type t) {
         /* PODZOL        */ STEP_GRASS,
         /* MOSSY_COBBLESTONE */ STEP_STONE,
         /* ICE           */ STEP_STONE,
+        /* SANDSTONE     */ STEP_STONE,
+        /* DEAD_BUSH     */ STEP_GRASS,
         /* ACACIA_LOG    */ STEP_WOOD,
         /* ACACIA_LEAVES */ STEP_GRASS,
     };
