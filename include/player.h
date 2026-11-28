@@ -77,10 +77,8 @@ class Player {
     GameMode getGameMode() const { return gameMode; }
     bool isSurvival() const { return gameMode == GameMode::Survival; }
     void setGameMode(GameMode mode);
-    float getPunchSwingAngle() const;
     // 0..1 progress through the current punch (0 when not punching).
     float getSwingProgress() const;
-    glm::mat4 getArmModelMatrix() const;
 
     // Survival block breaking in progress: 0..1 towards breaking the block
     // at getMiningPos(), or < 0 when not mining (drives the crack overlay).

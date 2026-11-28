@@ -64,6 +64,8 @@ enum block_type : uint8_t {
     FERN,
     IRON_ORE,
     DIAMOND_ORE,
+    OXEYE_DAISY,
+    CORNFLOWER,
     PODZOL,
     MOSSY_COBBLESTONE
 };
@@ -167,6 +169,8 @@ inline uint32_t getBlockFlags(block_type t) {
         /* FERN          */ BF_TRANSPARENT | BF_CROSS,
         /* IRON_ORE      */ BF_SOLID | BF_OPAQUE,
         /* DIAMOND_ORE   */ BF_SOLID | BF_OPAQUE,
+        /* OXEYE_DAISY   */ BF_TRANSPARENT | BF_CROSS,
+        /* CORNFLOWER    */ BF_TRANSPARENT | BF_CROSS,
         /* PODZOL        */ BF_SOLID | BF_OPAQUE,
         /* MOSSY_COBBLESTONE */ BF_SOLID | BF_OPAQUE,
     };
@@ -251,6 +255,8 @@ inline StepSound getStepSound(block_type t) {
         /* FERN          */ STEP_GRASS,
         /* IRON_ORE      */ STEP_STONE,
         /* DIAMOND_ORE   */ STEP_STONE,
+        /* OXEYE_DAISY   */ STEP_GRASS,
+        /* CORNFLOWER    */ STEP_GRASS,
         /* PODZOL        */ STEP_GRASS,
         /* MOSSY_COBBLESTONE */ STEP_STONE,
     };

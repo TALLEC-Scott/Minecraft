@@ -340,10 +340,6 @@ static HeldItemModel& itemModel(const char* spritePath) {
     if (!model) model = std::make_unique<HeldItemModel>();
     return *model;
 }
-// Grip pixel of a tool sprite (sprite coords): where the hand holds it.
-static const glm::vec3 TOOL_GRIP(2.5f, 2.5f, 0.0f);
-// Upright sprites (torch, flowers) are held at the bottom of their stem.
-static const glm::vec3 STEM_GRIP(8.0f, 1.0f, 0.0f);
 
 // The sprite an item is held / dropped as: an item's own icon, or a
 // cross-quad plant's texture (flowers, grass), which has no cube form.
@@ -462,8 +458,18 @@ glm::vec3 getSkyColor(float angle) {
 }
 
 // Build a small cube mesh for the held block (6 faces, per-face texture from TextureArray)
+// Per-face brightness for the first-person arm and held block (the hand
+// pass's billboard shader has no lighting): Minecraft's block shading, top
+// brightest, then the north/south sides, then east/west, bottom darkest, so
+// the boxes read as solid instead of flat cut-outs.
+static float heldFaceShade(float ny, float nz) {
+    if (ny > 0.5f) return 1.0f;
+    if (ny < -0.5f) return 0.5f;
+    return std::abs(nz) > 0.5f ? 0.8f : 0.6f;
+}
+static constexpr float HELD_BLOCK_HALF = 0.15f; // half-size of the held block mesh
 static void buildHeldBlockMesh(block_type bt) {
-    float s = 0.15f; // half-size of the held block
+    float s = HELD_BLOCK_HALF;
     // Face definitions: normal direction, then 4 corner offsets (each 3 floats)
     struct Face {
         float nx, ny, nz;
@@ -501,7 +507,7 @@ static void buildHeldBlockMesh(block_type bt) {
             verts[vi++] = faces[f].ny;
             verts[vi++] = faces[f].nz;
             verts[vi++] = layer;
-            verts[vi++] = 1.0f; // brightness
+            verts[vi++] = heldFaceShade(faces[f].ny, faces[f].nz);
         }
         int b = f * 4;
         indices[f * 6 + 0] = b;
@@ -1639,6 +1645,10 @@ int main(int argc, char* argv[]) {
                 sl,
                 1,
             };
+            for (int v = 0; v < 24; v++) {
+                float* vert = &verts[v * 10];
+                vert[9] = heldFaceShade(vert[6], vert[7]);
+            }
             unsigned int indices[36];
             for (int i = 0; i < 6; i++) {
                 int b = i * 4;
@@ -2631,7 +2641,7 @@ int main(int argc, char* argv[]) {
                         if (HeldItemModel& toolModel = itemModel(spritePath); toolModel.load(spritePath)) {
                             glm::mat4 m = glm::rotate(hand, glm::radians(-90.0f), glm::vec3(0, 1, 0));
                             m = glm::scale(m, glm::vec3(0.045f)); // 16 px ≈ 0.72 blocks
-                            m = glm::translate(m, upright ? -STEM_GRIP : -TOOL_GRIP);
+                            m = glm::translate(m, upright ? -heldpose::STEM_GRIP : -heldpose::TOOL_GRIP);
                             ItemShading shading{lightTintFor(light), sunDir, cameraPos, fogColor, fogStart, fogEnd};
                             toolModel.draw(viewProjection, m, shading);
                             shaderProgram.use();
@@ -2892,72 +2902,48 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            // First-person arm — lit by environment (matches terrain shader)
+            // First-person hand: the held item (or the bare arm) in view
+            // space, posed as Minecraft's ItemInHandRenderer does
+            // (held_item_pose.h), lit by the environment at the eye.
             {
-                glm::mat4 armModel = player.getArmModelMatrix();
-
-                // Sample sky light at player eye position
                 glm::vec3 armTint = lightTintFor(lightLevelsAt(cameraPos));
+                // The hand keeps its spot on screen at any aspect ratio and FOV:
+                // it has its own fixed-FOV projection, and its X offset follows
+                // the aspect.
+                float aspect = (float)windowWidth / (float)windowHeight;
+                glm::mat4 handProjection = heldpose::handProjection(aspect);
+                float swing = player.getSwingProgress();
 
                 glClear(GL_DEPTH_BUFFER_BIT);
                 billboardShader.use();
-                billboardShader.setMat4("projection", projection);
+                billboardShader.setMat4("projection", handProjection);
                 billboardShader.setMat4("view", glm::mat4(1.0f));
                 billboardShader.setVec3("tintColor", armTint);
-
-                // With perspective projection, the arm's screen-X slides
-                // toward the center as the window gets wider (aspect
-                // divides the X NDC). Scale the X translation by aspect so
-                // the arm stays anchored to the bottom-right corner in
-                // fullscreen widescreen.
-                float aspect = (float)windowWidth / (float)windowHeight;
 
                 block_type heldType = player.getSelectedBlockType();
                 glDisable(GL_CULL_FACE);
                 bool uprightSprite = false;
                 const char* spritePath = heldSpritePath(player.getSelectedItem(), uprightSprite);
                 if (spritePath || heldType == TORCH) {
-                    // Tool (the sword): its sprite extruded into a pixel
-                    // slab held in the hand — handle in the lower right, flat
-                    // side toward the camera, blade leaning toward the
-                    // crosshair. Attacks play Minecraft's swing about the
-                    // hand; the arm runs from the hand to a fixed shoulder.
-                    // The torch is its 3D stick in the same grip.
-                    HeldItemModel* swordModel = spritePath ? &itemModel(spritePath) : nullptr;
-                    if (!swordModel || swordModel->load(spritePath)) {
-                        constexpr float ITEM_SCALE = 0.04f; // sprite pixels -> view units
-                        const glm::vec3 HAND_REST(0.28f * aspect, -0.4f, -0.7f);
-                        const glm::vec3 SHOULDER = HAND_REST + glm::vec3(0.3f, -0.45f, 0.3f); // off-screen
-                        constexpr float ARM_HALF_WIDTH = 0.07f;
-                        float swing = player.getSwingProgress();
-                        glm::vec3 hand = HAND_REST + heldpose::swingOffset(swing);
-
-                        // Arm box (armVAO is ±0.4 tall, so rescale to a unit half height).
-                        glm::mat4 armM = heldpose::armBetween(hand, SHOULDER, ARM_HALF_WIDTH / 0.15f);
-                        armM = glm::scale(armM, glm::vec3(1.0f, 1.0f / 0.4f, 1.0f));
-                        billboardShader.setMat4("model", armM);
-                        TextureArray::bind();
-                        glBindVertexArray(armVAO);
-                        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
-
-                        glm::mat4 m = glm::translate(glm::mat4(1.0f), hand) * heldpose::swingRotation(swing);
-                        m = glm::rotate(m, glm::radians(-25.0f), glm::vec3(0, 1, 0)); // flat side toward us
-                        m = glm::rotate(m, glm::radians(-30.0f), glm::vec3(1, 0, 0)); // blade leans away
-                        // Diagonal tool sprites stand up at 70°; upright ones
-                        // (torch, flowers) are smaller and only lean a little,
-                        // top toward the crosshair, so the torch's flame shows.
+                    // Tools, flowers and the torch: the sprite (extruded into a
+                    // pixel slab) or the 3D torch, in the fist at the lower
+                    // right — tools diagonally, blade / head toward the upper
+                    // left, flowers and the torch upright. No arm is drawn (as
+                    // in Minecraft); attacks play Minecraft's swing.
+                    HeldItemModel* spriteModel = spritePath ? &itemModel(spritePath) : nullptr;
+                    if (!spriteModel || spriteModel->load(spritePath)) {
                         bool upright = uprightSprite || heldType == TORCH;
-                        m = glm::rotate(m, glm::radians(upright ? 12.0f : 70.0f), glm::vec3(0, 0, 1));
-                        if (swordModel) {
-                            m = glm::scale(m, glm::vec3(uprightSprite ? ITEM_SCALE * 0.75f : ITEM_SCALE));
-                            m = glm::translate(m, uprightSprite ? -STEM_GRIP : -TOOL_GRIP);
-                            swordModel->draw(projection, m, ItemShading{armTint});
+                        glm::mat4 m = heldpose::itemHand(swing, aspect) * heldpose::spriteDisplay(upright);
+                        if (spriteModel) {
+                            spriteModel->draw(handProjection, m, ItemShading{armTint});
                             billboardShader.use(); // restore for the rest of this pass
                         } else {
-                            // Torch: ~0.35 view units tall, gripped a little above its
-                            // foot, full-bright since it gives light.
-                            m = glm::scale(m, glm::vec3(0.55f));
-                            m = glm::translate(m, glm::vec3(0.0f, -0.12f, 0.0f));
+                            // Torch: the stick stands where the torch sprite's
+                            // does (centered, foot at the bottom; the model is in
+                            // blocks, the sprite in pixels), full-bright since it
+                            // gives light.
+                            m = glm::translate(m, glm::vec3(8.0f, 0.0f, 0.0f));
+                            m = glm::scale(m, glm::vec3(16.0f));
                             torchModel.drawView(billboardShader, m, glm::vec3(1.0f),
                                                 torch::tipColor(glfwGetTime()));
                             billboardShader.setVec3("tintColor", armTint);
@@ -2986,19 +2972,21 @@ int main(int argc, char* argv[]) {
                         }
                     }
                 } else if (heldType == AIR) {
-                    // Empty hand: show arm
-                    armModel[3][0] *= aspect;
-                    billboardShader.setMat4("model", armModel);
+                    // Empty hand: the right arm reaching in from the lower right
+                    // (armVAO is a 0.3 x 0.8 x 0.3 box; emptyArm wants +-1).
+                    glm::mat4 armM = heldpose::emptyArm(swing, aspect);
+                    armM = glm::scale(armM, glm::vec3(1.0f / 0.15f, 1.0f / 0.4f, 1.0f / 0.15f));
+                    billboardShader.setMat4("model", armM);
+                    TextureArray::bind();
                     glBindVertexArray(armVAO);
                     glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
                 } else {
-                    // Held block: smaller cube, tilted, in hand position
+                    // Held block: a small cube in the fist at the lower right,
+                    // turned and tipped so three faces show (heldBlockVAO is a
+                    // 2 * HELD_BLOCK_HALF cube, blockDisplay wants a unit one).
                     if (heldType != lastHeldBlock) buildHeldBlockMesh(heldType);
-                    glm::mat4 blockModel = glm::mat4(1.0f);
-                    blockModel = glm::translate(blockModel, glm::vec3(0.4f * aspect, -0.35f, -0.5f));
-                    blockModel = glm::rotate(blockModel, glm::radians(player.getPunchSwingAngle()), glm::vec3(1, 0, 0));
-                    blockModel = glm::rotate(blockModel, glm::radians(25.0f), glm::vec3(0, 1, 0));
-                    blockModel = glm::rotate(blockModel, glm::radians(10.0f), glm::vec3(1, 0, 0));
+                    glm::mat4 blockModel = heldpose::itemHand(swing, aspect) * heldpose::blockDisplay();
+                    blockModel = glm::scale(blockModel, glm::vec3(1.0f / (2.0f * HELD_BLOCK_HALF)));
                     billboardShader.setMat4("model", blockModel);
                     TextureArray::bind();
                     glBindVertexArray(heldBlockVAO);

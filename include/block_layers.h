@@ -47,7 +47,9 @@ constexpr int BIRCH_LEAVES_LAYER = BIRCH_LOG_TOP_LAYER + 1; // 50 (shaders: leaf
 constexpr int FERN_LAYER = BIRCH_LEAVES_LAYER + 1;          // 51 (shaders: plant cutout + sway)
 constexpr int IRON_ORE_LAYER = FERN_LAYER + 1;
 constexpr int DIAMOND_ORE_LAYER = IRON_ORE_LAYER + 1;
-constexpr int PODZOL_TOP_LAYER = DIAMOND_ORE_LAYER + 1;
+constexpr int OXEYE_DAISY_LAYER = DIAMOND_ORE_LAYER + 1;
+constexpr int CORNFLOWER_LAYER = OXEYE_DAISY_LAYER + 1;
+constexpr int PODZOL_TOP_LAYER = CORNFLOWER_LAYER + 1;
 constexpr int PODZOL_SIDE_LAYER = PODZOL_TOP_LAYER + 1;
 constexpr int MOSSY_COBBLESTONE_LAYER = PODZOL_SIDE_LAYER + 1;
 constexpr int NUM_LAYERS = MOSSY_COBBLESTONE_LAYER + 1;
@@ -97,6 +99,8 @@ inline int layerForFace(block_type t, int face) {
     if (t == FERN) return FERN_LAYER;
     if (t == IRON_ORE) return IRON_ORE_LAYER;
     if (t == DIAMOND_ORE) return DIAMOND_ORE_LAYER;
+    if (t == OXEYE_DAISY) return OXEYE_DAISY_LAYER;
+    if (t == CORNFLOWER) return CORNFLOWER_LAYER;
     if (t == PODZOL) {
         if (face == 4) return PODZOL_TOP_LAYER;
         if (face == 5) return static_cast<int>(DIRT);
@@ -124,6 +128,8 @@ inline int layerForType(block_type t) {
     if (t == FERN) return FERN_LAYER;
     if (t == IRON_ORE) return IRON_ORE_LAYER;
     if (t == DIAMOND_ORE) return DIAMOND_ORE_LAYER;
+    if (t == OXEYE_DAISY) return OXEYE_DAISY_LAYER;
+    if (t == CORNFLOWER) return CORNFLOWER_LAYER;
     if (t == PODZOL) return PODZOL_SIDE_LAYER;
     if (t == MOSSY_COBBLESTONE) return MOSSY_COBBLESTONE_LAYER;
     return static_cast<int>(t);

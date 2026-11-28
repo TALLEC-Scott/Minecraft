@@ -86,6 +86,8 @@ class Inventory {
         SNOW,
         CACTUS,
         FERN,
+        OXEYE_DAISY,
+        CORNFLOWER,
         TNT,
         CRAFTING_TABLE,
         OBSIDIAN,

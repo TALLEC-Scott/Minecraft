@@ -27,6 +27,8 @@ modified versions of them, stay under CC BY-SA 4.0; the rest of the project is u
 | `fern.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_fern.png`, tinted ×`#6ADE3C` |
 | `iron_ore.png` | `ITEMS/mcl_core/textures/mcl_core_iron_ore.png` (unmodified) |
 | `diamond_ore.png` | `ITEMS/mcl_core/textures/mcl_core_diamond_ore.png` (unmodified) |
+| `oxeye_daisy.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_oxeye_daisy.png` (unmodified) |
+| `cornflower.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_cornflower.png` (unmodified) |
 | `podzol_top.png` | `ITEMS/mcl_core/textures/mcl_core_dirt_podzol_top.png` (unmodified) |
 | `podzol_side.png` | `ITEMS/mcl_core/textures/mcl_core_dirt_podzol_side.png` (unmodified) |
 | `mossy_cobblestone.png` | `ITEMS/mcl_core/textures/default_mossycobble.png` (unmodified) |
