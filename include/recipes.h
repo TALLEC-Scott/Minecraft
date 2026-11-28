@@ -29,6 +29,7 @@ inline const std::vector<Recipe>& allRecipes() {
             {1, 1, {blockItem(SPRUCE_LOG)}, {blockItem(PLANKS), 4}},
             {1, 1, {blockItem(BIRCH_LOG)}, {blockItem(PLANKS), 4}},
             {1, 1, {blockItem(ACACIA_LOG)}, {blockItem(PLANKS), 4}},
+            {1, 1, {blockItem(JUNGLE_LOG)}, {blockItem(PLANKS), 4}},
             {1, 2, {blockItem(PLANKS), blockItem(PLANKS)}, {ITEM_STICK, 4}},
             {1, 2, {ITEM_COAL, ITEM_STICK}, {blockItem(TORCH), 4}}, // coal over a stick
             {2, 2, {blockItem(PLANKS), blockItem(PLANKS), blockItem(PLANKS), blockItem(PLANKS)},
