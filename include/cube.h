@@ -75,6 +75,8 @@ enum block_type : uint8_t {
     DEAD_BUSH,
     ACACIA_LOG,
     ACACIA_LEAVES,
+    JUNGLE_LOG,
+    COARSE_DIRT,
     RED_AUTUMN_LEAVES,
     ORANGE_AUTUMN_LEAVES,
     ORANGE_TULIP
@@ -103,7 +105,8 @@ enum Biome {
 
 // Tree trunks and canopies, for code that treats every wood type alike.
 inline bool isLog(block_type t) {
-    return t == WOOD || t == SPRUCE_LOG || t == BIRCH_LOG || t == OAK_LOG_X || t == OAK_LOG_Z || t == ACACIA_LOG;
+    return t == WOOD || t == SPRUCE_LOG || t == BIRCH_LOG || t == OAK_LOG_X || t == OAK_LOG_Z || t == ACACIA_LOG ||
+           t == JUNGLE_LOG;
 }
 inline bool isLeaves(block_type t) {
     return t == LEAVES || t == SPRUCE_LEAVES || t == BIRCH_LEAVES || t == ACACIA_LEAVES || t == RED_AUTUMN_LEAVES ||
@@ -191,6 +194,8 @@ inline uint32_t getBlockFlags(block_type t) {
         /* DEAD_BUSH     */ BF_TRANSPARENT | BF_CROSS,
         /* ACACIA_LOG    */ BF_SOLID | BF_OPAQUE,
         /* ACACIA_LEAVES */ BF_SOLID | BF_TRANSLUCENT,
+        /* JUNGLE_LOG    */ BF_SOLID | BF_OPAQUE,
+        /* COARSE_DIRT   */ BF_SOLID | BF_OPAQUE,
         /* RED_AUTUMN_LEAVES    */ BF_SOLID | BF_TRANSLUCENT,
         /* ORANGE_AUTUMN_LEAVES */ BF_SOLID | BF_TRANSLUCENT,
         /* ORANGE_TULIP  */ BF_TRANSPARENT | BF_CROSS,
@@ -287,6 +292,8 @@ inline StepSound getStepSound(block_type t) {
         /* DEAD_BUSH     */ STEP_GRASS,
         /* ACACIA_LOG    */ STEP_WOOD,
         /* ACACIA_LEAVES */ STEP_GRASS,
+        /* JUNGLE_LOG    */ STEP_WOOD,
+        /* COARSE_DIRT   */ STEP_GRAVEL,
         /* RED_AUTUMN_LEAVES    */ STEP_GRASS,
         /* ORANGE_AUTUMN_LEAVES */ STEP_GRASS,
         /* ORANGE_TULIP  */ STEP_GRASS,

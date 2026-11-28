@@ -38,6 +38,8 @@ static const char* TEXTURE_PATHS[] = {
     "assets/Textures/sandstone_bottom.png",   "assets/Textures/dead_bush.png",
     "assets/Textures/acacia_log.png",         "assets/Textures/acacia_log_top.png",
     "assets/Textures/acacia_leaves.png",
+    "assets/Textures/jungle_log.png",         "assets/Textures/jungle_log_top.png",
+    "assets/Textures/coarse_dirt.png",
     "assets/Textures/red_autumn_leaves.png",  "assets/Textures/orange_autumn_leaves.png",
     "assets/Textures/orange_tulip.png",
 };
