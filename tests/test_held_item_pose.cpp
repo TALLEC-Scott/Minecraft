@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <vector>
+#include <cmath>
 
 #include <gtest/gtest.h>
 
@@ -31,10 +33,10 @@ TEST(HeldItemPoseTest, SwingEndsWhereItStarted) {
 
 TEST(HeldItemPoseTest, MidSwingFlicksTheItemDownAndInward) {
     // Early on the hand flicks toward the screen center (-X); halfway
-    // through it has dropped well below rest, and a blade pointing up (+Y)
-    // now points forward/down.
+    // through it has dipped a little below rest, and a blade pointing up
+    // (+Y) now points forward/down.
     EXPECT_LT(heldpose::swingOffset(0.15f).x, -0.1f);
-    EXPECT_LT(heldpose::swingOffset(0.5f).y, -0.15f);
+    EXPECT_LT(heldpose::swingOffset(0.5f).y, 0.0f);
     glm::vec3 up = glm::vec3(heldpose::swingRotation(0.5f) * glm::vec4(0, 1, 0, 0));
     EXPECT_LT(up.y, 0.6f) << "blade tipped well past upright";
     EXPECT_LT(up.z, 0.0f) << "and toward the screen";
@@ -74,7 +76,7 @@ TEST(HeldItemPoseTest, ToolRestsDiagonallyInTheLowerRight) {
     glm::vec2 handle = ndc(apply(m, heldpose::TOOL_GRIP), WIDE);
     glm::vec2 tip = ndc(apply(m, {14.5f, 14.5f, 0.0f}), WIDE); // sword tip pixel
     EXPECT_GT(handle.x, 0.4f) << "fist on the right";
-    EXPECT_LT(handle.y, -0.5f) << "fist near the bottom";
+    EXPECT_LT(handle.y, -0.8f) << "fist at the bottom edge";
     EXPECT_GT(tip.x, 0.0f) << "tip stays right of the crosshair";
     EXPECT_LT(tip.y, 0.5f) << "and below the top of the screen";
     glm::vec2 blade = tip - handle;
@@ -113,13 +115,6 @@ TEST(HeldItemPoseTest, HeldBlockShowsTopAndTwoSides) {
     }
     EXPECT_EQ(visible, 3);
     EXPECT_GT(glm::dot(glm::normalize(glm::vec3(m * glm::vec4(0, 1, 0, 0))), toEye), 0.15f) << "top among them";
-    // Every corner on screen except at most a sliver below the bottom edge.
-    for (int i = 0; i < 8; i++) {
-        glm::vec2 p = ndc(apply(m, {i & 1 ? 0.5f : -0.5f, i & 2 ? 0.5f : -0.5f, i & 4 ? 0.5f : -0.5f}), WIDE);
-        EXPECT_GT(p.x, 0.0f);
-        EXPECT_LT(p.x, 1.0f);
-        EXPECT_GT(p.y, -1.15f);
-    }
 }
 
 TEST(HeldItemPoseTest, HandKeepsItsScreenSpotAtAnyAspect) {
@@ -155,39 +150,96 @@ TEST(HeldItemPoseTest, PunchThrustsTheFistForwardAndBack) {
 
 namespace {
 
-// Screen extent of the held block's corners: (max x, min y) in NDC.
-glm::vec2 blockLowRight(float swing) {
-    glm::mat4 m = heldpose::itemHand(swing, WIDE) * heldpose::blockDisplay();
-    glm::vec2 lowRight(-10.0f, 10.0f);
-    for (int i = 0; i < 8; i++) {
-        glm::vec2 p = ndc(apply(m, {i & 1 ? 0.5f : -0.5f, i & 2 ? 0.5f : -0.5f, i & 4 ? 0.5f : -0.5f}), WIDE);
-        lowRight.x = std::max(lowRight.x, p.x);
-        lowRight.y = std::min(lowRight.y, p.y);
+bool onScreen(glm::vec2 p) {
+    return std::abs(p.x) <= 1.0f && std::abs(p.y) <= 1.0f;
+}
+
+// Sample points over a held item (view space, after `hand`): the block's
+// faces turned toward the eye, a tool's handle-to-tip diagonal, an upright
+// sprite's stem.
+enum class Held { Block, Tool, Upright };
+std::vector<glm::vec3> itemSamples(Held kind, const glm::mat4& hand) {
+    std::vector<glm::vec3> pts;
+    constexpr int N = 12;
+    if (kind == Held::Block) {
+        glm::mat4 m = hand * heldpose::blockDisplay();
+        glm::vec3 toEye = glm::normalize(-apply(m, {0, 0, 0}));
+        for (int axis = 0; axis < 3; axis++)
+            for (float side : {-0.5f, 0.5f}) {
+                glm::vec3 n(0.0f);
+                n[axis] = side;
+                if (glm::dot(glm::vec3(m * glm::vec4(n, 0.0f)), toEye) <= 0.0f) continue; // faces we see
+                for (int i = 0; i <= N; i++)
+                    for (int j = 0; j <= N; j++) {
+                        glm::vec3 p(0.0f);
+                        p[axis] = side;
+                        p[(axis + 1) % 3] = (float)i / N - 0.5f;
+                        p[(axis + 2) % 3] = (float)j / N - 0.5f;
+                        pts.push_back(apply(m, p));
+                    }
+            }
+    } else {
+        glm::mat4 m = hand * heldpose::spriteDisplay(kind == Held::Upright);
+        for (int i = 0; i <= 4 * N; i++) {
+            float t = 0.5f + 15.0f * (float)i / (4 * N);
+            pts.push_back(apply(m, kind == Held::Tool ? glm::vec3(t, t, 0) : glm::vec3(8, t, 0)));
+        }
     }
-    return lowRight;
+    return pts;
+}
+
+struct Visibility {
+    float fraction = 0.0f;         // share of the samples on screen
+    bool cutRightOrBottom = false; // some sample past the right or bottom edge
+    bool topLeftShows = false;     // the topmost and leftmost samples are on screen
+};
+Visibility visibility(Held kind, float swing) {
+    std::vector<glm::vec3> pts = itemSamples(kind, heldpose::itemHand(swing, WIDE));
+    Visibility v;
+    glm::vec2 top(0.0f, -10.0f), left(10.0f, 0.0f);
+    int shown = 0;
+    for (glm::vec3 p : pts) {
+        glm::vec2 q = ndc(p, WIDE);
+        shown += onScreen(q) ? 1 : 0;
+        v.cutRightOrBottom |= q.x > 1.0f || q.y < -1.0f;
+        if (q.y > top.y) top = q;
+        if (q.x < left.x) left = q;
+    }
+    v.fraction = (float)shown / (float)pts.size();
+    v.topLeftShows = onScreen(top) && onScreen(left);
+    return v;
 }
 
 } // namespace
 
-TEST(HeldItemPoseTest, SwingCarriesTheItemPartlyOffTheLowerRight) {
-    // At rest the whole block is in view (a sliver below the edge at most)...
-    EXPECT_GT(blockLowRight(0.0f).y, -1.1f);
-    EXPECT_LT(blockLowRight(0.0f).x, 1.0f);
-    // ...mid-swing part of it is cut off by the bottom edge, on the right
-    // half of the screen, which sells the swing.
-    for (float s : {0.3f, 0.5f, 0.75f}) {
-        glm::vec2 lr = blockLowRight(s);
-        EXPECT_LT(lr.y, -1.1f) << "swing " << s;
-        EXPECT_GT(lr.x, 0.3f) << "swing " << s;
+TEST(HeldItemPoseTest, RestPoseShowsOnlyTheTopLeftOfTheItem) {
+    // The fist is off screen past the lower-right corner: every held item is
+    // cut off by the right / bottom edge, and only its top-left part shows,
+    // as if an unseen hand grips it there.
+    for (Held kind : {Held::Block, Held::Tool, Held::Upright}) {
+        Visibility v = visibility(kind, 0.0f);
+        EXPECT_TRUE(v.cutRightOrBottom) << "kind " << (int)kind;
+        EXPECT_TRUE(v.topLeftShows) << "kind " << (int)kind;
+        EXPECT_GT(v.fraction, 0.4f) << "kind " << (int)kind;
+        EXPECT_LT(v.fraction, 0.75f) << "kind " << (int)kind;
     }
-    // Tools too: the sprite sinks past the bottom edge mid-swing.
-    for (float s : {0.3f, 0.5f}) {
-        glm::mat4 m = heldpose::itemHand(s, WIDE) * heldpose::spriteDisplay(false);
-        float lowest = 10.0f;
-        for (glm::vec3 c : {glm::vec3(0, 0, 0), glm::vec3(16, 0, 0), glm::vec3(0, 16, 0), glm::vec3(16, 16, 0)})
-            lowest = std::min(lowest, ndc(apply(m, c), WIDE).y);
-        EXPECT_LT(lowest, -1.0f) << "swing " << s;
+    // The block is cut by both edges.
+    glm::mat4 m = heldpose::itemHand(0.0f, WIDE) * heldpose::blockDisplay();
+    float maxX = -10.0f, minY = 10.0f;
+    for (int i = 0; i < 8; i++) {
+        glm::vec2 p = ndc(apply(m, {i & 1 ? 0.5f : -0.5f, i & 2 ? 0.5f : -0.5f, i & 4 ? 0.5f : -0.5f}), WIDE);
+        maxX = std::max(maxX, p.x);
+        minY = std::min(minY, p.y);
     }
-    // And it all comes back: the end of the swing is the rest pose.
+    EXPECT_GT(maxX, 1.0f);
+    EXPECT_LT(minY, -1.0f);
+}
+
+TEST(HeldItemPoseTest, SwingKeepsPartOfTheItemInView) {
+    // The swing starts and ends at the cropped rest pose and never sinks the
+    // item out of view.
+    for (Held kind : {Held::Block, Held::Tool, Held::Upright})
+        for (float s : {0.15f, 0.3f, 0.5f, 0.75f})
+            EXPECT_GT(visibility(kind, s).fraction, 0.15f) << "kind " << (int)kind << " swing " << s;
     expectNear(apply(heldpose::itemHand(1.0f, WIDE), {0, 0, 0}), apply(heldpose::itemHand(0.0f, WIDE), {0, 0, 0}));
 }
