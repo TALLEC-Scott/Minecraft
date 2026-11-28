@@ -229,6 +229,12 @@ inline const char* itemName(ItemId id) {
         return "Acacia Log";
     case ACACIA_LEAVES:
         return "Acacia Leaves";
+    case RED_AUTUMN_LEAVES:
+        return "Red Autumn Leaves";
+    case ORANGE_AUTUMN_LEAVES:
+        return "Orange Autumn Leaves";
+    case ORANGE_TULIP:
+        return "Orange Tulip";
     default:
         return "?";
     }

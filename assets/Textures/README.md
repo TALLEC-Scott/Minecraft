@@ -40,6 +40,9 @@ modified versions of them, stay under CC BY-SA 4.0; the rest of the project is u
 | `acacia_log.png` | `ITEMS/mcl_core/textures/default_acacia_tree.png` (unmodified) |
 | `acacia_log_top.png` | `ITEMS/mcl_core/textures/default_acacia_tree_top.png` (unmodified) |
 | `acacia_leaves.png` | `ITEMS/mcl_core/textures/default_acacia_leaves.png`, tinted ×`#B4D04C` |
+| `red_autumn_leaves.png` | `ITEMS/mcl_core/textures/default_leaves.png`, tinted ×`#E85A28` |
+| `orange_autumn_leaves.png` | `ITEMS/mcl_core/textures/default_leaves.png`, tinted ×`#FFB028` |
+| `orange_tulip.png` | `ITEMS/mcl_flowers/textures/flowers_tulip.png` (unmodified) |
 
 "Tinted" files are the grayscale originals multiplied by a fixed colour (the game has no runtime
 biome tint), made with `scripts/tint_textures.py`.
