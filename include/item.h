@@ -208,6 +208,10 @@ inline const char* itemName(ItemId id) {
         return "Iron Ore";
     case DIAMOND_ORE:
         return "Diamond Ore";
+    case PODZOL:
+        return "Podzol";
+    case MOSSY_COBBLESTONE:
+        return "Mossy Cobblestone";
     default:
         return "?";
     }

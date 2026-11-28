@@ -63,11 +63,13 @@ enum block_type : uint8_t {
     BIRCH_LEAVES,
     FERN,
     IRON_ORE,
-    DIAMOND_ORE
+    DIAMOND_ORE,
+    PODZOL,
+    MOSSY_COBBLESTONE
 };
-// Number of block_type values; keep DIAMOND_ORE (the last one) in sync.
+// Number of block_type values; keep MOSSY_COBBLESTONE (the last one) in sync.
 // Values are saved in chunk files and level.dat: append only.
-inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(DIAMOND_ORE) + 1;
+inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(MOSSY_COBBLESTONE) + 1;
 
 // Values index tables (BIOME_DEFS in biome.cpp, mob spawn masks). Not saved
 // (recomputed from the seed), so they may be reordered. One BiomeDef each.
@@ -165,6 +167,8 @@ inline uint32_t getBlockFlags(block_type t) {
         /* FERN          */ BF_TRANSPARENT | BF_CROSS,
         /* IRON_ORE      */ BF_SOLID | BF_OPAQUE,
         /* DIAMOND_ORE   */ BF_SOLID | BF_OPAQUE,
+        /* PODZOL        */ BF_SOLID | BF_OPAQUE,
+        /* MOSSY_COBBLESTONE */ BF_SOLID | BF_OPAQUE,
     };
     // clang-format on
     int idx = static_cast<int>(t);
@@ -247,6 +251,8 @@ inline StepSound getStepSound(block_type t) {
         /* FERN          */ STEP_GRASS,
         /* IRON_ORE      */ STEP_STONE,
         /* DIAMOND_ORE   */ STEP_STONE,
+        /* PODZOL        */ STEP_GRASS,
+        /* MOSSY_COBBLESTONE */ STEP_STONE,
     };
     // clang-format on
     int idx = static_cast<int>(t);
