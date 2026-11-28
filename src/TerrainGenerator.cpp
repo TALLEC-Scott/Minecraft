@@ -114,6 +114,23 @@ constexpr double RIVER_DEPTH = 3.0;
 // Peaks are soft-capped so the tallest trees (≤ 13 blocks) still fit
 // under the world ceiling.
 constexpr double PEAK_SOFT_CAP = 108.0;
+
+// Jaggedness: relief (blocks) over which overhangs fade in, share of the
+// cliff mask that counts, the band above sea level over which they fade in,
+// and how far past the river bank (× RIVER_BANK in noise units) they stay off.
+// Coal: the noise cutoff falls by COAL_HIGH_DROP over COAL_RAMP blocks
+// above sea level (1.3% → ~5% of stone).
+constexpr double COAL_RAMP = 48.0;
+constexpr double COAL_HIGH_DROP = 0.12;
+
+constexpr double JAG_RELIEF_LO = 9.0;
+constexpr double JAG_RELIEF_HI = 24.0;
+constexpr double JAG_CLIFF_SHARE = 1.0;
+constexpr double JAG_CLIFF_RELIEF_LO = 8.0;
+constexpr double JAG_CLIFF_RELIEF_HI = 16.0;
+constexpr double JAG_SEA_LO = 4.0;
+constexpr double JAG_SEA_HI = 14.0;
+constexpr double JAG_RIVER_CLEAR = 2.5;
 constexpr int PEAK_HARD_CAP = 114;
 
 } // namespace
@@ -168,7 +185,7 @@ double TerrainGenerator::getMoisture(int x, int y) {
     return std::clamp((m + 1.0) * 0.5, 0.0, 1.0);
 }
 
-TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y, bool wantClimate) {
+TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y, bool wantClimate, bool withBiome) {
     double nx = x * scale;
     double ny = y * scale;
 
@@ -217,8 +234,10 @@ TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y, bool
     // Fades in from the coastline itself (not the inland edge of the beach)
     // so channels cut through the beach and actually reach the sea.
     double landMask = smoothstep(OCEAN_END, OCEAN_END + 0.03, s.continentalness);
+    double riverFar = 1.0; // 0 in and beside a river channel, 1 away from it
     if (landMask > 0.0) {
         double rd = std::abs(octaveNoise(nx * 0.005 + 5000.0, ny * 0.005 + 5000.0, 2, 0.5, 2.0));
+        riverFar = smoothstep(RIVER_BANK, RIVER_BANK * JAG_RIVER_CLEAR, rd);
         double bank = (1.0 - smoothstep(RIVER_CORE, RIVER_BANK, rd)) * landMask;
         if (bank > 0.0) {
             double core = 1.0 - smoothstep(RIVER_CORE * 0.4, RIVER_CORE * 1.4, rd);
@@ -229,6 +248,15 @@ TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y, bool
 
     if (height > PEAK_SOFT_CAP) height = PEAK_SOFT_CAP + (height - PEAK_SOFT_CAP) * 0.4;
     s.height = std::clamp(static_cast<int>(height), minHeight, std::min(maxHeight, PEAK_HARD_CAP));
+
+    // --- Jaggedness (3D overhang strength, terrain_density.h) ---
+    // Mountains (high relief) and cliff land (low erosion) get it; plains,
+    // rolling hills, river corridors and anything near sea level don't.
+    double jag = std::max(smoothstep(JAG_RELIEF_LO, JAG_RELIEF_HI, s.relief), JAG_CLIFF_SHARE * cliffMask * smoothstep(JAG_CLIFF_RELIEF_LO, JAG_CLIFF_RELIEF_HI, s.relief));
+    jag *= riverFar * smoothstep(seaLevel + JAG_SEA_LO, seaLevel + JAG_SEA_HI, static_cast<double>(s.height));
+    s.jagged = jag < 0.02 ? 0.0f : static_cast<float>(jag);
+
+    if (!withBiome) return s;
 
     // --- Biome ---
     // Altitude cooling: high ground is colder, so tall ranges get tundra
@@ -257,6 +285,28 @@ TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y, bool
     return s;
 }
 
+TerrainGenerator::ColumnShape TerrainGenerator::getShape(int x, int z) {
+    ColumnSample s = sampleColumn(x, z, false, false);
+    return {s.height, s.jagged};
+}
+
+int TerrainGenerator::getHeightAndBiome(int x, int z, Biome& outBiome, float& outJagged) {
+    ColumnSample s = sampleColumn(x, z);
+    outBiome = s.biome;
+    outJagged = s.jagged;
+    return s.height;
+}
+
+double TerrainGenerator::overhangNoise(int x, int y, int z) {
+    // Horizontal wavelength ~56 blocks, vertical ~20: big blobs flattened
+    // into thick shelves, so the ground juts out in slabs and is cut into
+    // deep notches rather than round holes. The second octave roughens them
+    // into crags.
+    double n = perlinNoise.noise(x * 0.018 + 11000.0, y * 0.05 + 11000.0, z * 0.018 + 11000.0);
+    n += 0.45 * perlinNoise.noise(x * 0.045 + 12000.0, y * 0.11 + 12000.0, z * 0.045 + 12000.0);
+    return std::clamp(n * 1.25, -1.0, 1.0);
+}
+
 Biome TerrainGenerator::getBiome(int x, int y) {
     return sampleColumn(x, y).biome;
 }
@@ -265,10 +315,11 @@ int TerrainGenerator::getHeight(int x, int y) {
     return sampleColumn(x, y).height;
 }
 
-int TerrainGenerator::getHeightBiomeClimate(int x, int y, Biome& outBiome, ColumnClimate* climate) {
+int TerrainGenerator::getHeightBiomeClimate(int x, int y, Biome& outBiome, ColumnClimate* climate, float* jagged) {
     ColumnSample s = sampleColumn(x, y, climate != nullptr);
     outBiome = s.biome;
     if (climate) *climate = s.climate;
+    if (jagged) *jagged = s.jagged;
     return s.height;
 }
 
@@ -352,7 +403,12 @@ bool TerrainGenerator::isCoalOre(int wx, int wy, int wz) {
     // Blobs a few blocks across: thresholding a mid-frequency 3D noise
     // high keeps only isolated peaks, unlike the old near-zero band that
     // traced thin contour shells through all the stone.
-    return perlinNoise.noise(wx * 0.19 + 9100.0, wy * 0.19 + 9100.0, wz * 0.19 + 9100.0) > 0.57;
+    // Like modern Minecraft, coal gets commoner with altitude: ~1.3% of
+    // stone at and below sea level, rising smoothly to ~5% over the next
+    // COAL_RAMP blocks; the lower cutoff also grows the blobs into veins of
+    // a dozen or so blocks, so mountains and cliffs are freckled with it.
+    const double up = smoothstep(getSeaLevel(), getSeaLevel() + COAL_RAMP, static_cast<double>(wy));
+    return perlinNoise.noise(wx * 0.19 + 9100.0, wy * 0.19 + 9100.0, wz * 0.19 + 9100.0) > 0.57 - COAL_HIGH_DROP * up;
 }
 
 bool TerrainGenerator::isIronOre(int wx, int wy, int wz) {

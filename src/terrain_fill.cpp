@@ -4,6 +4,7 @@
 
 #include "biome.h"
 #include "biome_tint.h"
+#include "terrain_density.h"
 #include "double_plant.h"
 #include "vine.h"
 #include <cstdint>
@@ -45,7 +46,7 @@ double unitFloat(uint64_t h) {
 constexpr uint64_t SALT_TREE = 1, SALT_CACTUS = 2, SALT_PLANT = 3;
 
 struct Column {
-    int height;
+    int height; // topmost terrain block (after the 3D density, terrain_density.h)
     Biome biome;
     TerrainGenerator::ColumnClimate climate; // only within TINT_BLEND_RADIUS of the chunk
     int slope; // largest height step to a 4-neighbor
@@ -166,15 +167,29 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
     // --- Column grid with margin (local coords -MARGIN .. CHUNK_SIZE+MARGIN) ---
     static thread_local Column cols[EXT][EXT];
     auto col = [&](int i, int k) -> Column& { return cols[i + MARGIN][k + MARGIN]; };
+    // Heightmap + jaggedness, then the 3D density reshapes the ground
+    // around that height: columns get their real top, `bands` their solid
+    // profile (overhangs, cuts).
+    static thread_local int target[EXT * EXT];
+    static thread_local float jagged[EXT * EXT];
+    static thread_local terraindensity::ColumnBand bands[EXT * EXT];
+    auto band = [&](int i, int k) -> const terraindensity::ColumnBand& {
+        return bands[(i + MARGIN) * EXT + (k + MARGIN)];
+    };
     for (int i = -MARGIN; i < CHUNK_SIZE + MARGIN; i++)
         for (int k = -MARGIN; k < CHUNK_SIZE + MARGIN; k++) {
+            const int idx = (i + MARGIN) * EXT + (k + MARGIN);
             Column& c = col(i, k);
             // Climate where colours (the blend window) and ground cover read it.
             const bool needClimate = i >= -TINT_BLEND_RADIUS && i < CHUNK_SIZE + TINT_BLEND_RADIUS &&
                                      k >= -TINT_BLEND_RADIUS && k < CHUNK_SIZE + TINT_BLEND_RADIUS;
             c.climate = {0.5, 0.5};
-            c.height = terrain.getHeightBiomeClimate(ox + i, oz + k, c.biome, needClimate ? &c.climate : nullptr);
+            target[idx] = terrain.getHeightBiomeClimate(ox + i, oz + k, c.biome, needClimate ? &c.climate : nullptr,
+                                                        &jagged[idx]);
         }
+    terraindensity::shapeColumns(terrain, ox - MARGIN, oz - MARGIN, EXT, target, jagged, bands);
+    for (int i = -MARGIN; i < CHUNK_SIZE + MARGIN; i++)
+        for (int k = -MARGIN; k < CHUNK_SIZE + MARGIN; k++) col(i, k).height = band(i, k).top;
     for (int i = -MARGIN; i < CHUNK_SIZE + MARGIN; i++)
         for (int k = -MARGIN; k < CHUNK_SIZE + MARGIN; k++) {
             Column& c = col(i, k);
@@ -192,6 +207,7 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
     for (int i = 0; i < CHUNK_SIZE; i++) {
         for (int k = 0; k < CHUNK_SIZE; k++) {
             const Column& c = col(i, k);
+            const terraindensity::ColumnBand& cb = band(i, k);
             const int gx = ox + i, gz = oz + k;
             const int h = c.height;
             heights[i][k] = h;
@@ -200,25 +216,43 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
             const int soil = terrain.soilDepth(gx, gz);
             // Caves keep a solid crust (or a thick roof under water), except
             // in rare entrance zones where tunnels may breach the surface.
+            // Measured from the ground under any overhang (cb.floor).
             int caveCeil;
             if (h <= sea + 1)
                 caveCeil = h - OCEAN_ROOF;
             else
-                caveCeil = terrain.caveEntranceAllowed(gx, gz) ? h : h - CAVE_CRUST;
+                caveCeil = terrain.caveEntranceAllowed(gx, gz) ? cb.floor : cb.floor - CAVE_CRUST;
+            // Ground under an overhang (or in a notch) gets the column's
+            // surface too, except snow, which doesn't fall there: the biome's
+            // own ground instead.
+            const block_type biomeGround = biomeDef(c.biome).surface;
+            const block_type lowerSurface =
+                c.surface != SNOW ? c.surface : (biomeGround != SNOW ? biomeGround : c.subsurface);
 
-            const int top = std::max(h, sea);
-            for (int j = 0; j <= top && j < CHUNK_HEIGHT; j++) {
+            // Top down, so each run of solid blocks under air gets its own
+            // surface + soil layers.
+            const int top = std::min(std::max(h, sea), CHUNK_HEIGHT - 1);
+            int depth = -1; // blocks below the top of the current solid run
+            bool firstRun = true;
+            for (int j = top; j >= 0; j--) {
                 Cube& b = blocks[blockIndex(i, j, k)];
-                if (j > h) {
-                    b.setType(WATER); // j <= sea here
-                } else if (j == 0) {
+                if (!cb.solidAt(j)) {
+                    if (j <= sea) b.setType(WATER); // only above a sub-sea column (bands start over sea)
+                    if (depth >= 0) firstRun = false;
+                    depth = -1;
+                    continue;
+                }
+                depth++;
+                if (j == 0) {
                     b.setType(BEDROCK);
                 } else if (j >= CAVE_FLOOR && j <= caveCeil && terrain.isCave(gx, j, gz)) {
                     b.setType(j <= LAVA_LEVEL ? LAVA : AIR);
-                } else if (j == h) {
-                    b.setType(c.surface);
-                } else if (j > h - soil) {
-                    b.setType(c.subsurface);
+                } else if (depth == 0) {
+                    const block_type t = firstRun ? c.surface : lowerSurface;
+                    // Bare rock shows its ore, like any other stone.
+                    b.setType(t == STONE ? terrain.oreAt(gx, j, gz) : t);
+                } else if (depth < soil) {
+                    b.setType(c.subsurface == STONE ? terrain.oreAt(gx, j, gz) : c.subsurface);
                 } else {
                     b.setType(terrain.oreAt(gx, j, gz));
                 }
@@ -381,6 +415,8 @@ void chunkColumns(TerrainGenerator& terrain, int chunkX, int chunkZ, int (&heigh
             return columnTint(b, climate.temperature, climate.humidity);
         },
         tints);
+    // The real surface, overhangs included (terrain_density.h).
+    terraindensity::surfaceHeights(terrain, chunkX, chunkZ, heights);
 }
 
 // --- BiomeDef hook plumbing (biome.h) ---

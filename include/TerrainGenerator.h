@@ -15,6 +15,21 @@ class TerrainGenerator {
     int getHeightAndBiome(int x, int y, Biome& outBiome);
     double getTemperature(int x, int y);
     double getMoisture(int x, int y);
+
+    // Heightmap height plus "jaggedness" (0..1): how strongly 3D overhang
+    // density reshapes the ground around that height (terrain_density.h).
+    // 0 on plains, near water, on beaches / ocean and along rivers; up to 1
+    // on mountains and cliff land. No biome lookup (cheaper than
+    // getHeightAndBiome); `jagged` of the combined call below matches it.
+    struct ColumnShape {
+        int height;
+        float jagged;
+    };
+    ColumnShape getShape(int x, int z);
+    int getHeightAndBiome(int x, int z, Biome& outBiome, float& outJagged);
+    // Overhang noise at world block (x, y, z), roughly -1..1: two octaves of
+    // 3D Perlin, stretched horizontally so cuts form ledges and shelves.
+    double overhangNoise(int x, int y, int z);
     // The climate a column's vegetation feels: temperature after altitude
     // cooling (the same `cooled` pickBiome uses for snow caps, so mountains
     // get paler, sparser grass toward the tundra) and humidity, both 0..1.
@@ -25,7 +40,8 @@ class TerrainGenerator {
     // Height, biome and (if `climate` is given) the column's climate in one
     // sample: land columns compute the climate for their biome anyway, so
     // it's free there; ocean / beach columns pay for it only when asked.
-    int getHeightBiomeClimate(int x, int y, Biome& outBiome, ColumnClimate* climate);
+    // `jagged` (if given) gets the column's jaggedness, as getShape.
+    int getHeightBiomeClimate(int x, int y, Biome& outBiome, ColumnClimate* climate, float* jagged = nullptr);
     // Raw 2D Perlin offset to [-0.5, 1.5] (noise + 0.5). Only the cloud
     // layer uses it, and its 0.65 coverage threshold is tuned to this range.
     double getNoise(int x, int y);
@@ -41,7 +57,8 @@ class TerrainGenerator {
     // Caves may breach the surface crust only where this is true — rare,
     // patchy zones, so the ground isn't riddled with holes.
     bool caveEntranceAllowed(int x, int z);
-    // Coal ore: compact 3D blobs (~1% of stone), not noise contour sheets.
+    // Coal ore: compact 3D blobs, not noise contour sheets. ~1.3% of stone
+    // up to sea level, rising with altitude to ~5% (bigger veins) on peaks.
     bool isCoalOre(int wx, int wy, int wz);
     // Iron (y ≤ IRON_MAX_Y) and diamond (y ≤ DIAMOND_MAX_Y): smaller,
     // rarer blobs from their own noises.
@@ -64,10 +81,11 @@ class TerrainGenerator {
         double ridge;           // 0..1, ridged noise: 1 on mountain crest lines
         double relief;          // blocks of mountain relief added at this column
         int height;
+        float jagged;
         Biome biome;
         ColumnClimate climate; // set on land, or when asked for (sampleColumn)
     };
-    ColumnSample sampleColumn(int x, int y, bool wantClimate = false);
+    ColumnSample sampleColumn(int x, int y, bool wantClimate = false, bool withBiome = true);
 
     double octaveNoise(double x, double y, int octaves, double persistence, double lacunarity);
     // Ridged multifractal: 1 - |noise| per octave, squared, so crests form

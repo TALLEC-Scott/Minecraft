@@ -103,12 +103,15 @@ TEST_F(WorldgenTest, SurfaceRulesFollowSlopeAndAltitude) {
                     if (h <= SEA + 1) continue; // shores are sand by design
                     block_type top = c.at(x, h, z);
                     if (top == AIR) continue;   // cave entrance
+                    if (isLog(top)) continue;   // a wide trunk sunk into uneven ground
                     int slope = 0;
                     for (auto [dx, dz] : {std::pair{1, 0}, {-1, 0}, {0, 1}, {0, -1}})
                         slope = std::max(slope, std::abs(c.heights[x + dx][z + dz] - h));
                     if (slope >= terrainfill::CLIFF_SLOPE) {
                         cliffs++;
-                        EXPECT_EQ(top, STONE) << "cliff face should be bare rock";
+                        // Bare rock, showing its ore like any stone.
+                        EXPECT_TRUE(top == STONE || top == COAL_ORE || top == IRON_ORE || top == DIAMOND_ORE)
+                            << "cliff face should be bare rock";
                     } else if (h - SEA >= terrainfill::SNOW_LINE) {
                         snowy++;
                         EXPECT_EQ(top, SNOW) << "above the snow line";

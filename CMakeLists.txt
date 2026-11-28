@@ -36,6 +36,7 @@ set(COMMON_SOURCES
     src/world.cpp
     src/TerrainGenerator.cpp
     src/terrain_fill.cpp
+    src/terrain_density.cpp
     src/biome.cpp
     src/tree_shapes.cpp
     src/biomes/ocean.cpp
@@ -305,6 +306,7 @@ else()
         tests/test_mob_creeper_spider.cpp
         tests/test_player_health.cpp
         tests/test_worldgen.cpp
+        tests/test_terrain_density.cpp
         tests/test_biome_registry.cpp
         tests/test_biome_jungle.cpp
         tests/test_grass_climate.cpp
@@ -324,6 +326,7 @@ else()
         tests/test_audio_assets.cpp
         src/TerrainGenerator.cpp
         src/terrain_fill.cpp
+        src/terrain_density.cpp
         src/biome.cpp
         src/tree_shapes.cpp
         src/biomes/ocean.cpp
