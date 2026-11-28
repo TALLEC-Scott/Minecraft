@@ -24,6 +24,12 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
                       int (&heights)[CHUNK_SIZE][CHUNK_SIZE], Biome (&biomes)[CHUNK_SIZE][CHUNK_SIZE],
                       BiomeTints* tints = nullptr, uint8_t* states = nullptr);
 
+// The column data fillChunkTerrain reports (heights, biomes, tints),
+// recomputed from the generator alone, identically: for a chunk loaded
+// from a save, whose blocks come from the file (WorldSave).
+void chunkColumns(TerrainGenerator& terrain, int chunkX, int chunkZ, int (&heights)[CHUNK_SIZE][CHUNK_SIZE],
+                  Biome (&biomes)[CHUNK_SIZE][CHUNK_SIZE], BiomeTints& tints);
+
 namespace terrainfill {
 // Surface-rule constants (blocks relative to sea level / neighbor steps),
 // exposed for tests.

@@ -4,6 +4,7 @@
 
 #include "biome.h"
 #include "biome_tint.h"
+#include "double_plant.h"
 #include "vine.h"
 #include <cstdint>
 #include <cstdlib>
@@ -46,6 +47,7 @@ constexpr uint64_t SALT_TREE = 1, SALT_CACTUS = 2, SALT_PLANT = 3;
 struct Column {
     int height;
     Biome biome;
+    TerrainGenerator::ColumnClimate climate; // only within TINT_BLEND_RADIUS of the chunk
     int slope; // largest height step to a 4-neighbor
     block_type surface;
     block_type subsurface;
@@ -167,7 +169,11 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
     for (int i = -MARGIN; i < CHUNK_SIZE + MARGIN; i++)
         for (int k = -MARGIN; k < CHUNK_SIZE + MARGIN; k++) {
             Column& c = col(i, k);
-            c.height = terrain.getHeightAndBiome(ox + i, oz + k, c.biome);
+            // Climate where colours (the blend window) and ground cover read it.
+            const bool needClimate = i >= -TINT_BLEND_RADIUS && i < CHUNK_SIZE + TINT_BLEND_RADIUS &&
+                                     k >= -TINT_BLEND_RADIUS && k < CHUNK_SIZE + TINT_BLEND_RADIUS;
+            c.climate = {0.5, 0.5};
+            c.height = terrain.getHeightBiomeClimate(ox + i, oz + k, c.biome, needClimate ? &c.climate : nullptr);
         }
     for (int i = -MARGIN; i < CHUNK_SIZE + MARGIN; i++)
         for (int k = -MARGIN; k < CHUNK_SIZE + MARGIN; k++) {
@@ -243,7 +249,13 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
         }
     }
 
-    if (tints) blendBiomeTints([&](int i, int k) { return col(i, k).biome; }, *tints);
+    if (tints)
+        blendColumnTints(
+            [&](int i, int k) {
+                const Column& c = col(i, k);
+                return columnTint(c.biome, c.climate.temperature, c.climate.humidity);
+            },
+            *tints);
 
     // --- Vegetation ---
     // `claimed` marks in-chunk columns under a canopy (or holding a feature
@@ -330,10 +342,45 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
             if (c.height + 2 < CHUNK_HEIGHT && blocks[blockIndex(i, c.height + 2, k)].getType() == VINE) continue;
             const block_type ground = blocks[blockIndex(i, c.height, k)].getType();
             const auto roll = static_cast<uint32_t>(hash4(seed, ox + i, oz + k, SALT_PLANT) % 10000);
-            const block_type pick = def.groundCover(biomegen::GroundSite{ground, roll, ox + i, oz + k, seed});
-            if (pick != AIR) blocks[blockIndex(i, c.height + 1, k)].setType(pick);
+            const block_type pick = def.groundCover(biomegen::GroundSite{
+                ground, roll, ox + i, oz + k, seed, c.climate.temperature, c.climate.humidity});
+            if (pick == AIR) continue;
+            // Two-block plants need the cell above free, and no vine hanging
+            // just above it (vines stop over air), else the short kind.
+            if (double_plant::isLower(pick)) {
+                const int top = c.height + 2;
+                if (top < CHUNK_HEIGHT && blocks[blockIndex(i, top, k)].getType() == AIR &&
+                    (top + 1 >= CHUNK_HEIGHT || blocks[blockIndex(i, top + 1, k)].getType() != VINE)) {
+                    blocks[blockIndex(i, c.height + 1, k)].setType(pick);
+                    blocks[blockIndex(i, top, k)].setType(double_plant::upperOf(pick));
+                } else {
+                    blocks[blockIndex(i, c.height + 1, k)].setType(double_plant::shortOf(pick));
+                }
+                continue;
+            }
+            blocks[blockIndex(i, c.height + 1, k)].setType(pick);
         }
     }
+}
+
+void chunkColumns(TerrainGenerator& terrain, int chunkX, int chunkZ, int (&heights)[CHUNK_SIZE][CHUNK_SIZE],
+                  Biome (&biomes)[CHUNK_SIZE][CHUNK_SIZE], BiomeTints& tints) {
+    // blendColumnTints asks for every column of its window once, the chunk
+    // included; the colour blend reaches TINT_BLEND_RADIUS columns into the
+    // neighbouring chunks, and each column's colour depends on its climate.
+    blendColumnTints(
+        [&](int i, int k) {
+            Biome b;
+            TerrainGenerator::ColumnClimate climate{};
+            const int h =
+                terrain.getHeightBiomeClimate(chunkX * CHUNK_SIZE + i, chunkZ * CHUNK_SIZE + k, b, &climate);
+            if (GenContext::inChunk(i, k)) {
+                heights[i][k] = h;
+                biomes[i][k] = b;
+            }
+            return columnTint(b, climate.temperature, climate.humidity);
+        },
+        tints);
 }
 
 // --- BiomeDef hook plumbing (biome.h) ---

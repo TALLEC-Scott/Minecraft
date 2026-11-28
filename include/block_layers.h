@@ -73,11 +73,18 @@ constexpr int CLAY_LAYER = ORANGE_TULIP_LAYER + 1;
 constexpr int BLUE_ORCHID_LAYER = CLAY_LAYER + 1;
 constexpr int JUNGLE_LEAVES_LAYER = BLUE_ORCHID_LAYER + 1; // 76 (shaders: leaf cutout + sway, foliage tint)
 constexpr int VINE_LAYER = JUNGLE_LEAVES_LAYER + 1;         // 77 (shaders: inset, sway, foliage tint)
-constexpr int NUM_LAYERS = VINE_LAYER + 1;
+// Two-block plants (double_plant.h), 78..81: shaders tint them like tall
+// grass and sway them as one stalk (vert.shd / frag.shd test this range).
+constexpr int DOUBLE_TALL_GRASS_BOTTOM_LAYER = VINE_LAYER + 1;
+constexpr int DOUBLE_TALL_GRASS_TOP_LAYER = DOUBLE_TALL_GRASS_BOTTOM_LAYER + 1;
+constexpr int LARGE_FERN_BOTTOM_LAYER = DOUBLE_TALL_GRASS_TOP_LAYER + 1;
+constexpr int LARGE_FERN_TOP_LAYER = LARGE_FERN_BOTTOM_LAYER + 1;
+constexpr int NUM_LAYERS = LARGE_FERN_TOP_LAYER + 1;
 // The shaders hard-code these; keep frag.shd / vert.shd in step if they move.
 static_assert(SPRUCE_LEAVES_LAYER == 47 && BIRCH_LEAVES_LAYER == 50 && FERN_LAYER == 51 && ACACIA_LEAVES_LAYER == 67 &&
               RED_AUTUMN_LEAVES_LAYER == 71 && ORANGE_AUTUMN_LEAVES_LAYER == 72 && JUNGLE_LEAVES_LAYER == 76 &&
               VINE_LAYER == 77);
+static_assert(DOUBLE_TALL_GRASS_BOTTOM_LAYER == 78 && LARGE_FERN_TOP_LAYER == 81, "shaders: two-block plants 78..81");
 
 // Face-aware: grass uses different textures per face (top=grass,
 // bottom=dirt, sides=grass_side). Wood is top/bottom vs sides. Other
@@ -161,6 +168,12 @@ inline int layerForFace(block_type t, int face) {
     if (t == BLUE_ORCHID) return BLUE_ORCHID_LAYER;
     if (t == JUNGLE_LEAVES) return JUNGLE_LEAVES_LAYER;
     if (t == VINE) return VINE_LAYER;
+    // Two-block plants: the meshers ask for face 0 (the half's own sprite);
+    // the item icon asks for face 4 and shows the top half, as in Minecraft.
+    if (t == DOUBLE_TALL_GRASS) return face == 4 ? DOUBLE_TALL_GRASS_TOP_LAYER : DOUBLE_TALL_GRASS_BOTTOM_LAYER;
+    if (t == DOUBLE_TALL_GRASS_TOP) return DOUBLE_TALL_GRASS_TOP_LAYER;
+    if (t == LARGE_FERN) return face == 4 ? LARGE_FERN_TOP_LAYER : LARGE_FERN_BOTTOM_LAYER;
+    if (t == LARGE_FERN_TOP) return LARGE_FERN_TOP_LAYER;
     return static_cast<int>(t);
 }
 
@@ -201,6 +214,9 @@ inline int layerForType(block_type t) {
     if (t == BLUE_ORCHID) return BLUE_ORCHID_LAYER;
     if (t == JUNGLE_LEAVES) return JUNGLE_LEAVES_LAYER;
     if (t == VINE) return VINE_LAYER;
+    // Held / dropped sprite of a two-block plant: its top half.
+    if (t == DOUBLE_TALL_GRASS || t == DOUBLE_TALL_GRASS_TOP) return DOUBLE_TALL_GRASS_TOP_LAYER;
+    if (t == LARGE_FERN || t == LARGE_FERN_TOP) return LARGE_FERN_TOP_LAYER;
     return static_cast<int>(t);
 }
 

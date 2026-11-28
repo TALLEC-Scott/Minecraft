@@ -3,6 +3,7 @@
 #include "mining.h"
 #include "entity_manager.h"
 #include "collision.h"
+#include "double_plant.h"
 #include "mob_manager.h"
 #include "mobs/sheep.h"
 #include "net/net_session.h"
@@ -270,6 +271,11 @@ void Player::handleInput(GLFWwindow* window, World* world) {
                     state = vine::stateForFace(n.x, n.y, n.z);
                     blocked = blocked || !vine::canSupport(tt) || !vine::validState(state);
                 }
+            }
+            // A two-block plant needs a free cell above for its upper half.
+            if (double_plant::isLower(getSelectedBlockType())) {
+                Cube* above = world->getBlock(placementPos.x, placementPos.y + 1, placementPos.z);
+                blocked = blocked || !above || above->getType() != AIR;
             }
             if (!blocked) {
                 playBreakSound(getSelectedBlockType());

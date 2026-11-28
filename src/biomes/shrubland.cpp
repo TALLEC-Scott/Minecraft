@@ -144,13 +144,12 @@ block_type groundCover(const biomegen::GroundSite& g) {
     if (g.ground == COARSE_DIRT) return roll < 900 ? DEAD_BUSH : AIR;
     if (g.ground == GRAVEL || g.ground == SAND) return roll < 250 ? DEAD_BUSH : AIR;
     if (g.ground != GRASS) return AIR;
-    // Tall grass in tufts: thicker in some stretches than others.
+    if (roll < 40) return DEAD_BUSH;
+    if (roll < 60) return DANDELION;
+    // Grass in tufts over the (dry, sparse) climate base: thicker in some
+    // stretches than others, few of it two blocks tall.
     const int tuft = scrubLevel(g.seed, g.wx, g.wz, SALT_SCRUB ^ 0xC0FFEE);
-    const uint32_t grass = tuft > 60 ? 1400 : tuft > 35 ? 700 : 300;
-    if (roll < grass) return TALL_GRASS;
-    if (roll < grass + 40) return DEAD_BUSH;
-    if (roll < grass + 60) return DANDELION;
-    return AIR;
+    return biomegen::climateGrass(g, 0.4 + 1.2 * tuft / 100.0, 0.5);
 }
 
 } // namespace

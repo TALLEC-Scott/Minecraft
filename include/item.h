@@ -247,6 +247,12 @@ inline const char* itemName(ItemId id) {
         return "Jungle Leaves";
     case VINE:
         return "Vines";
+    case DOUBLE_TALL_GRASS:
+    case DOUBLE_TALL_GRASS_TOP:
+        return "Double Tall Grass";
+    case LARGE_FERN:
+    case LARGE_FERN_TOP:
+        return "Large Fern";
     default:
         return "?";
     }

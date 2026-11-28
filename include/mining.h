@@ -70,6 +70,10 @@ inline BlockMining blockMining(block_type t) {
         /* BLUE_ORCHID    */ {0.0f,  ToolKind::None,    false},
         /* JUNGLE_LEAVES  */ {0.2f,  ToolKind::None,    false},
         /* VINE           */ {0.0f,  ToolKind::None,    false}, // Minecraft: 0.2, but instant here (no shears)
+        /* DOUBLE_TALL_GRASS     */ {0.0f, ToolKind::None, false},
+        /* DOUBLE_TALL_GRASS_TOP */ {0.0f, ToolKind::None, false},
+        /* LARGE_FERN            */ {0.0f, ToolKind::None, false},
+        /* LARGE_FERN_TOP        */ {0.0f, ToolKind::None, false},
     };
     // clang-format on
     static_assert(sizeof(table) / sizeof(table[0]) == BLOCK_TYPE_COUNT, "one row per block_type");
@@ -139,6 +143,11 @@ inline ItemDrop blockDrop(block_type t, ItemId held, float roll) {
     case VINE: // needs shears in Minecraft
     case TALL_GRASS:
     case FERN:
+    // Two-block plants: no seeds or shears here, so nothing (either half).
+    case DOUBLE_TALL_GRASS:
+    case DOUBLE_TALL_GRASS_TOP:
+    case LARGE_FERN:
+    case LARGE_FERN_TOP:
     case ICE: // Minecraft: ice drops nothing without Silk Touch
         return {};
     // 0..2 sticks, as in Minecraft (no shears to keep the bush itself).

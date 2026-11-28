@@ -8,7 +8,8 @@ which are grayscale and meant to be tinted, get their colour baked in at import.
 
 Colours used for the shipped textures (see assets/Textures/README.md):
     spruce leaves 619961, birch leaves 80A755 (Minecraft's fixed foliage colours),
-    fern 6ADE3C (maps Mineclonia's tall grass onto this game's tall_grass.png).
+    fern / large fern 6ADE3C (maps Mineclonia's tall grass onto the old home-made tall_grass.png),
+    tall grass / double tall grass 8BDB46 (the average green of grass.png's top).
 """
 import sys
 
