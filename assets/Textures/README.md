@@ -9,6 +9,28 @@ modified versions of them, stay under CC BY-SA 4.0; the rest of the project is u
 
 | File | Mineclonia source (`mods/…`) |
 |------|------------------------------|
+| `grass.png` | `ITEMS/mcl_core/textures/mcl_core_grass_block_top.png`, tinted ×`#9AF34D` (plains green; the biome tint multiplies on top) |
+| `grass_side.png` | `ITEMS/mcl_core/textures/default_dirt.png` + `mcl_dirt_grass_shadow.png` + `mcl_core_grass_block_side_overlay.png` tinted ×`#9AF34D`, composed into one image |
+| `dirt.png` | `ITEMS/mcl_core/textures/default_dirt.png` (unmodified) |
+| `stone.png` | `ITEMS/mcl_core/textures/default_stone.png` (unmodified) |
+| `sand.png` | `ITEMS/mcl_core/textures/default_sand.png` (unmodified) |
+| `gravel.png` | `ITEMS/mcl_core/textures/default_gravel.png` (unmodified) |
+| `snow.png` | `ITEMS/mcl_core/textures/default_snow.png` (unmodified) |
+| `bedrock.png` | `ITEMS/mcl_core/textures/mcl_core_bedrock.png` (unmodified) |
+| `wood.png` | `ITEMS/mcl_core/textures/default_tree.png` (unmodified) |
+| `wood_top.png` | `ITEMS/mcl_core/textures/default_tree_top.png` (unmodified) |
+| `wood_sideways.png` | `ITEMS/mcl_core/textures/default_tree.png`, rotated 90° (faces of sideways / fallen oak logs) |
+| `leaves.png` | `ITEMS/mcl_core/textures/default_leaves.png`, tinted ×`#6AE942` (plains green; the biome tint multiplies on top) |
+| `coal_ore.png` | `ITEMS/mcl_core/textures/mcl_core_coal_ore.png` (unmodified) |
+| `glowstone.png` | `ITEMS/mcl_nether/textures/mcl_nether_glowstone.png` (unmodified) |
+| `cactus.png` | `ITEMS/mcl_core/textures/mcl_core_cactus_side.png`, transparent rim filled from the nearest opaque texel (the block is a full cube here) |
+| `cactus_top.png` | `ITEMS/mcl_core/textures/mcl_core_cactus_top.png`, transparent rim filled the same way |
+| `tnt.png` | `ITEMS/mcl_tnt/textures/default_tnt_side.png` (unmodified) |
+| `tnt_top.png` | `ITEMS/mcl_tnt/textures/default_tnt_top.png` (unmodified) |
+| `tnt_bottom.png` | `ITEMS/mcl_tnt/textures/default_tnt_bottom.png` (unmodified) |
+| `water.png` | `ITEMS/mcl_core/textures/default_water_source_animated.png`, first 16×16 frame, recoloured ×(3.06, 1.41, 1.97) per channel (clamped) to keep the previous water colour under the liquid shader's blue multiply |
+| `dandelion.png` | `ITEMS/mcl_flowers/textures/flowers_dandelion_yellow.png` (unmodified) |
+| `poppy.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_poppy.png` (unmodified) |
 | `planks.png` | `ITEMS/mcl_core/textures/default_wood.png` (unmodified) |
 | `cobblestone.png` | `ITEMS/mcl_core/textures/default_cobble.png` (unmodified) |
 | `crafting_table_top.png` | `ITEMS/mcl_crafting_table/textures/crafting_workbench_top.png` (unmodified) |
@@ -33,9 +55,9 @@ modified versions of them, stay under CC BY-SA 4.0; the rest of the project is u
 | `podzol_side.png` | `ITEMS/mcl_core/textures/mcl_core_dirt_podzol_side.png` (unmodified) |
 | `mossy_cobblestone.png` | `ITEMS/mcl_core/textures/default_mossycobble.png` (unmodified) |
 | `ice.png` | `ITEMS/mcl_core/textures/default_ice.png`, alpha made fully opaque (drawn as a solid block) |
-| `sandstone.png` | `ITEMS/mcl_core/textures/mcl_core_sandstone_normal.png`, recoloured ×(1.05, 1.29, 1.25) per channel to match `sand.png` |
-| `sandstone_top.png` | `ITEMS/mcl_core/textures/mcl_core_sandstone_top.png`, recoloured ×(1.05, 1.29, 1.25) per channel to match `sand.png` |
-| `sandstone_bottom.png` | `ITEMS/mcl_core/textures/mcl_core_sandstone_bottom.png`, recoloured ×(1.05, 1.29, 1.25) per channel to match `sand.png` |
+| `sandstone.png` | `ITEMS/mcl_core/textures/mcl_core_sandstone_normal.png` (unmodified) |
+| `sandstone_top.png` | `ITEMS/mcl_core/textures/mcl_core_sandstone_top.png` (unmodified) |
+| `sandstone_bottom.png` | `ITEMS/mcl_core/textures/mcl_core_sandstone_bottom.png` (unmodified) |
 | `dead_bush.png` | `ITEMS/mcl_core/textures/default_dry_shrub.png` (unmodified) |
 | `acacia_log.png` | `ITEMS/mcl_core/textures/default_acacia_tree.png` (unmodified) |
 | `acacia_log_top.png` | `ITEMS/mcl_core/textures/default_acacia_tree_top.png` (unmodified) |
@@ -59,7 +81,13 @@ Note: Mineclonia's `mcl_core/README.md` still says its textures come from the "F
 pack, which conflicts with the repository-wide `LEGAL.md`. `planks.png`, `cobblestone.png`,
 `lava.png`, `obsidian.png` and the `mcl_core` files above are used on the strength of `LEGAL.md`.
 
-`wood_sideways.png` is not from Pixel Perfection: it is the project's own `wood.png` (oak bark)
-rotated 90°, for the faces of sideways (fallen) oak logs.
+`grass.png`, `grass_side.png` and `leaves.png` take the frag.shd biome tint at run time, so they are
+tinted to average the same green as the plains textures they replaced (grass top ≈ (78, 123, 39),
+leaves ≈ (58, 118, 29)): at the neutral multiplier (1, 1, 1) they look like plains and every biome's
+tint keeps its meaning. The grass side's fringe takes the top's colour, so the shader's "green
+texel" rule (`g > r`) tints exactly the fringe and never the dirt.
+
+`sun.png`, `moon.png`, `cloud.png`, `clouds.png`, `smoke.png`, `skin.png` and `none.png` are the
+project's own.
 
 Item textures are credited in `items/README.md`.
