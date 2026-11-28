@@ -54,6 +54,8 @@ inline BlockMining blockMining(block_type t) {
         /* CORNFLOWER     */ {0.0f,  ToolKind::None,    false},
         /* OAK_LOG_X      */ {2.0f,  ToolKind::Axe,     false},
         /* OAK_LOG_Z      */ {2.0f,  ToolKind::Axe,     false},
+        /* PODZOL         */ {0.5f,  ToolKind::Shovel,  false},
+        /* MOSSY_COBBLESTONE */ {2.0f, ToolKind::Pickaxe, true},
     };
     // clang-format on
     static_assert(sizeof(table) / sizeof(table[0]) == BLOCK_TYPE_COUNT, "one row per block_type");
@@ -97,6 +99,7 @@ inline ItemDrop blockDrop(block_type t, ItemId held, float roll) {
     if (!canHarvest(t, held) || blockMining(t).hardness < 0.0f) return {};
     switch (t) {
     case GRASS:
+    case PODZOL:
         return {blockItem(DIRT), 1};
     case STONE:
         return {blockItem(COBBLESTONE), 1};

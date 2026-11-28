@@ -215,6 +215,10 @@ inline const char* itemName(ItemId id) {
     case OAK_LOG_X:
     case OAK_LOG_Z:
         return "Oak Log";
+    case PODZOL:
+        return "Podzol";
+    case MOSSY_COBBLESTONE:
+        return "Mossy Cobblestone";
     default:
         return "?";
     }

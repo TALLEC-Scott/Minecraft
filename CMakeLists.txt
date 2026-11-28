@@ -305,6 +305,7 @@ else()
         tests/test_biome_registry.cpp
         tests/test_biome_plains.cpp
         tests/test_biome_forest.cpp
+        tests/test_biome_taiga.cpp
         tests/test_chat_commands.cpp
         tests/test_chat_history.cpp
         tests/test_items.cpp

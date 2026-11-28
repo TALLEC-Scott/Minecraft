@@ -92,6 +92,8 @@ class Inventory {
         CRAFTING_TABLE,
         OBSIDIAN,
         TORCH,
+        PODZOL,
+        MOSSY_COBBLESTONE,
         ITEM_STICK,
         ITEM_COAL,
         ITEM_WOODEN_PICKAXE,
