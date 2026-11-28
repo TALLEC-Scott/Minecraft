@@ -65,11 +65,13 @@ enum block_type : uint8_t {
     IRON_ORE,
     DIAMOND_ORE,
     OXEYE_DAISY,
-    CORNFLOWER
+    CORNFLOWER,
+    OAK_LOG_X, // oak log lying along X (fallen logs); drops WOOD
+    OAK_LOG_Z  // oak log lying along Z
 };
-// Number of block_type values; keep CORNFLOWER (the last one) in sync.
+// Number of block_type values; keep OAK_LOG_Z (the last one) in sync.
 // Values are saved in chunk files and level.dat: append only.
-inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(CORNFLOWER) + 1;
+inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(OAK_LOG_Z) + 1;
 
 // Values index tables (BIOME_DEFS in biome.cpp, mob spawn masks). Not saved
 // (recomputed from the seed), so they may be reordered. One BiomeDef each.
@@ -91,7 +93,7 @@ enum Biome {
 
 // Tree trunks and canopies, for code that treats every wood type alike.
 inline bool isLog(block_type t) {
-    return t == WOOD || t == SPRUCE_LOG || t == BIRCH_LOG;
+    return t == WOOD || t == SPRUCE_LOG || t == BIRCH_LOG || t == OAK_LOG_X || t == OAK_LOG_Z;
 }
 inline bool isLeaves(block_type t) {
     return t == LEAVES || t == SPRUCE_LEAVES || t == BIRCH_LEAVES;
@@ -169,6 +171,8 @@ inline uint32_t getBlockFlags(block_type t) {
         /* DIAMOND_ORE   */ BF_SOLID | BF_OPAQUE,
         /* OXEYE_DAISY   */ BF_TRANSPARENT | BF_CROSS,
         /* CORNFLOWER    */ BF_TRANSPARENT | BF_CROSS,
+        /* OAK_LOG_X     */ BF_SOLID | BF_OPAQUE,
+        /* OAK_LOG_Z     */ BF_SOLID | BF_OPAQUE,
     };
     // clang-format on
     int idx = static_cast<int>(t);
@@ -253,6 +257,8 @@ inline StepSound getStepSound(block_type t) {
         /* DIAMOND_ORE   */ STEP_STONE,
         /* OXEYE_DAISY   */ STEP_GRASS,
         /* CORNFLOWER    */ STEP_GRASS,
+        /* OAK_LOG_X     */ STEP_WOOD,
+        /* OAK_LOG_Z     */ STEP_WOOD,
     };
     // clang-format on
     int idx = static_cast<int>(t);
