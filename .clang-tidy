@@ -1,3 +1,8 @@
+# performance-enum-size is off: shrinking enum base types is risky for little
+# gain. Biome feeds spawn bit masks (1u << b), BlockFlag is a uint32_t bit
+# mask, and the rest (StepSound, GameState, NetRole, MpPanel, menu
+# Action/Overlay) are tiny tables or single variables where a byte saved is
+# not measurable.
 Checks: >
   -*,
   bugprone-*,
@@ -8,6 +13,7 @@ Checks: >
   -bugprone-implicit-widening-of-multiplication-result,
   performance-*,
   -performance-no-int-to-ptr,
+  -performance-enum-size,
   modernize-use-nullptr,
   modernize-use-override,
   readability-redundant-*,

@@ -601,7 +601,7 @@ void Menu::drawLoadingScreen(UIRenderer& ui, int windowW, int windowH, float pro
     ui.drawRect(barX, barY, barW, barH, glm::vec4(0.12f, 0.12f, 0.14f, 0.95f));
     ui.drawRect(barX, barY, barW * progress, barH, glm::vec4(0.35f, 0.65f, 0.35f, 0.95f));
 
-    std::string pct = std::to_string((int)(progress * 100.0f + 0.5f)) + "%";
+    std::string pct = std::to_string(std::lround(progress * 100.0f)) + "%";
     float ps = 1.4f;
     ui.drawTextShadow(pct, cx - ui.textWidth(pct, ps) / 2.0f,
                       barY + (barH - ui.textHeight(ps)) / 2.0f, ps);

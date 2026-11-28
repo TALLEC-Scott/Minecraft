@@ -113,7 +113,7 @@ static constexpr uint8_t FONT_DATA[96][8] = {
 static GLuint compileShader(const char* path, GLenum type) {
     std::ifstream file(path);
     if (!file.is_open()) {
-        std::cerr << "Failed to open shader: " << path << std::endl;
+        std::cerr << "Failed to open shader: " << path << '\n';
         return 0;
     }
     std::stringstream ss;
@@ -133,7 +133,7 @@ static GLuint compileShader(const char* path, GLenum type) {
     if (!success) {
         char log[512];
         glGetShaderInfoLog(shader, 512, nullptr, log);
-        std::cerr << "Shader compile error (" << path << "): " << log << std::endl;
+        std::cerr << "Shader compile error (" << path << "): " << log << '\n';
     }
     return shader;
 }
@@ -432,7 +432,7 @@ GLuint UIRenderer::loadTexture(const char* path, bool repeat) {
     int w, h, channels;
     unsigned char* data = stbi_load(path, &w, &h, &channels, 4);
     if (!data) {
-        std::cerr << "Failed to load texture: " << path << std::endl;
+        std::cerr << "Failed to load texture: " << path << '\n';
         return 0;
     }
 

@@ -38,7 +38,8 @@ void readLevelMeta(const fs::path& levelDat, std::string& nameOut, std::time_t& 
         std::string v = line.substr(eq + 1);
         if (k == "worldName") nameOut = v;
         else if (k == "lastPlayed") {
-            try { lastPlayedOut = static_cast<std::time_t>(std::stoll(v)); } catch (...) {}
+            // Malformed value: keep the default.
+            try { lastPlayedOut = static_cast<std::time_t>(std::stoll(v)); } catch (...) {} // NOLINT(bugprone-empty-catch)
         }
     }
 }
@@ -82,7 +83,7 @@ std::uint32_t resolveSeed(const std::string& raw) {
     if (allDigits) {
         try {
             return static_cast<std::uint32_t>(std::stoull(raw));
-        } catch (...) {
+        } catch (...) { // NOLINT(bugprone-empty-catch)
             // Overflow -> fall through to hash
         }
     }

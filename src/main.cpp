@@ -316,7 +316,7 @@ static float soundsDownloadProgress() {
 static void loadSoundsWhenReady() {
     if (g_soundsLoaded || !g_menu || !std::filesystem::exists("assets/Sounds/click.ogg")) return;
     g_soundsLoaded = true;
-    std::cout << "Sounds loaded" << std::endl;
+    std::cout << "Sounds loaded" << '\n' << std::flush;
     ma_engine* engine = g_menu->getAudioEngine();
     g_menu->loadSounds();
     player.initAudio(engine);
@@ -704,7 +704,7 @@ int main(int argc, char* argv[]) {
             size_t used = 0;
             out = std::stoll(val, &used);
             if (used == val.size() && out >= lo && out <= hi) return true;
-        } catch (const std::exception&) {
+        } catch (const std::exception&) { // NOLINT(bugprone-empty-catch): not a number -> error below
         }
         std::cerr << name << ": expected an integer in [" << lo << ", " << hi << "], got '" << val << "'\n";
         return false;
@@ -746,16 +746,16 @@ int main(int argc, char* argv[]) {
     }
 #endif
     if (!glfwInit()) {
-        std::cout << "Failed to initialize GLFW" << std::endl;
+        std::cout << "Failed to initialize GLFW" << '\n' << std::flush;
         return -1;
     }
-    std::cout << "GLFW successfully initialized" << std::endl;
+    std::cout << "GLFW successfully initialized" << '\n' << std::flush;
 
 #ifdef __EMSCRIPTEN__
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
-    std::cout << "Using WebGL 2.0 (OpenGL ES 3.0)" << std::endl;
+    std::cout << "Using WebGL 2.0 (OpenGL ES 3.0)" << '\n' << std::flush;
 #else
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -763,17 +763,17 @@ int main(int argc, char* argv[]) {
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
-    std::cout << "Using OpenGL 3.3 Core Profile" << std::endl;
+    std::cout << "Using OpenGL 3.3 Core Profile" << '\n' << std::flush;
 #endif
 
     g_window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "POGL", nullptr, nullptr);
     GLFWwindow* window = g_window;
     if (window == nullptr) {
-        std::cout << "Failed to create window" << std::endl;
+        std::cout << "Failed to create window" << '\n' << std::flush;
         glfwTerminate();
         return -1;
     }
-    std::cout << "Window successfully created" << std::endl;
+    std::cout << "Window successfully created" << '\n' << std::flush;
     glfwMakeContextCurrent(window);
 
 #ifndef __EMSCRIPTEN__
@@ -827,11 +827,11 @@ int main(int argc, char* argv[]) {
 
 #ifndef __EMSCRIPTEN__
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-        std::cout << "Failed to initialize GLAD" << std::endl;
+        std::cout << "Failed to initialize GLAD" << '\n' << std::flush;
         glfwTerminate();
         return -1;
     }
-    std::cout << "Glad successfully loaded" << std::endl;
+    std::cout << "Glad successfully loaded" << '\n' << std::flush;
 #endif
 
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
@@ -871,7 +871,7 @@ int main(int argc, char* argv[]) {
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, headlessDepth);
 
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-            std::cout << "WARNING: Headless FBO incomplete!" << std::endl;
+            std::cout << "WARNING: Headless FBO incomplete!" << '\n' << std::flush;
     }
 #endif
 
@@ -879,7 +879,7 @@ int main(int argc, char* argv[]) {
 
     int nrAttributes;
     glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &nrAttributes);
-    std::cout << "Maximum number of vertex attributes supported: " << nrAttributes << std::endl;
+    std::cout << "Maximum number of vertex attributes supported: " << nrAttributes << '\n' << std::flush;
 
     TextureArray::initialize();
     TextureArray::initLayerTextures();
@@ -1078,7 +1078,7 @@ int main(int argc, char* argv[]) {
             if (modeOverride.has_value()) loaded.gameMode = *modeOverride;
             if (!displayName.empty()) worldSave->setDisplayName(displayName);
 
-            std::cout << "World: " << folder << "  seed: " << seed << std::endl;
+            std::cout << "World: " << folder << "  seed: " << seed << '\n' << std::flush;
             loadOrBakeCloudPattern(folder, seed);
             world.emplace(seed);
             world->chunkManager->setWorldSave(&*worldSave);
@@ -1769,7 +1769,7 @@ int main(int argc, char* argv[]) {
                             placed++;
                         }
                     }
-                    std::cout << "[stress-water] placed " << placed << " sources at y=" << oy << std::endl;
+                    std::cout << "[stress-water] placed " << placed << " sources at y=" << oy << '\n' << std::flush;
                 }
 
                 // Mob path exercise: a line of pigs dropped onto the terrain
@@ -1788,7 +1788,7 @@ int main(int argc, char* argv[]) {
                             break;
                         }
                     }
-                    std::cout << "[bench-mobs] spawned " << spawned << " mobs" << std::endl;
+                    std::cout << "[bench-mobs] spawned " << spawned << " mobs" << '\n' << std::flush;
                 }
 
                 if (frame < WARMUP_FRAMES) {
@@ -1883,7 +1883,7 @@ int main(int argc, char* argv[]) {
                     }
                     std::cout << "[benchmark] warmup " << waited << " s, " << w->chunkManager->chunks.size()
                               << " chunks loaded" << (idleFrames < SETTLE_FRAMES ? " (timed out)" : "")
-                              << std::endl;
+                              << '\n' << std::flush;
                 }
                 frame++;
             }
@@ -1893,7 +1893,7 @@ int main(int argc, char* argv[]) {
             profiler.destroy();
 
             std::cout << "\nBenchmark complete. Results written to benchmark_results.txt + profile_results.txt"
-                      << std::endl;
+                      << '\n' << std::flush;
             shaderProgram.destroy();
             goto cleanup;
         }
@@ -3173,7 +3173,7 @@ int main(int argc, char* argv[]) {
                     applySettings();
                 }
                 if (next == GameState::MainMenu) {
-                    if (saveCurrentWorld()) std::cout << "World saved" << std::endl;
+                    if (saveCurrentWorld()) std::cout << "World saved" << '\n' << std::flush;
 
                     glfwSetInputMode(window, CURSOR_MODE, GLFW_CURSOR_NORMAL);
                     menu.stopMusic();
@@ -3248,7 +3248,7 @@ int main(int argc, char* argv[]) {
         }
 
         // Save world on exit
-        if (saveCurrentWorld()) std::cout << "World saved" << std::endl;
+        if (saveCurrentWorld()) std::cout << "World saved" << '\n' << std::flush;
 
         shaderProgram.destroy();
     }                      // world and shaderProgram destroyed here, while GL context is still valid
@@ -3265,9 +3265,9 @@ cleanup:
     TextureArray::destroy();
 
     glfwDestroyWindow(window);
-    std::cout << "Window destroyed" << std::endl;
+    std::cout << "Window destroyed" << '\n' << std::flush;
     glfwTerminate();
-    std::cout << "GLFW terminated" << std::endl;
+    std::cout << "GLFW terminated" << '\n' << std::flush;
     return 0;
 }
 #endif

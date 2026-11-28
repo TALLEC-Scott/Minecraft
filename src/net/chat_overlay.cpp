@@ -199,6 +199,8 @@ bool ChatOverlay::takePendingSend(std::string& out) {
         case GLFW_KEY_END:
             cursor_ = buffer_.size();
             break;
+        default:
+            break;
         }
     }
     pendingKeys_.clear();
@@ -239,8 +241,8 @@ void ChatOverlay::draw(UIRenderer& ui, int windowW, int windowH, double now) {
     const float panelX = 8.0f;
     const float panelPad = 6.0f;
 
-    // Pull up recent lines (all of them while open, most-recent when closed).
-    const std::size_t visibleCap = open_ ? 10u : 10u;
+    // Pull up the most recent lines (same cap whether open or closed).
+    const std::size_t visibleCap = 10u;
     std::vector<std::size_t> showIdx;
     for (std::size_t i = log_.size(); i-- > 0 && showIdx.size() < visibleCap;) {
         double age = now - log_[i].recvTime;
