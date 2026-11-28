@@ -87,6 +87,8 @@ class Inventory {
         SPRUCE_LEAVES,
         BIRCH_LEAVES,
         ACACIA_LEAVES,
+        RED_AUTUMN_LEAVES,
+        ORANGE_AUTUMN_LEAVES,
         SNOW,
         ICE,
         CACTUS,

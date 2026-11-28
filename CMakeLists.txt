@@ -307,6 +307,7 @@ else()
         tests/test_biome_shrubland.cpp
         tests/test_biome_swampland.cpp
         tests/test_biome_desert.cpp
+        tests/test_biome_seasonal_forest.cpp
         tests/test_biome_tundra.cpp
         tests/test_biome_savanna.cpp
         tests/test_biome_plains.cpp

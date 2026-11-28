@@ -108,12 +108,14 @@ void main() {
     if (isSnow) texColor.rgb *= vec3(0.93, 0.97, 1.06);
 
     // Leaf cutout (only branch that truly needs discard): oak 10, spruce 47,
-    // birch 50, acacia 67 (block_layers.h).
+    // birch 50, acacia 67, red / orange autumn 71 / 72 (block_layers.h).
+    bool isAutumnLeaves = texLayer > 70.5 && texLayer < 72.5;
     bool isLeaves = abs(texLayer - 10.0) < 0.5 || abs(texLayer - 47.0) < 0.5 || abs(texLayer - 50.0) < 0.5 ||
-                    abs(texLayer - 67.0) < 0.5;
+                    abs(texLayer - 67.0) < 0.5 || isAutumnLeaves;
     if (isLeaves && texColor.a < 0.5) {
         if (fancyLeaves == 1) discard;
-        texColor = vec4(0.12, 0.25, 0.08, 1.0);
+        // Fast leaves: fill the holes with a dark shade of the leaf colour.
+        texColor = isAutumnLeaves ? vec4(0.30, 0.13, 0.04, 1.0) : vec4(0.12, 0.25, 0.08, 1.0);
     }
     // Cross-plant cutout (tall grass, dandelion, poppy — layers 24..26;
     // torch — layer 44; fern — layer 51). These are sprite billboards on a

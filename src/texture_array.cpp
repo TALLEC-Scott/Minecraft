@@ -40,6 +40,8 @@ static const char* TEXTURE_PATHS[] = {
     "assets/Textures/acacia_leaves.png",
     "assets/Textures/jungle_log.png",         "assets/Textures/jungle_log_top.png",
     "assets/Textures/coarse_dirt.png",
+    "assets/Textures/red_autumn_leaves.png",  "assets/Textures/orange_autumn_leaves.png",
+    "assets/Textures/orange_tulip.png",
     "assets/Textures/clay.png",               "assets/Textures/blue_orchid.png",
 };
 static_assert(sizeof(TEXTURE_PATHS) / sizeof(TEXTURE_PATHS[0]) == block_layers::NUM_LAYERS, "one path per layer");

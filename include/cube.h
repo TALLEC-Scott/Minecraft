@@ -77,6 +77,9 @@ enum block_type : uint8_t {
     ACACIA_LEAVES,
     JUNGLE_LOG,
     COARSE_DIRT,
+    RED_AUTUMN_LEAVES,
+    ORANGE_AUTUMN_LEAVES,
+    ORANGE_TULIP,
     CLAY,
     BLUE_ORCHID
 };
@@ -108,7 +111,8 @@ inline bool isLog(block_type t) {
            t == JUNGLE_LOG;
 }
 inline bool isLeaves(block_type t) {
-    return t == LEAVES || t == SPRUCE_LEAVES || t == BIRCH_LEAVES || t == ACACIA_LEAVES;
+    return t == LEAVES || t == SPRUCE_LEAVES || t == BIRCH_LEAVES || t == ACACIA_LEAVES || t == RED_AUTUMN_LEAVES ||
+           t == ORANGE_AUTUMN_LEAVES;
 }
 
 // Water level encoding: bits 0-2 hold the flow level (0-7), bit 7 is the
@@ -194,6 +198,9 @@ inline uint32_t getBlockFlags(block_type t) {
         /* ACACIA_LEAVES */ BF_SOLID | BF_TRANSLUCENT,
         /* JUNGLE_LOG    */ BF_SOLID | BF_OPAQUE,
         /* COARSE_DIRT   */ BF_SOLID | BF_OPAQUE,
+        /* RED_AUTUMN_LEAVES    */ BF_SOLID | BF_TRANSLUCENT,
+        /* ORANGE_AUTUMN_LEAVES */ BF_SOLID | BF_TRANSLUCENT,
+        /* ORANGE_TULIP  */ BF_TRANSPARENT | BF_CROSS,
         /* CLAY          */ BF_SOLID | BF_OPAQUE,
         /* BLUE_ORCHID   */ BF_TRANSPARENT | BF_CROSS,
     };
@@ -291,6 +298,9 @@ inline StepSound getStepSound(block_type t) {
         /* ACACIA_LEAVES */ STEP_GRASS,
         /* JUNGLE_LOG    */ STEP_WOOD,
         /* COARSE_DIRT   */ STEP_GRAVEL,
+        /* RED_AUTUMN_LEAVES    */ STEP_GRASS,
+        /* ORANGE_AUTUMN_LEAVES */ STEP_GRASS,
+        /* ORANGE_TULIP  */ STEP_GRASS,
         /* CLAY          */ STEP_GRAVEL,
         /* BLUE_ORCHID   */ STEP_GRASS,
     };
