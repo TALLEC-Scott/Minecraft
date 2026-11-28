@@ -234,15 +234,24 @@ void decorate(const FeatureSite& s) {
 
 // --- Ground cover: ferns in clumps, some grass, sparser on podzol ---
 
+// The cool climate's grass base (biome.h) is split between ferns and
+// grass: ferns in 6-block clumps (x0.1 .. x1.7 of their share), more on
+// podzol, and mostly the large (two-block) kind, as in Minecraft's taiga;
+// short ferns (whose sprite reads as a sapling) stay a sprinkling.
 block_type groundCover(const GroundSite& g) {
     if (g.ground != GRASS && g.ground != PODZOL) return AIR;
-    // Fern density varies in 6-block clumps (x0.3 .. x1.7).
-    const double clump = 0.3 + 1.4 * valueNoise(g.seed, g.wx, g.wz, 6, SALT_FERNS);
-    const auto fern = static_cast<uint32_t>((g.ground == PODZOL ? 1400.0 : 1100.0) * clump);
-    const uint32_t grass = g.ground == PODZOL ? 300 : 900;
-    if (g.roll < fern) return FERN;
-    if (g.roll < fern + grass) return TALL_GRASS;
-    return AIR;
+    const double clump = valueNoise(g.seed, g.wx, g.wz, 6, SALT_FERNS);
+    const double base = grassDensity(g.temperature, g.humidity);
+    // Of the climate's base (x0.8 on the needle-strewn podzol), this share
+    // is ferns, the rest grass.
+    const double total = g.ground == PODZOL ? 0.8 : 1.0;
+    const double fernShare = std::min(total, (g.ground == PODZOL ? 0.5 : 0.3) * (0.1 + 1.6 * clump * clump));
+    const double fern = base * fernShare;
+    const double r = static_cast<double>(g.roll) / 10000.0;
+    if (r < fern) return biomegen::groundRoll(g, SALT_FERNS + 7) < 0.8 ? LARGE_FERN : FERN;
+    // climateGrass rolls on its own, so scale it to keep the total at
+    // base x total among the columns the ferns left.
+    return biomegen::climateGrass(g, (total - fernShare) / (1.0 - fern));
 }
 
 } // namespace

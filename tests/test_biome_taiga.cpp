@@ -83,7 +83,7 @@ TEST_F(TaigaTest, HasSpruceVarietyPodzolFernsAndBoulders) {
             const block_type ground = r.at(x, h, z), above = r.at(x, h + 1, z);
             podzol += ground == PODZOL;
             grass += ground == GRASS;
-            ferns += above == FERN;
+            ferns += above == FERN || above == LARGE_FERN;
             for (int y = h - 1; y <= h + 3; y++) mossy += r.at(x, y, z) == MOSSY_COBBLESTONE;
             if (isLog(above) && above != SPRUCE_LOG) otherLogs++;
             if (above != SPRUCE_LOG) continue;

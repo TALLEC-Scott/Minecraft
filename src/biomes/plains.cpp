@@ -1,5 +1,5 @@
-// Plains: rolling open grassland. Tall grass grows in drifts (thick swathes
-// fading into short turf), flowers bloom in meadow patches each dominated by
+// Plains: rolling open grassland. Tall grass (short and two-block) grows in
+// drifts (thick swathes fading into short turf) over the climate's base, flowers bloom in meadow patches each dominated by
 // one kind (dandelion, poppy, oxeye daisy, cornflower), and trees are rare: a
 // lone oak here and there, or a small copse of two or three. Its colours are
 // the stock textures' (tint 1,1,1), the reference the other biomes tint from.
@@ -98,10 +98,10 @@ block_type groundCover(const biomegen::GroundSite& g) {
     // The odd lone flower anywhere.
     if (r1 > 0.996) return r2 < 0.6 ? DANDELION : POPPY;
 
-    // Tall grass: sparse turf (6%) up to thick drifts (~66%).
+    // Grass on the climate's base (biome.h climateGrass): sparse turf
+    // (x0.3) up to thick drifts (x1.7), the drifts richest in two-block grass.
     const double n = grassDensity(g.wx, g.wz, g.seed);
-    const double p = 0.06 + 0.60 * n * n;
-    return r2 < p ? TALL_GRASS : AIR;
+    return biomegen::climateGrass(g, 0.3 + 1.4 * n * n, 0.3 + 1.0 * n);
 }
 
 // Trees are rare: a copse of a few oaks round some COPSE_CELL cells' hashed

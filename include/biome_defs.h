@@ -12,7 +12,7 @@ extern const BiomeDef FOREST_DEF;
 extern const BiomeDef DESERT_DEF;
 extern const BiomeDef TUNDRA_DEF;
 extern const BiomeDef TAIGA_DEF;
-extern const BiomeDef RAINFOREST_DEF;
+extern const BiomeDef JUNGLE_DEF;
 extern const BiomeDef SEASONAL_FOREST_DEF;
 extern const BiomeDef SWAMPLAND_DEF;
 extern const BiomeDef SAVANNA_DEF;

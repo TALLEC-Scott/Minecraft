@@ -17,9 +17,18 @@ struct BiomeTints;
 // straddle chunk borders come out identical from either side.
 // If `tints` is given, it also gets the blended grass / foliage colours of
 // each column (biome_tint.h).
+// If `states` is given (same size and indexing as `blocks`, zeroed), it
+// gets the cells' state bytes (vine sides, vine.h), which the chunk keeps in
+// its liquid-level array.
 void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* blocks,
                       int (&heights)[CHUNK_SIZE][CHUNK_SIZE], Biome (&biomes)[CHUNK_SIZE][CHUNK_SIZE],
-                      BiomeTints* tints = nullptr);
+                      BiomeTints* tints = nullptr, uint8_t* states = nullptr);
+
+// The column data fillChunkTerrain reports (heights, biomes, tints),
+// recomputed from the generator alone, identically: for a chunk loaded
+// from a save, whose blocks come from the file (WorldSave).
+void chunkColumns(TerrainGenerator& terrain, int chunkX, int chunkZ, int (&heights)[CHUNK_SIZE][CHUNK_SIZE],
+                  Biome (&biomes)[CHUNK_SIZE][CHUNK_SIZE], BiomeTints& tints);
 
 namespace terrainfill {
 // Surface-rule constants (blocks relative to sea level / neighbor steps),

@@ -30,6 +30,18 @@ class TerrainGenerator {
     // Overhang noise at world block (x, y, z), roughly -1..1: two octaves of
     // 3D Perlin, stretched horizontally so cuts form ledges and shelves.
     double overhangNoise(int x, int y, int z);
+    // The climate a column's vegetation feels: temperature after altitude
+    // cooling (the same `cooled` pickBiome uses for snow caps, so mountains
+    // get paler, sparser grass toward the tundra) and humidity, both 0..1.
+    struct ColumnClimate {
+        double temperature;
+        double humidity;
+    };
+    // Height, biome and (if `climate` is given) the column's climate in one
+    // sample: land columns compute the climate for their biome anyway, so
+    // it's free there; ocean / beach columns pay for it only when asked.
+    // `jagged` (if given) gets the column's jaggedness, as getShape.
+    int getHeightBiomeClimate(int x, int y, Biome& outBiome, ColumnClimate* climate, float* jagged = nullptr);
     // Raw 2D Perlin offset to [-0.5, 1.5] (noise + 0.5). Only the cloud
     // layer uses it, and its 0.65 coverage threshold is tuned to this range.
     double getNoise(int x, int y);
@@ -70,8 +82,9 @@ class TerrainGenerator {
         int height;
         float jagged;
         Biome biome;
+        ColumnClimate climate; // set on land, or when asked for (sampleColumn)
     };
-    ColumnSample sampleColumn(int x, int y, bool withBiome = true);
+    ColumnSample sampleColumn(int x, int y, bool wantClimate = false, bool withBiome = true);
 
     double octaveNoise(double x, double y, int octaves, double persistence, double lacunarity);
     // Ridged multifractal: 1 - |noise| per octave, squared, so crests form

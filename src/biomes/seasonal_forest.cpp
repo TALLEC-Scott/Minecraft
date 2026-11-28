@@ -1,5 +1,5 @@
 // Seasonal forest: warm, sunlit deciduous woods between the savanna and the
-// rainforest (Minecraft Beta's seasonal forest). Lighter than the Forest:
+// jungle (Minecraft Beta's seasonal forest). Lighter than the Forest:
 // oak and birch stands broken up by open clearings full of flowers, and a
 // touch of autumn: some crowns have turned red or orange among the green.
 //
@@ -203,10 +203,9 @@ block_type groundCover(const GroundSite& g) {
     if (open < CLEARING) flowers = 1200;
     if (drift > 0.68) flowers += static_cast<uint32_t>((drift - 0.68) * 9000.0); // up to ~2900
     if (g.roll < flowers) return flowerKind(g.seed, g.wx, g.wz, g.roll);
-    // Grass: thicker in the meadows.
-    const uint32_t grass = open < CLEARING ? 2600 : 1600;
-    if (g.roll < flowers + grass) return TALL_GRASS;
-    return AIR;
+    // Grass on the climate's base: thicker and taller in the meadows.
+    const bool meadow = open < CLEARING;
+    return biomegen::climateGrass(g, meadow ? 0.9 : 0.5, meadow ? 1.4 : 0.6);
 }
 
 } // namespace seasonal_forest
@@ -217,7 +216,7 @@ const BiomeDef SEASONAL_FOREST_DEF = {
     0.45f, &seasonal_forest::growTree,
     &seasonal_forest::decorate,
     &seasonal_forest::groundCover,
-    // Warmer, yellower than the Forest: halfway between the rainforest's
+    // Warmer, yellower than the Forest: halfway between the jungle's
     // deep green and the savanna's straw.
     {1.00f, 1.03f, 0.80f}, // grass tint
     {0.92f, 1.03f, 0.62f}, // foliage tint (green oaks)

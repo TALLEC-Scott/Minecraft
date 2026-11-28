@@ -4,7 +4,7 @@
 #include "light_propagation.h"
 #include "TerrainGenerator.h"
 #include "biome_tint.h"
-#include "terrain_density.h"
+#include "terrain_fill.h"
 
 #include <filesystem>
 #include <fstream>
@@ -192,19 +192,9 @@ bool WorldSave::loadChunkData(int chunkX, int chunkZ, ChunkData& out, TerrainGen
         f.read(reinterpret_cast<char*>(out.waterLevels.get()), WATER_SIZE);
     }
 
-    // Recompute heights (the generated surface, overhangs included) and
-    // biomes from the terrain generator
-    terraindensity::surfaceHeights(terrain, cx, cz, out.heights);
-    for (int x = 0; x < CHUNK_SIZE; x++)
-        for (int z = 0; z < CHUNK_SIZE; z++) out.biomes[x][z] = terrain.getBiome(cx * CHUNK_SIZE + x, cz * CHUNK_SIZE + z);
-    // Grass / foliage colours: the blend reaches TINT_BLEND_RADIUS columns
-    // into the neighbouring chunks, whose biomes come from the generator.
-    blendBiomeTints(
-        [&](int i, int k) {
-            if (i >= 0 && i < CHUNK_SIZE && k >= 0 && k < CHUNK_SIZE) return out.biomes[i][k];
-            return terrain.getBiome(cx * CHUNK_SIZE + i, cz * CHUNK_SIZE + k);
-        },
-        out.tints);
+    // Recompute heights, biomes and grass / foliage colours from the terrain
+    // generator, exactly as generation reports them.
+    chunkColumns(terrain, cx, cz, out.heights, out.biomes, out.tints);
 
     // Recompute maxSolidY by scanning sections
     out.maxSolidY = 0;

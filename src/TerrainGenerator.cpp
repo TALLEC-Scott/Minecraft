@@ -180,7 +180,7 @@ double TerrainGenerator::getMoisture(int x, int y) {
     return std::clamp((m + 1.0) * 0.5, 0.0, 1.0);
 }
 
-TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y, bool withBiome) {
+TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y, bool wantClimate, bool withBiome) {
     double nx = x * scale;
     double ny = y * scale;
 
@@ -254,14 +254,10 @@ TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y, bool
     if (!withBiome) return s;
 
     // --- Biome ---
-    if (s.continentalness < OCEAN_END) {
-        s.biome = BIOME_OCEAN;
-    } else if (s.continentalness < BEACH_END) {
-        s.biome = BIOME_BEACH;
-    } else {
-        // Altitude cooling: high ground is colder, so tall ranges get
-        // tundra (snowy) tops inside otherwise temperate regions. Only the
-        // tundra test uses it (see pickBiome).
+    // Altitude cooling: high ground is colder, so tall ranges get tundra
+    // (snowy) tops inside otherwise temperate regions. Only the tundra test
+    // uses it (see pickBiome); vegetation reads it as the column's climate.
+    auto climate = [&] {
         Climate c{};
         c.temperature = getTemperature(x, y);
         c.humidity = getMoisture(x, y);
@@ -269,13 +265,23 @@ TerrainGenerator::ColumnSample TerrainGenerator::sampleColumn(int x, int y, bool
         c.cooled = c.temperature - std::max(0.0, altitude) * 0.45;
         c.relief = s.relief;
         c.heightAboveSea = s.height - seaLevel;
-        s.biome = pickBiome(c);
+        s.climate = {c.cooled, c.humidity};
+        return c;
+    };
+    if (s.continentalness < OCEAN_END) {
+        s.biome = BIOME_OCEAN;
+        if (wantClimate) climate();
+    } else if (s.continentalness < BEACH_END) {
+        s.biome = BIOME_BEACH;
+        if (wantClimate) climate();
+    } else {
+        s.biome = pickBiome(climate());
     }
     return s;
 }
 
 TerrainGenerator::ColumnShape TerrainGenerator::getShape(int x, int z) {
-    ColumnSample s = sampleColumn(x, z, false);
+    ColumnSample s = sampleColumn(x, z, false, false);
     return {s.height, s.jagged};
 }
 
@@ -302,6 +308,14 @@ Biome TerrainGenerator::getBiome(int x, int y) {
 
 int TerrainGenerator::getHeight(int x, int y) {
     return sampleColumn(x, y).height;
+}
+
+int TerrainGenerator::getHeightBiomeClimate(int x, int y, Biome& outBiome, ColumnClimate* climate, float* jagged) {
+    ColumnSample s = sampleColumn(x, y, climate != nullptr);
+    outBiome = s.biome;
+    if (climate) *climate = s.climate;
+    if (jagged) *jagged = s.jagged;
+    return s.height;
 }
 
 int TerrainGenerator::getHeightAndBiome(int x, int y, Biome& outBiome) {

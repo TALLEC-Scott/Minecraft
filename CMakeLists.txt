@@ -46,7 +46,7 @@ set(COMMON_SOURCES
     src/biomes/desert.cpp
     src/biomes/tundra.cpp
     src/biomes/taiga.cpp
-    src/biomes/rainforest.cpp
+    src/biomes/jungle.cpp
     src/biomes/seasonal_forest.cpp
     src/biomes/swampland.cpp
     src/biomes/savanna.cpp
@@ -289,6 +289,7 @@ else()
         tests/test_recipes.cpp
         tests/test_lava.cpp
         tests/test_torch.cpp
+        tests/test_vine.cpp
         tests/test_inventory.cpp
         tests/test_tnt.cpp
         tests/test_block_light.cpp
@@ -307,7 +308,8 @@ else()
         tests/test_worldgen.cpp
         tests/test_terrain_density.cpp
         tests/test_biome_registry.cpp
-        tests/test_biome_rainforest.cpp
+        tests/test_biome_jungle.cpp
+        tests/test_grass_climate.cpp
         tests/test_biome_shrubland.cpp
         tests/test_biome_swampland.cpp
         tests/test_biome_desert.cpp
@@ -334,7 +336,7 @@ else()
         src/biomes/desert.cpp
         src/biomes/tundra.cpp
         src/biomes/taiga.cpp
-        src/biomes/rainforest.cpp
+        src/biomes/jungle.cpp
         src/biomes/seasonal_forest.cpp
         src/biomes/swampland.cpp
         src/biomes/savanna.cpp

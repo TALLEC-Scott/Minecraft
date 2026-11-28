@@ -21,7 +21,7 @@ template <typename T> std::unique_ptr<Mob> makeMob() {
 
 // Temperate and warm grassy biomes: all four farm animals.
 constexpr uint32_t PASTURE = biomeBit(BIOME_PLAINS) | biomeBit(BIOME_FOREST) | biomeBit(BIOME_SEASONAL_FOREST) |
-                             biomeBit(BIOME_SHRUBLAND) | biomeBit(BIOME_SAVANNA) | biomeBit(BIOME_RAINFOREST) |
+                             biomeBit(BIOME_SHRUBLAND) | biomeBit(BIOME_SAVANNA) | biomeBit(BIOME_JUNGLE) |
                              biomeBit(BIOME_SWAMPLAND);
 // Cold biomes where cows and sheep (but not pigs / chickens) graze.
 constexpr uint32_t COLD_PASTURE = biomeBit(BIOME_TUNDRA) | biomeBit(BIOME_TAIGA);

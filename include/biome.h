@@ -43,6 +43,13 @@ struct TreeSite {
     // Logs: overwrite whatever is there (a trunk wins over a neighbour's
     // leaves), relative to the trunk column.
     void log(int di, int y, int dk, block_type t) const;
+    // A vine chain hanging from (di, y, dk) down: VINE cells covering
+    // `sides` (vine.h bits) in up to `len` cells, stopping at the first cell
+    // that isn't air (or a vine, which gains the sides) and always leaving
+    // at least one free cell above whatever is below (ground, water, a
+    // plant). Reads only that column, so it comes out the same from both
+    // chunks of a border. Returns how many cells it wrote.
+    int vine(int di, int y, int dk, uint8_t sides, int len) const;
     // Marks the columns within `radius` of the trunk as shaded, so ground
     // cover and features skip them. Call once the tree is committed.
     void claim(int radius) const;
@@ -87,7 +94,23 @@ struct GroundSite {
     uint32_t roll;     // uniform 0..9999, per column
     int wx, wz;        // world column (for patches: hash a coarser cell)
     uint64_t seed;     // world seed
+    // The column's own climate (TerrainGenerator::ColumnClimate: altitude-
+    // cooled temperature, humidity), continuous across biome borders.
+    double temperature = 0.5;
+    double humidity = 0.5;
 };
+
+// Grass as the climate grows it, the base every biome's ground cover
+// builds on so the amount of grass fades across borders instead of
+// jumping: TALL_GRASS, DOUBLE_TALL_GRASS or AIR for this column.
+// grassDensity(climate) × `amount` of the columns get grass, and
+// tallGrassShare(climate) × `tallScale` of those (in ~7-block clumps) are
+// the two-block kind. A biome keeps its character by modulating these
+// (drifts, clearings, a shaded floor) with factors that average near 1.
+block_type climateGrass(const GroundSite& g, double amount = 1.0, double tallScale = 1.0);
+// A second uniform 0..1 per column, independent of `roll` and of the one
+// climateGrass draws, for a biome's own picks (ferns...).
+double groundRoll(const GroundSite& g, uint64_t salt);
 
 } // namespace biomegen
 
@@ -110,7 +133,10 @@ struct BiomeDef {
     void (*decorate)(const biomegen::FeatureSite&);
 
     // Ground cover for an open, unshaded column above sea level: the plant
-    // to put on top of it, or AIR.
+    // to put on top of it, or AIR. A two-block plant's lower half
+    // (DOUBLE_TALL_GRASS, LARGE_FERN; double_plant.h) gets its upper half
+    // on top when that cell is free air under the world ceiling; otherwise
+    // the short version (TALL_GRASS, FERN) grows instead.
     block_type (*groundCover)(const biomegen::GroundSite&);
 
     // Colour multipliers over the stock textures, (1,1,1) = as drawn
@@ -136,3 +162,20 @@ struct Climate {
 // The climate table: which land biome a column gets (never OCEAN/BEACH,
 // those come from continentalness first). Pure, so it is unit-tested.
 Biome pickBiome(const Climate& c);
+
+// Share of open grass columns that grow grass (0..1) under a climate
+// (altitude-cooled temperature, humidity; both 0..1). Smooth everywhere:
+// rises with humidity (sparse when dry, dense when lush), falls to 0 in the
+// cold (snow) and nearly so where it's hot and dry (desert).
+float grassDensity(double temperature, double humidity);
+// Share of that grass that is two blocks tall: highest in warm, not-wet
+// grassland (savanna, plains), low in the cold and in wet forests.
+float tallGrassShare(double temperature, double humidity);
+
+// A column's grass (foliage = false) or foliage colour multiplier: its
+// biome's tint shifted by how the column's climate differs from the
+// biome's typical one (drier / hotter = yellower, wetter = lusher bluer
+// green, colder = paler blue). Equal to the biome's tint at its typical
+// climate; ~±15% per channel across a biome's usual climate range, at most
+// ~-45% / +80% at the extremes. blendColumnTints (biome_tint.h) then blurs it.
+glm::vec3 climateTint(Biome b, double temperature, double humidity, bool foliage);

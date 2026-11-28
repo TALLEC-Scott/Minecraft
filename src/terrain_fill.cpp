@@ -5,6 +5,8 @@
 #include "biome.h"
 #include "biome_tint.h"
 #include "terrain_density.h"
+#include "double_plant.h"
+#include "vine.h"
 #include <cstdint>
 #include <cstdlib>
 
@@ -46,6 +48,7 @@ constexpr uint64_t SALT_TREE = 1, SALT_CACTUS = 2, SALT_PLANT = 3;
 struct Column {
     int height; // topmost terrain block (after the 3D density, terrain_density.h)
     Biome biome;
+    TerrainGenerator::ColumnClimate climate; // only within TINT_BLEND_RADIUS of the chunk
     int slope; // largest height step to a 4-neighbor
     block_type surface;
     block_type subsurface;
@@ -88,6 +91,7 @@ struct GenContext {
     Cube* blocks;
     bool (&claimed)[CHUNK_SIZE][CHUNK_SIZE];
     const Column (*cols)[EXT]; // column grid incl. the MARGIN ring, indexed [i + MARGIN][k + MARGIN]
+    uint8_t* states;           // per-cell state bytes (vine sides), may be null
 
     // Biome of chunk-local column (i, k), clamped to the sampled margin.
     Biome biome(int i, int k) const {
@@ -104,7 +108,46 @@ struct GenContext {
     void set(int i, int j, int k, block_type t) const {
         if (!inChunk(i, k) || j < 0 || j >= CHUNK_HEIGHT) return;
         blocks[blockIndex(i, j, k)].setType(t);
+        if (states) states[blockIndex(i, j, k)] = 0; // e.g. a trunk over a vine
     }
+    int vine(int i, int j, int k, uint8_t sides, int len) const {
+        if (!inChunk(i, k)) return 0;
+        int n = 0;
+        for (int y = j; y > j - len && y >= 1 && y < CHUNK_HEIGHT; y--) {
+            const block_type here = blocks[blockIndex(i, y, k)].getType();
+            const block_type below = blocks[blockIndex(i, y - 1, k)].getType();
+            if ((here != AIR && here != VINE) || (below != AIR && below != VINE)) break;
+            blocks[blockIndex(i, y, k)].setType(VINE);
+            if (states) states[blockIndex(i, y, k)] |= sides;
+            wroteVines = true;
+            n++;
+        }
+        return n;
+    }
+    // After all trees: a vine side whose leaf never got written (its cell
+    // was taken) and that doesn't continue the vine above loses that side;
+    // a vine left with none goes. Sides facing another chunk are kept (the
+    // tree there is drawn the same way from both sides).
+    void pruneVines() const {
+        for (int i = 0; i < CHUNK_SIZE; i++)
+            for (int k = 0; k < CHUNK_SIZE; k++)
+                for (int j = CHUNK_HEIGHT - 2; j >= 1; j--) {
+                    const size_t at = blockIndex(i, j, k);
+                    if (blocks[at].getType() != VINE) continue;
+                    const bool vineAbove = blocks[blockIndex(i, j + 1, k)].getType() == VINE;
+                    const uint8_t above = vineAbove ? states[blockIndex(i, j + 1, k)] : 0;
+                    uint8_t keep = 0;
+                    for (int b = 0; b < 4; b++) {
+                        const uint8_t bit = static_cast<uint8_t>(1u << b);
+                        if ((states[at] & bit) == 0) continue;
+                        const int ni = i + vine::SIDE[b][0], nk = k + vine::SIDE[b][2];
+                        if (!inChunk(ni, nk) || vine::canSupport(get(ni, j, nk)) || (above & bit) != 0) keep |= bit;
+                    }
+                    states[at] = keep;
+                    if (keep == 0) blocks[at].setType(AIR);
+                }
+    }
+    mutable bool wroteVines = false;
     void setIfAir(int i, int j, int k, block_type t) const {
         if (!inChunk(i, k) || j < 0 || j >= CHUNK_HEIGHT) return;
         Cube& b = blocks[blockIndex(i, j, k)];
@@ -116,7 +159,7 @@ struct GenContext {
 
 void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* blocks,
                       int (&heights)[CHUNK_SIZE][CHUNK_SIZE], Biome (&biomes)[CHUNK_SIZE][CHUNK_SIZE],
-                      BiomeTints* tints) {
+                      BiomeTints* tints, uint8_t* states) {
     const int sea = terrain.getSeaLevel();
     const int ox = chunkX * CHUNK_SIZE, oz = chunkZ * CHUNK_SIZE;
     const uint64_t seed = terrain.getSeed();
@@ -136,7 +179,13 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
     for (int i = -MARGIN; i < CHUNK_SIZE + MARGIN; i++)
         for (int k = -MARGIN; k < CHUNK_SIZE + MARGIN; k++) {
             const int idx = (i + MARGIN) * EXT + (k + MARGIN);
-            target[idx] = terrain.getHeightAndBiome(ox + i, oz + k, col(i, k).biome, jagged[idx]);
+            Column& c = col(i, k);
+            // Climate where colours (the blend window) and ground cover read it.
+            const bool needClimate = i >= -TINT_BLEND_RADIUS && i < CHUNK_SIZE + TINT_BLEND_RADIUS &&
+                                     k >= -TINT_BLEND_RADIUS && k < CHUNK_SIZE + TINT_BLEND_RADIUS;
+            c.climate = {0.5, 0.5};
+            target[idx] = terrain.getHeightBiomeClimate(ox + i, oz + k, c.biome, needClimate ? &c.climate : nullptr,
+                                                        &jagged[idx]);
         }
     terraindensity::shapeColumns(terrain, ox - MARGIN, oz - MARGIN, EXT, target, jagged, bands);
     for (int i = -MARGIN; i < CHUNK_SIZE + MARGIN; i++)
@@ -234,14 +283,20 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
         }
     }
 
-    if (tints) blendBiomeTints([&](int i, int k) { return col(i, k).biome; }, *tints);
+    if (tints)
+        blendColumnTints(
+            [&](int i, int k) {
+                const Column& c = col(i, k);
+                return columnTint(c.biome, c.climate.temperature, c.climate.humidity);
+            },
+            *tints);
 
     // --- Vegetation ---
     // `claimed` marks in-chunk columns under a canopy (or holding a feature
     // / plant) so ground cover never grows in the shade or overlaps.
     bool claimed[CHUNK_SIZE][CHUNK_SIZE] = {};
     auto floorDiv = [](int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); };
-    GenContext ctx{blocks, claimed, cols};
+    GenContext ctx{blocks, claimed, cols, states};
 
     // Trees: one candidate per TREE_CELL² world cell, at a hashed offset
     // (0..2 inside the cell, so trunks are ≥ 2 apart). Every chunk walks the
@@ -307,7 +362,10 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
         }
     }
 
-    // Ground cover: per-column roll on open ground above the water.
+    if (states && ctx.wroteVines) ctx.pruneVines();
+
+    // Ground cover: per-column roll on open ground above the water, not
+    // right under a vine (vines keep a free cell under them).
     for (int i = 0; i < CHUNK_SIZE; i++) {
         for (int k = 0; k < CHUNK_SIZE; k++) {
             if (claimed[i][k]) continue;
@@ -315,12 +373,50 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
             const BiomeDef& def = biomeDef(c.biome);
             if (!def.groundCover || c.height <= sea || c.height + 1 >= CHUNK_HEIGHT) continue;
             if (blocks[blockIndex(i, c.height + 1, k)].getType() != AIR) continue;
+            if (c.height + 2 < CHUNK_HEIGHT && blocks[blockIndex(i, c.height + 2, k)].getType() == VINE) continue;
             const block_type ground = blocks[blockIndex(i, c.height, k)].getType();
             const auto roll = static_cast<uint32_t>(hash4(seed, ox + i, oz + k, SALT_PLANT) % 10000);
-            const block_type pick = def.groundCover(biomegen::GroundSite{ground, roll, ox + i, oz + k, seed});
-            if (pick != AIR) blocks[blockIndex(i, c.height + 1, k)].setType(pick);
+            const block_type pick = def.groundCover(biomegen::GroundSite{
+                ground, roll, ox + i, oz + k, seed, c.climate.temperature, c.climate.humidity});
+            if (pick == AIR) continue;
+            // Two-block plants need the cell above free, and no vine hanging
+            // just above it (vines stop over air), else the short kind.
+            if (double_plant::isLower(pick)) {
+                const int top = c.height + 2;
+                if (top < CHUNK_HEIGHT && blocks[blockIndex(i, top, k)].getType() == AIR &&
+                    (top + 1 >= CHUNK_HEIGHT || blocks[blockIndex(i, top + 1, k)].getType() != VINE)) {
+                    blocks[blockIndex(i, c.height + 1, k)].setType(pick);
+                    blocks[blockIndex(i, top, k)].setType(double_plant::upperOf(pick));
+                } else {
+                    blocks[blockIndex(i, c.height + 1, k)].setType(double_plant::shortOf(pick));
+                }
+                continue;
+            }
+            blocks[blockIndex(i, c.height + 1, k)].setType(pick);
         }
     }
+}
+
+void chunkColumns(TerrainGenerator& terrain, int chunkX, int chunkZ, int (&heights)[CHUNK_SIZE][CHUNK_SIZE],
+                  Biome (&biomes)[CHUNK_SIZE][CHUNK_SIZE], BiomeTints& tints) {
+    // blendColumnTints asks for every column of its window once, the chunk
+    // included; the colour blend reaches TINT_BLEND_RADIUS columns into the
+    // neighbouring chunks, and each column's colour depends on its climate.
+    blendColumnTints(
+        [&](int i, int k) {
+            Biome b;
+            TerrainGenerator::ColumnClimate climate{};
+            const int h =
+                terrain.getHeightBiomeClimate(chunkX * CHUNK_SIZE + i, chunkZ * CHUNK_SIZE + k, b, &climate);
+            if (GenContext::inChunk(i, k)) {
+                heights[i][k] = h;
+                biomes[i][k] = b;
+            }
+            return columnTint(b, climate.temperature, climate.humidity);
+        },
+        tints);
+    // The real surface, overhangs included (terrain_density.h).
+    terraindensity::surfaceHeights(terrain, chunkX, chunkZ, heights);
 }
 
 // --- BiomeDef hook plumbing (biome.h) ---
@@ -332,6 +428,9 @@ void TreeSite::leaf(int di, int y, int dk, block_type t) const {
 }
 void TreeSite::log(int di, int y, int dk, block_type t) const {
     static_cast<GenContext*>(impl)->set(i + di, y, k + dk, t);
+}
+int TreeSite::vine(int di, int y, int dk, uint8_t sides, int len) const {
+    return static_cast<GenContext*>(impl)->vine(i + di, y, k + dk, sides, len);
 }
 void TreeSite::claim(int radius) const {
     auto* ctx = static_cast<GenContext*>(impl);
