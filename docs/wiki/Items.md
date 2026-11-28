@@ -29,7 +29,7 @@ more than three times longer.
 | <img src="../../assets/Textures/leaves.png" width="16"> | Leaves | 10 | 0.2 | any | 0.3 s | 0.3 s | 0.3 s | Apple (1 in 200) | see-through |
 | <img src="../../assets/Textures/snow.png" width="16"> | Snow | 11 | 0.2 | shovel | 0.3 s | 0.15 s | 0.1 s | Snow | solid |
 | <img src="../../assets/Textures/gravel.png" width="16"> | Gravel | 12 | 0.6 | shovel | 0.9 s | 0.45 s | 0.25 s | Gravel | solid |
-| <img src="../../assets/Textures/cactus.png" width="16"> | Cactus | 13 | 0.4 | any | 0.6 s | 0.6 s | 0.6 s | Cactus | solid |
+| <img src="../../assets/Textures/cactus_top.png" width="16"> | Cactus | 13 | 0.4 | any | 0.6 s | 0.6 s | 0.6 s | Cactus | solid |
 | <img src="../../assets/Textures/tnt_top.png" width="16"> | TNT | 14 | 0 | any | instant | instant | instant | TNT | solid |
 | <img src="../../assets/Textures/tall_grass.png" width="16"> | Tall Grass | 15 | 0 | any | instant | instant | instant | nothing | plant |
 | <img src="../../assets/Textures/dandelion.png" width="16"> | Dandelion | 16 | 0 | any | instant | instant | instant | Dandelion | plant |
@@ -56,6 +56,21 @@ more than three times longer.
 | <img src="../../assets/Textures/ice.png" width="16"> | Ice | 37 | 0.5 | pickaxe | 0.75 s | 0.4 s | 0.2 s | nothing | solid |
 | <img src="../../assets/Textures/sandstone_top.png" width="16"> | Sandstone | 38 | 0.8 | pickaxe (needs tool) | 4 s | 0.6 s | 0.3 s | Sandstone | solid |
 | <img src="../../assets/Textures/dead_bush.png" width="16"> | Dead Bush | 39 | 0 | any | instant | instant | instant | Stick | plant |
+| <img src="../../assets/Textures/acacia_log_top.png" width="16"> | Acacia Log | 40 | 2 | axe | 3 s | 1.5 s | 0.75 s | Acacia Log | solid |
+| <img src="../../assets/Textures/acacia_leaves.png" width="16"> | Acacia Leaves | 41 | 0.2 | any | 0.3 s | 0.3 s | 0.3 s | nothing | see-through |
+| <img src="../../assets/Textures/jungle_log_top.png" width="16"> | Jungle Log | 42 | 2 | axe | 3 s | 1.5 s | 0.75 s | Jungle Log | solid |
+| <img src="../../assets/Textures/coarse_dirt.png" width="16"> | Coarse Dirt | 43 | 0.5 | shovel | 0.75 s | 0.4 s | 0.2 s | Coarse Dirt | solid |
+| <img src="../../assets/Textures/red_autumn_leaves.png" width="16"> | Red Autumn Leaves | 44 | 0.2 | any | 0.3 s | 0.3 s | 0.3 s | nothing | see-through |
+| <img src="../../assets/Textures/orange_autumn_leaves.png" width="16"> | Orange Autumn Leaves | 45 | 0.2 | any | 0.3 s | 0.3 s | 0.3 s | nothing | see-through |
+| <img src="../../assets/Textures/orange_tulip.png" width="16"> | Orange Tulip | 46 | 0 | any | instant | instant | instant | Orange Tulip | plant |
+| <img src="../../assets/Textures/clay.png" width="16"> | Clay | 47 | 0.6 | shovel | 0.9 s | 0.45 s | 0.25 s | Clay | solid |
+| <img src="../../assets/Textures/blue_orchid.png" width="16"> | Blue Orchid | 48 | 0 | any | instant | instant | instant | Blue Orchid | plant |
+| <img src="../../assets/Textures/jungle_leaves.png" width="16"> | Jungle Leaves | 49 | 0.2 | any | 0.3 s | 0.3 s | 0.3 s | nothing | see-through |
+| <img src="../../assets/Textures/vine.png" width="16"> | Vines | 50 | 0 | any | instant | instant | instant | nothing | plant |
+| <img src="../../assets/Textures/double_tall_grass_top.png" width="16"> | Double Tall Grass | 51 | 0 | any | instant | instant | instant | nothing | plant |
+| <img src="../../assets/Textures/double_tall_grass_top.png" width="16"> | Double Tall Grass | 52 | 0 | any | instant | instant | instant | nothing | plant |
+| <img src="../../assets/Textures/large_fern_top.png" width="16"> | Large Fern | 53 | 0 | any | instant | instant | instant | nothing | plant |
+| <img src="../../assets/Textures/large_fern_top.png" width="16"> | Large Fern | 54 | 0 | any | instant | instant | instant | nothing | plant |
 
 ## Tools and weapons
 
@@ -111,6 +126,8 @@ larger ones need a crafting table.
 | Oak Planks ×4 | Wood | inventory |
 | Oak Planks ×4 | Spruce Log | inventory |
 | Oak Planks ×4 | Birch Log | inventory |
+| Oak Planks ×4 | Acacia Log | inventory |
+| Oak Planks ×4 | Jungle Log | inventory |
 | Stick ×4 | Oak Planks<br>Oak Planks | inventory |
 | Torch ×4 | Coal<br>Stick | inventory |
 | Crafting Table | Oak Planks · Oak Planks<br>Oak Planks · Oak Planks | inventory |
