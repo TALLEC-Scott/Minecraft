@@ -257,10 +257,32 @@ TEST_F(TerrainDensityTest, FlatAndWetLandIsUntouched) {
     EXPECT_GT(plainCols, 1000);
 }
 
+TEST_F(TerrainDensityTest, CoalGetsCommonerWithAltitude) {
+    // Share of stone cells that are coal, by height: ~1.3% at depth and up to
+    // sea level, rising smoothly to ~5% on the peaks (modern Minecraft).
+    auto share = [&](int y) {
+        long n = 0, coal = 0;
+        for (int x = 0; x < 256; x++)
+            for (int z = 0; z < 256; z += 2) {
+                n++;
+                if (terrain.isCoalOre(x, y, z)) coal++;
+            }
+        return static_cast<double>(coal) / n;
+    };
+    const double deep = share(30), sea = share(SEA), mid = share(SEA + 24), peak = share(SEA + 50);
+    EXPECT_GT(deep, 0.006);
+    EXPECT_LT(deep, 0.025);
+    EXPECT_NEAR(sea, deep, 0.01);
+    EXPECT_GT(mid, sea);
+    EXPECT_GT(peak, mid);
+    EXPECT_GT(peak, 0.035);
+    EXPECT_LT(peak, 0.07);
+}
+
 TEST_F(TerrainDensityTest, ExposedRockShowsCoal) {
     // Cliff faces, bare peaks and overhang undersides are stone with ore in
-    // it, not plain stone: count rock blocks touching air above the water.
-    long rock = 0, coal = 0;
+    // it, not plain stone, and high rock is visibly more freckled than low.
+    long rock[2] = {}, coal[2] = {};
     for (int dx = 0; dx < 3; dx++)
         for (int dz = 0; dz < 3; dz++) {
             GenChunk c(terrain, MOUNTAIN_CX - 1 + dx, MOUNTAIN_CZ - 1 + dz);
@@ -273,11 +295,17 @@ TEST_F(TerrainDensityTest, ExposedRockShowsCoal) {
                                              c.at(x, y + 1, z) == AIR || c.at(x, y - 1, z) == AIR ||
                                              c.at(x, y, z + 1) == AIR || c.at(x, y, z - 1) == AIR;
                         if (!exposed) continue;
-                        rock++;
-                        if (t == COAL_ORE) coal++;
+                        const int band = y >= SEA + 28 ? 1 : 0;
+                        rock[band]++;
+                        if (t == COAL_ORE) coal[band]++;
                     }
         }
-    ASSERT_GT(rock, 1000);
-    EXPECT_GT(coal, 0);
-    EXPECT_GT(static_cast<double>(coal) / rock, 0.002) << coal << " coal of " << rock << " exposed rock";
+    ASSERT_GT(rock[0] + rock[1], 1000);
+    ASSERT_GT(rock[1], 200);
+    const double all = static_cast<double>(coal[0] + coal[1]) / static_cast<double>(rock[0] + rock[1]);
+    const double low = rock[0] ? static_cast<double>(coal[0]) / static_cast<double>(rock[0]) : 0.0;
+    const double high = static_cast<double>(coal[1]) / static_cast<double>(rock[1]);
+    EXPECT_GT(all, 0.02) << coal[0] + coal[1] << " coal of " << rock[0] + rock[1] << " exposed rock";
+    EXPECT_LT(all, 0.09);
+    EXPECT_GT(high, low) << "high " << high << " vs low " << low;
 }

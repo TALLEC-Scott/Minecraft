@@ -118,6 +118,11 @@ constexpr double PEAK_SOFT_CAP = 108.0;
 // Jaggedness: relief (blocks) over which overhangs fade in, share of the
 // cliff mask that counts, the band above sea level over which they fade in,
 // and how far past the river bank (× RIVER_BANK in noise units) they stay off.
+// Coal: the noise cutoff falls by COAL_HIGH_DROP over COAL_RAMP blocks
+// above sea level (1.3% → ~5% of stone).
+constexpr double COAL_RAMP = 48.0;
+constexpr double COAL_HIGH_DROP = 0.12;
+
 constexpr double JAG_RELIEF_LO = 9.0;
 constexpr double JAG_RELIEF_HI = 24.0;
 constexpr double JAG_CLIFF_SHARE = 1.0;
@@ -398,7 +403,12 @@ bool TerrainGenerator::isCoalOre(int wx, int wy, int wz) {
     // Blobs a few blocks across: thresholding a mid-frequency 3D noise
     // high keeps only isolated peaks, unlike the old near-zero band that
     // traced thin contour shells through all the stone.
-    return perlinNoise.noise(wx * 0.19 + 9100.0, wy * 0.19 + 9100.0, wz * 0.19 + 9100.0) > 0.57;
+    // Like modern Minecraft, coal gets commoner with altitude: ~1.3% of
+    // stone at and below sea level, rising smoothly to ~5% over the next
+    // COAL_RAMP blocks; the lower cutoff also grows the blobs into veins of
+    // a dozen or so blocks, so mountains and cliffs are freckled with it.
+    const double up = smoothstep(getSeaLevel(), getSeaLevel() + COAL_RAMP, static_cast<double>(wy));
+    return perlinNoise.noise(wx * 0.19 + 9100.0, wy * 0.19 + 9100.0, wz * 0.19 + 9100.0) > 0.57 - COAL_HIGH_DROP * up;
 }
 
 bool TerrainGenerator::isIronOre(int wx, int wy, int wz) {

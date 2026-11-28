@@ -57,7 +57,8 @@ class TerrainGenerator {
     // Caves may breach the surface crust only where this is true — rare,
     // patchy zones, so the ground isn't riddled with holes.
     bool caveEntranceAllowed(int x, int z);
-    // Coal ore: compact 3D blobs (~1% of stone), not noise contour sheets.
+    // Coal ore: compact 3D blobs, not noise contour sheets. ~1.3% of stone
+    // up to sea level, rising with altitude to ~5% (bigger veins) on peaks.
     bool isCoalOre(int wx, int wy, int wz);
     // Iron (y ≤ IRON_MAX_Y) and diamond (y ≤ DIAMOND_MAX_Y): smaller,
     // rarer blobs from their own noises.
