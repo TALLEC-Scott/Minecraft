@@ -50,6 +50,8 @@ inline BlockMining blockMining(block_type t) {
         /* FERN           */ {0.0f,  ToolKind::None,    false},
         /* IRON_ORE       */ {3.0f,  ToolKind::Pickaxe, true, 2}, // stone pickaxe
         /* DIAMOND_ORE    */ {3.0f,  ToolKind::Pickaxe, true, 3}, // iron pickaxe
+        /* OXEYE_DAISY    */ {0.0f,  ToolKind::None,    false},
+        /* CORNFLOWER     */ {0.0f,  ToolKind::None,    false},
     };
     // clang-format on
     static_assert(sizeof(table) / sizeof(table[0]) == BLOCK_TYPE_COUNT, "one row per block_type");

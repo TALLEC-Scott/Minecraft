@@ -47,7 +47,9 @@ constexpr int BIRCH_LEAVES_LAYER = BIRCH_LOG_TOP_LAYER + 1; // 50 (shaders: leaf
 constexpr int FERN_LAYER = BIRCH_LEAVES_LAYER + 1;          // 51 (shaders: plant cutout + sway)
 constexpr int IRON_ORE_LAYER = FERN_LAYER + 1;
 constexpr int DIAMOND_ORE_LAYER = IRON_ORE_LAYER + 1;
-constexpr int NUM_LAYERS = DIAMOND_ORE_LAYER + 1;
+constexpr int OXEYE_DAISY_LAYER = DIAMOND_ORE_LAYER + 1;
+constexpr int CORNFLOWER_LAYER = OXEYE_DAISY_LAYER + 1;
+constexpr int NUM_LAYERS = CORNFLOWER_LAYER + 1;
 // The shaders hard-code these; keep frag.shd / vert.shd in step if they move.
 static_assert(SPRUCE_LEAVES_LAYER == 47 && BIRCH_LEAVES_LAYER == 50 && FERN_LAYER == 51);
 
@@ -94,6 +96,8 @@ inline int layerForFace(block_type t, int face) {
     if (t == FERN) return FERN_LAYER;
     if (t == IRON_ORE) return IRON_ORE_LAYER;
     if (t == DIAMOND_ORE) return DIAMOND_ORE_LAYER;
+    if (t == OXEYE_DAISY) return OXEYE_DAISY_LAYER;
+    if (t == CORNFLOWER) return CORNFLOWER_LAYER;
     return static_cast<int>(t);
 }
 
@@ -115,6 +119,8 @@ inline int layerForType(block_type t) {
     if (t == FERN) return FERN_LAYER;
     if (t == IRON_ORE) return IRON_ORE_LAYER;
     if (t == DIAMOND_ORE) return DIAMOND_ORE_LAYER;
+    if (t == OXEYE_DAISY) return OXEYE_DAISY_LAYER;
+    if (t == CORNFLOWER) return CORNFLOWER_LAYER;
     return static_cast<int>(t);
 }
 
