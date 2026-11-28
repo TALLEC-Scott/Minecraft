@@ -49,7 +49,7 @@ TEST(SeasonalForestBlocks, AutumnLeavesAndTulipAreWiredUp) {
     EXPECT_FALSE(hasFlag(ORANGE_TULIP, BF_SOLID));
     EXPECT_EQ(blockDrop(ORANGE_TULIP, ITEM_EMPTY, 0.5f).id, blockItem(ORANGE_TULIP));
     EXPECT_STREQ(itemName(blockItem(ORANGE_TULIP)), "Orange Tulip");
-    EXPECT_EQ(block_layers::layerForType(ORANGE_TULIP), block_layers::NUM_LAYERS - 1);
+    EXPECT_EQ(block_layers::layerForType(ORANGE_TULIP), block_layers::ORANGE_TULIP_LAYER);
 }
 
 TEST(SeasonalForestTest, PatchNoiseIsSmooth) {
