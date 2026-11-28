@@ -8,10 +8,17 @@ out vec4 FragColor;
 
 uniform sampler2DArray ourTexture;
 uniform vec3 tintColor;
-uniform float glowMode; // 0 = textured (default), 1 = radial gradient for bloom halo, 2 = flat per-vertex colour (cube particles)
+uniform float glowMode; // 0 = textured (default), 1 = radial gradient for bloom halo, 2 = flat per-vertex colour (cube particles), 3 = torch tip rings
+uniform vec3 tintColorLow; // glowMode 3: the tip's lower ring (tintColor = upper ring)
+uniform vec3 tintColorFace; // glowMode 3: the tip's top face
 
 void main() {
-    if (glowMode > 1.5) {
+    if (glowMode > 2.5) {
+        // Torch tip (torch_model.cpp): flat, two rings split at v = 9/16;
+        // the top face (brightness TIP_TOP_FACE_BOOST) has its own colour.
+        vec3 c = brightness > 1.1 ? tintColorFace : (TexCoord.y > 0.5625 ? tintColor : tintColorLow);
+        FragColor = vec4(min(c, vec3(1.0)), 1.0);
+    } else if (glowMode > 1.5) {
         FragColor = vec4(vertexColor * tintColor * brightness, 1.0);
     } else if (glowMode > 0.5) {
         // Radial falloff from quad center — soft bloom halo

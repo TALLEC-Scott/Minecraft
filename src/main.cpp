@@ -2544,7 +2544,7 @@ int main(int argc, char* argv[]) {
                         // Standing and spinning, centered on the item's middle.
                         glm::mat4 tm = glm::translate(m, glm::vec3(0.0f, -0.5f * torch::STICK_HEIGHT, 0.0f));
                         torchModel.drawWorld(shaderProgram, tm, (float)(light.x * 16 + light.y),
-                                             torch::tipColor(t, item.spinPhase));
+                                             torch::tipColor(t));
                         continue;
                     }
                     if (bt != AIR && !hasFlag(bt, BF_CROSS) && !hasFlag(bt, BF_LIQUID)) {
@@ -2606,7 +2606,7 @@ int main(int argc, char* argv[]) {
                         // Gripped near its foot, tilted forward a little, full size.
                         glm::mat4 m = glm::translate(hand, glm::vec3(0.0f, -0.1f, 0.05f));
                         m = glm::rotate(m, glm::radians(20.0f), glm::vec3(1, 0, 0));
-                        torchModel.drawWorld(shaderProgram, m, packedLight, torch::tipColor(renderNow, 0.0f));
+                        torchModel.drawWorld(shaderProgram, m, packedLight, torch::tipColor(renderNow));
                     } else if (block_type held = itemBlock(r.heldItem);
                                held != AIR && !hasFlag(held, BF_LIQUID) && !hasFlag(held, BF_CROSS)) {
                         // Solid block: a small cube in front of the fist. Plants
@@ -2925,7 +2925,7 @@ int main(int argc, char* argv[]) {
                             m = glm::scale(m, glm::vec3(0.55f));
                             m = glm::translate(m, glm::vec3(0.0f, -0.12f, 0.0f));
                             torchModel.drawView(billboardShader, m, glm::vec3(1.0f),
-                                                torch::tipColor(glfwGetTime(), 0.0f));
+                                                torch::tipColor(glfwGetTime()));
                             billboardShader.setVec3("tintColor", armTint);
                         }
 

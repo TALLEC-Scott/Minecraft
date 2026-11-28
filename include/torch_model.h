@@ -3,13 +3,15 @@
 #include <glm/glm.hpp>
 
 #include "gl_header.h"
+#include "torch.h"
 
 class Shader;
 
 // The torch as Minecraft draws it: a 2×2×10-pixel stick textured from
 // torch.png, foot at the model origin, stick along +Y (see
 // torch::placedModel for placing one in a cell). The top 2 pixels (the
-// flame) are a separate cap drawn full-bright in `tipColor` so it can pulse.
+// flame) are a separate cap drawn unlit in `tipColor`: pale yellow top face,
+// orange upper ring, deep red lower ring, gently pulsing with a flare.
 // Torches are not in the chunk mesh, whose half-block vertex grid can't
 // hold a stick 2 pixels wide.
 class TorchModel {
@@ -17,12 +19,14 @@ class TorchModel {
     ~TorchModel();
 
     // Through the chunk shader (placed, dropped and remote-held torches).
-    // `packedLight` = sky * 16 + block at the torch. Leaves `entityColor`
-    // reset to white.
-    void drawWorld(const Shader& chunkShader, const glm::mat4& model, float packedLight, glm::vec3 tipColor);
+    // `packedLight` = sky * 16 + block at the torch. Leaves `glowColor`
+    // switched off.
+    void drawWorld(const Shader& chunkShader, const glm::mat4& model, float packedLight,
+                   const torch::TipColors& tipColor);
     // Through the billboard shader (the first-person hand pass). Leaves
-    // `tintColor` set to `tipColor`.
-    void drawView(const Shader& billboardShader, const glm::mat4& model, glm::vec3 bodyTint, glm::vec3 tipColor);
+    // `tintColor` set to `tipColor.top` and `glowMode` at 0.
+    void drawView(const Shader& billboardShader, const glm::mat4& model, glm::vec3 bodyTint,
+                  const torch::TipColors& tipColor);
 
     void destroy();
 
