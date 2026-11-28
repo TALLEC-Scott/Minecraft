@@ -304,6 +304,7 @@ else()
         tests/test_worldgen.cpp
         tests/test_biome_registry.cpp
         tests/test_biome_rainforest.cpp
+        tests/test_biome_swampland.cpp
         tests/test_biome_desert.cpp
         tests/test_biome_tundra.cpp
         tests/test_biome_savanna.cpp
