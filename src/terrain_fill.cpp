@@ -86,6 +86,14 @@ void classify(Column& c, int sea, const BiomeDef& bp) {
 struct GenContext {
     Cube* blocks;
     bool (&claimed)[CHUNK_SIZE][CHUNK_SIZE];
+    const Column (*cols)[EXT]; // column grid incl. the MARGIN ring, indexed [i + MARGIN][k + MARGIN]
+
+    // Biome of chunk-local column (i, k), clamped to the sampled margin.
+    Biome biome(int i, int k) const {
+        i = std::clamp(i, -MARGIN, CHUNK_SIZE + MARGIN - 1);
+        k = std::clamp(k, -MARGIN, CHUNK_SIZE + MARGIN - 1);
+        return cols[i + MARGIN][k + MARGIN].biome;
+    }
 
     static bool inChunk(int i, int k) { return i >= 0 && i < CHUNK_SIZE && k >= 0 && k < CHUNK_SIZE; }
     block_type get(int i, int j, int k) const {
@@ -201,7 +209,7 @@ void fillChunkTerrain(TerrainGenerator& terrain, int chunkX, int chunkZ, Cube* b
     // / plant) so ground cover never grows in the shade or overlaps.
     bool claimed[CHUNK_SIZE][CHUNK_SIZE] = {};
     auto floorDiv = [](int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); };
-    GenContext ctx{blocks, claimed};
+    GenContext ctx{blocks, claimed, cols};
 
     // Trees: one candidate per TREE_CELL² world cell, at a hashed offset
     // (0..2 inside the cell, so trunks are ≥ 2 apart). Every chunk walks the
@@ -317,6 +325,9 @@ void FeatureSite::set(int y, block_type t) const {
 }
 void FeatureSite::setAt(int di, int y, int dk, block_type t) const {
     static_cast<GenContext*>(impl)->setIfAir(i + di, y, k + dk, t);
+}
+Biome FeatureSite::biomeAt(int di, int dk) const {
+    return static_cast<GenContext*>(impl)->biome(i + di, k + dk);
 }
 void FeatureSite::claim() const {
     static_cast<GenContext*>(impl)->claimed[i][k] = true;

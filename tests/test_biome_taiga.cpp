@@ -137,36 +137,29 @@ TEST_F(TaigaTest, CanopiesStayWithinTreeMaxRadiusAndMatchAcrossBorders) {
 }
 
 TEST_F(TaigaTest, PodzolAndMossyCobblestoneStayInTaiga) {
-    // Podzol may spill a few columns past a taiga cell; never far.
-    long podzol = 0, farPodzol = 0, mossy = 0, farMossy = 0;
-    for (int cx = -30; cx < 30; cx += 6)
-        for (int cz = -30; cz < 30; cz += 6) {
+    // Podzol and boulders keep to taiga columns (FeatureSite::biomeAt), so
+    // they never spill onto a neighbour's grass; chunks with a taiga border
+    // are part of the sample.
+    long podzol = 0, mixedChunks = 0;
+    for (int cx = -40; cx < 40; cx += 5)
+        for (int cz = -40; cz < 40; cz += 5) {
             GenChunk c(terrain, cx, cz);
+            int taigaCols = 0;
             for (int x = 0; x < CHUNK_SIZE; x++)
                 for (int z = 0; z < CHUNK_SIZE; z++) {
-                    bool nearTaiga = false;
-                    for (int dx = -8; dx <= 8 && !nearTaiga; dx += 4)
-                        for (int dz = -8; dz <= 8 && !nearTaiga; dz += 4) {
-                            Biome b;
-                            terrain.getHeightAndBiome(cx * CHUNK_SIZE + x + dx, cz * CHUNK_SIZE + z + dz, b);
-                            nearTaiga = b == BIOME_TAIGA;
-                        }
+                    const bool taiga = c.biomes[x][z] == BIOME_TAIGA;
+                    taigaCols += taiga;
                     const int h = c.heights[x][z];
-                    for (int y = h - 1; y <= h + 3; y++) {
+                    for (int y = h - 2; y <= h + 3; y++) {
                         const block_type t = c.at(x, y, z);
-                        if (t == PODZOL) {
-                            podzol++;
-                            farPodzol += !nearTaiga;
-                        }
-                        if (t == MOSSY_COBBLESTONE) {
-                            mossy++;
-                            farMossy += !nearTaiga;
-                        }
+                        if (t != PODZOL && t != MOSSY_COBBLESTONE) continue;
+                        podzol += t == PODZOL;
+                        ASSERT_TRUE(taiga) << (t == PODZOL ? "podzol" : "mossy cobblestone") << " on a non-taiga column at ("
+                                           << cx * CHUNK_SIZE + x << ", " << y << ", " << cz * CHUNK_SIZE + z << ")";
                     }
                 }
+            mixedChunks += taigaCols > 0 && taigaCols < CHUNK_SIZE * CHUNK_SIZE;
         }
     EXPECT_GT(podzol, 0) << "sample holds no taiga";
-    EXPECT_EQ(farPodzol, 0);
-    EXPECT_EQ(farMossy, 0);
-    (void)mossy;
+    EXPECT_GT(mixedChunks, 0) << "sample holds no taiga border";
 }

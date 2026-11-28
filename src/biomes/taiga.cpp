@@ -57,10 +57,20 @@ double valueNoise(uint64_t seed, int wx, int wz, int cell, uint64_t salt) {
 
 // Podzol: large soft patches with ragged edges. Shaded ground (under a
 // spruce) turns to podzol far more readily, as needle litter piles up there.
-bool podzolAt(uint64_t seed, int wx, int wz, bool shaded) {
+// `edge` (0..1) is how much non-taiga ground is nearby: patches thin out
+// toward a border instead of stopping at a hard line.
+bool podzolAt(uint64_t seed, int wx, int wz, bool shaded, double edge) {
     const double f = 0.75 * valueNoise(seed, wx, wz, 9, SALT_PODZOL) +
                      0.25 * valueNoise(seed, wx, wz, 3, SALT_PODZOL_FINE);
-    return f > (shaded ? 0.42 : 0.58);
+    return f > (shaded ? 0.42 : 0.58) + 0.8 * edge;
+}
+
+// Share of non-taiga columns among 8 probes 2..5 columns away.
+double edgeness(const FeatureSite& s, int di, int dk) {
+    const int probes[8][2] = {{2, 0}, {-2, 0}, {0, 2}, {0, -2}, {5, 0}, {-5, 0}, {0, 5}, {0, -5}};
+    int other = 0;
+    for (const auto& p : probes) other += s.biomeAt(di + p[0], dk + p[1]) != BIOME_TAIGA;
+    return other / 8.0;
 }
 
 // --- Trees ---
@@ -158,12 +168,13 @@ void paintPodzol(const FeatureSite& s, int x0, int x1, int z0, int z1) {
     for (int wx = x0; wx <= x1; wx++)
         for (int wz = z0; wz <= z1; wz++) {
             const int di = wx - s.wx, dk = wz - s.wz;
+            if (s.biomeAt(di, dk) != BIOME_TAIGA) continue; // never onto a neighbour's grass
             bool shaded = false;
             for (int y = std::min(s.surface + 24, CHUNK_HEIGHT - 1); y >= s.surface - 10 && y > 0; y--) {
                 const block_type t = s.atNear(di, y, dk);
                 if (isSpruce(t)) shaded = true;
                 if (t == GRASS) {
-                    if (podzolAt(s.seed, wx, wz, shaded)) s.replace(di, y, dk, PODZOL);
+                    if (podzolAt(s.seed, wx, wz, shaded, edgeness(s, di, dk))) s.replace(di, y, dk, PODZOL);
                     break;
                 }
                 if (t != AIR && !isSpruce(t) && !hasFlag(t, BF_CROSS)) break; // other ground / water
@@ -176,6 +187,9 @@ void paintPodzol(const FeatureSite& s, int x0, int x1, int z0, int z1) {
 void boulder(const FeatureSite& s) {
     if (s.i < 1 || s.i > CHUNK_SIZE - 2 || s.k < 1 || s.k > CHUNK_SIZE - 2) return;
     if (s.surface <= s.seaLevel + 1 || s.surface + 3 >= CHUNK_HEIGHT) return;
+    for (int di = -1; di <= 1; di++)
+        for (int dk = -1; dk <= 1; dk++)
+            if (s.biomeAt(di, dk) != BIOME_TAIGA) return; // whole boulder on taiga ground
     const uint64_t b = s.bits >> 16;
     auto stone = [&](int n) { return ((b >> (20 + n)) & 3) == 0 ? COBBLESTONE : MOSSY_COBBLESTONE; };
     auto put = [&](int di, int y, int dk, block_type t) {

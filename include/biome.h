@@ -73,6 +73,10 @@ struct FeatureSite {
     // accept that features stop at chunk edges.
     void replace(int di, int y, int dk, block_type t) const;
     void claim() const;                          // shade this column (ground cover skips it)
+    // Biome of a nearby column (chunk-local offset from this site), so a
+    // feature can keep to its own biome. Valid within TREE_MAX_RADIUS + 2
+    // columns outside the chunk (terrain_fill's sampled margin; clamped beyond).
+    Biome biomeAt(int di, int dk) const;
 
     void* impl = nullptr;
 };
