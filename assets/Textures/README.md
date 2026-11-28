@@ -48,6 +48,11 @@ modified versions of them, stay under CC BY-SA 4.0; the rest of the project is u
 | `orange_tulip.png` | `ITEMS/mcl_flowers/textures/flowers_tulip.png` (unmodified) |
 | `clay.png` | `ITEMS/mcl_core/textures/default_clay.png` (unmodified) |
 | `blue_orchid.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_blue_orchid.png` (unmodified) |
+| `tall_grass.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_tallgrass.png`, tinted ×`#8BDB46` (the grass block's average green) |
+| `double_tall_grass_bottom.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_double_plant_grass_bottom.png`, tinted ×`#8BDB46` |
+| `double_tall_grass_top.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_double_plant_grass_top.png`, tinted ×`#8BDB46` |
+| `large_fern_bottom.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_double_plant_fern_bottom.png`, tinted ×`#6ADE3C` |
+| `large_fern_top.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_double_plant_fern_top.png`, tinted ×`#6ADE3C` |
 
 "Tinted" files are the grayscale originals multiplied by a fixed colour (the game has no runtime
 biome tint), made with `scripts/tint_textures.py`.

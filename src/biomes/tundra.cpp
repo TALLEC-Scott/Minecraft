@@ -139,6 +139,12 @@ void decorate(const FeatureSite& s) {
     }
 }
 
+// No plants poke through the snow; a bare grass column (rare) gets the
+// cold climate's grass, which fades to nothing toward the snow line.
+block_type groundCover(const biomegen::GroundSite& g) {
+    return g.ground == GRASS ? biomegen::climateGrass(g) : AIR;
+}
+
 } // namespace
 
 const BiomeDef TUNDRA_DEF = {
@@ -146,7 +152,7 @@ const BiomeDef TUNDRA_DEF = {
     SNOW, DIRT, GRAVEL,
     0.20f, &growTree,
     &decorate,
-    nullptr, // no plants poke through the snow
+    &groundCover,
     // Hardly any grass shows here (it's all snow), but the colours blend
     // ~4 blocks into the neighbours: a colder, paler take on taiga's
     // blue-green (0.84, 0.90, 1.50), so grass mutes toward the snow line.

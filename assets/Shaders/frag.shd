@@ -132,8 +132,10 @@ void main() {
     // (11: tint only its green texels, not the dirt), tall grass (24) and
     // ferns (51) take the grass colour; oak leaves (10) the foliage colour.
     // Spruce and birch leaves keep their own colours.
+    // Two-block grass and large ferns (76..79) too.
     bool grassTinted = abs(texLayer - 1.0) < 0.5 || abs(texLayer - 24.0) < 0.5 || abs(texLayer - 51.0) < 0.5 ||
-                       (abs(texLayer - 11.0) < 0.5 && texColor.g > texColor.r);
+                       (abs(texLayer - 11.0) < 0.5 && texColor.g > texColor.r) ||
+                       (texLayer > 75.5 && texLayer < 79.5);
     if (grassTinted)
         texColor.rgb = min(texColor.rgb * biomeTint(grassTintMap), vec3(1.0));
     else if (abs(texLayer - 10.0) < 0.5)

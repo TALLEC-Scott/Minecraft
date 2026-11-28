@@ -2,6 +2,7 @@
 #include "entity_manager.h"
 #include "frustum.h"
 #include "block_effects.h"
+#include "double_plant.h"
 #include "light_data.h"
 #include "light_propagation.h"
 #include "mob_manager.h"
@@ -132,6 +133,15 @@ void World::destroyBlock(glm::vec3 position, std::vector<glm::ivec3>* popped) co
     waterSimulator->activateNeighbors(bx, by, bz);
 
     popTorchesSupportedBy({bx, by, bz}, popped);
+
+    // A two-block plant goes as a whole: break its other half too (that
+    // call finds this cell already air, so it stops there).
+    int dy = 0;
+    block_type other = AIR;
+    if (double_plant::partner(oldType, dy, other)) {
+        Cube* half = getBlock(bx, by + dy, bz);
+        if (half && half->getType() == other) destroyBlock(glm::vec3(bx, by + dy, bz));
+    }
 }
 
 void World::popTorchesSupportedBy(glm::ivec3 b, std::vector<glm::ivec3>* popped) const {
@@ -197,6 +207,13 @@ bool World::placeBlock(glm::ivec3 position, block_type type, uint8_t state, uint
         waterSimulator->activate(bx, by, bz);
     }
     waterSimulator->activateNeighbors(bx, by, bz);
+
+    // A two-block plant's lower half brings its upper half, if there's room
+    // (the player only places one where there is).
+    if (double_plant::isLower(type)) {
+        Cube* above = getBlock(bx, by + 1, bz);
+        if (above && above->getType() == AIR) placeBlock({bx, by + 1, bz}, double_plant::upperOf(type));
+    }
     return true;
 }
 

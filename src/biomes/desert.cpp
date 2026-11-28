@@ -89,7 +89,10 @@ void decorate(const biomegen::FeatureSite& f) {
 
 // Dead bushes: scattered singly over the sand, ~1 in 110 columns.
 block_type groundCover(const biomegen::GroundSite& g) {
-    return g.ground == SAND && g.roll < 90 ? DEAD_BUSH : AIR;
+    if (g.ground == SAND) return g.roll < 90 ? DEAD_BUSH : AIR;
+    // Grass only on the rare grass column (at a border), as the hot, dry
+    // climate grows it: hardly any.
+    return g.ground == GRASS ? biomegen::climateGrass(g) : AIR;
 }
 
 } // namespace

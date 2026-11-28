@@ -89,6 +89,13 @@ void main() {
                          abs(aTexLayer - 67.0) < 0.5 || (aTexLayer > 70.5 && aTexLayer < 72.5));
     float isTallGrass = float(abs(aTexLayer - 24.0) < 0.5 || abs(aTexLayer - 51.0) < 0.5);
     float swayAmount = isLeaf + isTallGrass * aTexCoord.y;
+    // Two-block plants (76..79: grass bottom / top, large fern bottom / top)
+    // bend as one stalk: the lower half's top meets the upper half's
+    // bottom at 0.6, the tip reaches 1.2.
+    if (aTexLayer > 75.5 && aTexLayer < 79.5) {
+        float upper = mod(floor(aTexLayer + 0.5) - 76.0, 2.0); // 1 on the top halves
+        swayAmount = 0.6 * (upper + aTexCoord.y);
+    }
     pos.x += swayAmount * leafSway.x;
     pos.z += swayAmount * leafSway.y;
     vec4 worldPos = model * vec4(pos, 1.0);

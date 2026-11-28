@@ -81,11 +81,17 @@ enum block_type : uint8_t {
     ORANGE_AUTUMN_LEAVES,
     ORANGE_TULIP,
     CLAY,
-    BLUE_ORCHID
+    BLUE_ORCHID,
+    // Two-block plants (double_plant.h): the lower half is the item / what
+    // generation places, the upper half only ever sits on top of it.
+    DOUBLE_TALL_GRASS,
+    DOUBLE_TALL_GRASS_TOP,
+    LARGE_FERN,
+    LARGE_FERN_TOP
 };
-// Number of block_type values; keep BLUE_ORCHID (the last one) in sync.
+// Number of block_type values; keep LARGE_FERN_TOP (the last one) in sync.
 // Values are saved in chunk files and level.dat: append only.
-inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(BLUE_ORCHID) + 1;
+inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(LARGE_FERN_TOP) + 1;
 
 // Values index tables (BIOME_DEFS in biome.cpp, mob spawn masks). Not saved
 // (recomputed from the seed), so they may be reordered. One BiomeDef each.
@@ -203,6 +209,10 @@ inline uint32_t getBlockFlags(block_type t) {
         /* ORANGE_TULIP  */ BF_TRANSPARENT | BF_CROSS,
         /* CLAY          */ BF_SOLID | BF_OPAQUE,
         /* BLUE_ORCHID   */ BF_TRANSPARENT | BF_CROSS,
+        /* DOUBLE_TALL_GRASS     */ BF_TRANSPARENT | BF_CROSS,
+        /* DOUBLE_TALL_GRASS_TOP */ BF_TRANSPARENT | BF_CROSS,
+        /* LARGE_FERN            */ BF_TRANSPARENT | BF_CROSS,
+        /* LARGE_FERN_TOP        */ BF_TRANSPARENT | BF_CROSS,
     };
     // clang-format on
     int idx = static_cast<int>(t);
@@ -303,6 +313,10 @@ inline StepSound getStepSound(block_type t) {
         /* ORANGE_TULIP  */ STEP_GRASS,
         /* CLAY          */ STEP_GRAVEL,
         /* BLUE_ORCHID   */ STEP_GRASS,
+        /* DOUBLE_TALL_GRASS     */ STEP_GRASS,
+        /* DOUBLE_TALL_GRASS_TOP */ STEP_GRASS,
+        /* LARGE_FERN            */ STEP_GRASS,
+        /* LARGE_FERN_TOP        */ STEP_GRASS,
     };
     // clang-format on
     int idx = static_cast<int>(t);

@@ -96,6 +96,8 @@ class Inventory {
         OXEYE_DAISY,
         CORNFLOWER,
         BLUE_ORCHID,
+        DOUBLE_TALL_GRASS,
+        LARGE_FERN,
         TNT,
         CRAFTING_TABLE,
         OBSIDIAN,

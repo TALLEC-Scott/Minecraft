@@ -6,9 +6,9 @@
 namespace {
 
 block_type groundCover(const biomegen::GroundSite& g) {
-    const block_type ground = g.ground;
-    const uint32_t roll = g.roll;
-    return ground == GRASS && roll < 200 ? TALL_GRASS : AIR;
+    // The odd grass column at the back of the beach: a thin share of the
+    // climate's grass.
+    return g.ground == GRASS ? biomegen::climateGrass(g, 0.3, 0.5) : AIR;
 }
 
 } // namespace
