@@ -2607,7 +2607,8 @@ int main(int argc, char* argv[]) {
                         glm::mat4 m = glm::translate(hand, glm::vec3(0.0f, -0.1f, 0.05f));
                         m = glm::rotate(m, glm::radians(20.0f), glm::vec3(1, 0, 0));
                         torchModel.drawWorld(shaderProgram, m, packedLight, torch::tipColor(renderNow, 0.0f));
-                    } else if (block_type held = itemBlock(r.heldItem); held != AIR && !hasFlag(held, BF_LIQUID)) {
+                    } else if (block_type held = itemBlock(r.heldItem);
+                               held != AIR && !hasFlag(held, BF_LIQUID) && !hasFlag(held, BF_CROSS)) {
                         // Solid block: a small cube in front of the fist. Plants
                         // and water have no cube form, so nothing is drawn.
                         glm::mat4 m = glm::translate(hand, glm::vec3(0.0f, -0.05f, 0.12f));

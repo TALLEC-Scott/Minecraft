@@ -47,13 +47,14 @@ TEST(NetProtocol, PlayerStateRoundtrip) {
 }
 
 TEST(NetProtocol, PlaceIntentRoundtrip) {
-    PlaceIntentMsg in{glm::ivec3(-5, 64, 7), 3};
+    PlaceIntentMsg in{glm::ivec3(-5, 64, 7), 3, 2}; // state 2: a wall torch's facing
     std::vector<uint8_t> buf;
     encodePlaceIntent(buf, in);
     PlaceIntentMsg out{};
     ASSERT_TRUE(decodePlaceIntent(buf.data(), buf.size(), out));
     EXPECT_EQ(out.pos, in.pos);
     EXPECT_EQ(out.blockType, in.blockType);
+    EXPECT_EQ(out.state, in.state);
 }
 
 TEST(NetProtocol, DestroyIntentRoundtrip) {
@@ -66,13 +67,24 @@ TEST(NetProtocol, DestroyIntentRoundtrip) {
 }
 
 TEST(NetProtocol, PlaceApplyRoundtrip) {
-    PlaceApplyMsg in{glm::ivec3(1, 2, 3), 255};
+    PlaceApplyMsg in{glm::ivec3(1, 2, 3), 255, 4};
     std::vector<uint8_t> buf;
     encodePlaceApply(buf, in);
     PlaceApplyMsg out{};
     ASSERT_TRUE(decodePlaceApply(buf.data(), buf.size(), out));
     EXPECT_EQ(out.pos, in.pos);
     EXPECT_EQ(out.blockType, in.blockType);
+    EXPECT_EQ(out.state, in.state);
+}
+
+TEST(NetProtocol, PlaceStateDefaultsToNone) {
+    PlaceApplyMsg in{glm::ivec3(0, 70, 0), 1}; // a plain block: no state given
+    std::vector<uint8_t> buf;
+    encodePlaceApply(buf, in);
+    PlaceApplyMsg out{};
+    out.state = 0;
+    ASSERT_TRUE(decodePlaceApply(buf.data(), buf.size(), out));
+    EXPECT_EQ(out.state, BLOCK_STATE_NONE);
 }
 
 TEST(NetProtocol, DestroyApplyRoundtrip) {

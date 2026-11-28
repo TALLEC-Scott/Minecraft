@@ -78,8 +78,9 @@ inline glm::vec3 tipColor(double time, float phase) {
     return glm::mix(glm::vec3(1.3f, 0.95f, 0.55f), glm::vec3(1.4f, 0.3f, 0.12f), pulse);
 }
 inline float tipPhase(glm::ivec3 cell) {
-    auto h = static_cast<uint32_t>(cell.x * 73856093) ^ static_cast<uint32_t>(cell.y * 19349663) ^
-             static_cast<uint32_t>(cell.z * 83492791);
+    // Unsigned multiplies: they wrap, where signed overflow would be UB.
+    uint32_t h = static_cast<uint32_t>(cell.x) * 73856093u ^ static_cast<uint32_t>(cell.y) * 19349663u ^
+                 static_cast<uint32_t>(cell.z) * 83492791u;
     return static_cast<float>(h % 628u) * 0.01f;
 }
 

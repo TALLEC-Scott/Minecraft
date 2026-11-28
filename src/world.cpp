@@ -131,11 +131,14 @@ void World::destroyBlock(glm::vec3 position, std::vector<glm::ivec3>* popped) co
     // Trigger water simulation for neighbors (water may flow into the gap)
     waterSimulator->activateNeighbors(bx, by, bz);
 
-    // Torches hanging on (or standing on) this block fall off with it.
+    popTorchesSupportedBy({bx, by, bz}, popped);
+}
+
+void World::popTorchesSupportedBy(glm::ivec3 b, std::vector<glm::ivec3>* popped) const {
     for (int s = 0; s <= 4; ++s) {
-        // The torch that block (bx,by,bz) would support in state s sits
-        // opposite that state's support offset.
-        int tx = bx - torch::SUPPORT[s][0], ty = by - torch::SUPPORT[s][1], tz = bz - torch::SUPPORT[s][2];
+        // The torch that block b would support in state s sits opposite
+        // that state's support offset.
+        int tx = b.x - torch::SUPPORT[s][0], ty = b.y - torch::SUPPORT[s][1], tz = b.z - torch::SUPPORT[s][2];
         if (ty < 0 || ty >= CHUNK_HEIGHT) continue;
         int tcx = worldToChunk(tx), tcz = worldToChunk(tz);
         Chunk* tc = chunkManager->getChunk(tcx, tcz);
@@ -157,11 +160,11 @@ uint8_t World::torchStateAt(glm::ivec3 p) const {
     return torch::INVALID;
 }
 
-void World::placeBlock(glm::ivec3 position, block_type type, uint8_t state) const {
+bool World::placeBlock(glm::ivec3 position, block_type type, uint8_t state, uint8_t* placedState) const {
     int bx = position.x;
     int by = position.y;
     int bz = position.z;
-    if (by < 0 || by >= CHUNK_HEIGHT) return;
+    if (by < 0 || by >= CHUNK_HEIGHT) return false;
 
     int chunkX = worldToChunk(bx);
     int chunkZ = worldToChunk(bz);
@@ -169,15 +172,17 @@ void World::placeBlock(glm::ivec3 position, block_type type, uint8_t state) cons
     int lz = worldToLocal(bz, chunkZ);
 
     auto chunk = this->chunkManager->getChunk(chunkX, chunkZ);
-    if (!chunk) return;
+    if (!chunk) return false;
     // Placing goes into air or, since aiming passes through liquids, into
     // water or lava: whatever was there takes its light with it.
     block_type oldType = chunk->getBlockType(lx, by, lz);
     if (type == TORCH && !torch::validState(state)) {
-        // A network echo of our own placement keeps the facing we chose.
+        // No facing given: keep an existing torch's, else find a support.
         state = oldType == TORCH ? chunk->getWaterLevel(lx, by, lz) : torchStateAt(position);
     }
-    if (type == TORCH && !torch::validState(state)) return; // nothing to hang on
+    if (type == TORCH && !torch::validState(state)) return false; // nothing to hang on
+    if (type != TORCH) state = 0;
+    if (placedState) *placedState = state;
     chunk->placeBlock(lx, by, lz, type);
     if (type == TORCH) chunk->setWaterLevel(lx, by, lz, state);
     markBorderNeighborsDirty(chunkManager, chunkX, chunkZ, lx, by, lz);
@@ -192,6 +197,7 @@ void World::placeBlock(glm::ivec3 position, block_type type, uint8_t state) cons
         waterSimulator->activate(bx, by, bz);
     }
     waterSimulator->activateNeighbors(bx, by, bz);
+    return true;
 }
 
 World::~World() {
@@ -348,6 +354,7 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
             for (const glm::ivec3& t : c.torchCells()) {
                 if (!(c.visibleSections & (1u << (t.y >> 4)))) continue;
                 glm::ivec3 cell(vc.pos.x * CHUNK_SIZE + t.x, t.y, vc.pos.y * CHUNK_SIZE + t.z);
+                if (!aabbInFrustum(planes, glm::vec3(cell) - 0.5f, glm::vec3(cell) + 0.5f)) continue;
                 auto light = static_cast<float>(c.getSkyLight(t.x, t.y, t.z) * 16 + c.getBlockLight(t.x, t.y, t.z));
                 torchModel->drawWorld(shaderProgram, torch::placedModel(cell, c.getWaterLevel(t.x, t.y, t.z)), light,
                                       torch::tipColor(time, torch::tipPhase(cell)));
@@ -416,6 +423,7 @@ void World::igniteTnt(glm::ivec3 pos, double now) const {
     setBlock(pos.x, pos.y, pos.z, AIR);
     floodSkyLightWorld(chunkManager, pos.x, pos.y, pos.z);
     waterSimulator->activateNeighbors(pos.x, pos.y, pos.z);
+    popTorchesSupportedBy(pos);
     // Spawn entity at block center so it sits flush with the world grid.
     entityManager->spawnTnt(glm::vec3(pos.x, pos.y, pos.z), TntEntity::DEFAULT_FUSE, now);
 }
@@ -453,6 +461,7 @@ void World::explode(glm::vec3 center, float power, double now) const {
                     setBlock(bx, by, bz, AIR);
                     floodSkyLightWorld(chunkManager, bx, by, bz);
                     waterSimulator->activateNeighbors(bx, by, bz);
+                    popTorchesSupportedBy({bx, by, bz});
                     entityManager->spawnTnt(glm::vec3(bx, by, bz), chainFuse(rng), now);
                     continue;
                 }

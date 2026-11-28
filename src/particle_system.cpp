@@ -144,19 +144,22 @@ void ParticleSystem::render(const Shader& billboardShader, glm::vec3 cameraPos, 
         std::vector<float> verts;
         int quads = 0;
     };
-    std::vector<Batch> batches, cubeBatches;
-    auto findBatch = [&](std::vector<Batch>& list, glm::vec3 t) -> Batch& {
-        for (auto& b : list) {
+    std::vector<Batch> batches;
+    auto findBatch = [&](glm::vec3 t) -> Batch& {
+        for (auto& b : batches) {
             if (glm::all(glm::epsilonEqual(b.tint, t, 0.001f))) return b;
         }
-        list.push_back({t, {}, 0});
-        list.back().verts.reserve(64 * VERTS_PER_QUAD * VERT_FLOATS);
-        return list.back();
+        batches.push_back({t, {}, 0});
+        batches.back().verts.reserve(64 * VERTS_PER_QUAD * VERT_FLOATS);
+        return batches.back();
     };
-    auto pushVert = [](Batch& b, glm::vec3 pos, float u, float v, float layer, float bright) {
-        const float vert[VERT_FLOATS] = {pos.x, pos.y, pos.z, u, v, 0.0f, 0.0f, 1.0f, layer, bright};
+    // The normal slot carries the colour (only flat mode reads it).
+    auto pushVert = [](Batch& b, glm::vec3 pos, float u, float v, glm::vec3 color, float layer, float bright) {
+        const float vert[VERT_FLOATS] = {pos.x, pos.y, pos.z, u, v, color.r, color.g, color.b, layer, bright};
         b.verts.insert(b.verts.end(), vert, vert + VERT_FLOATS);
     };
+    // Every cube in one draw: the shaded colour rides per vertex.
+    Batch cubes{glm::vec3(1.0f), {}, 0};
 
     glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
     for (auto& p : pool) {
@@ -166,11 +169,11 @@ void ParticleSystem::render(const Shader& billboardShader, glm::vec3 cameraPos, 
             float t = p.life / p.maxLife;
             float half = p.size * (t < 0.5f ? 1.0f : 2.0f * (1.0f - t));
             if (half <= 0.0f) continue;
-            // One batch per face shade (tint × shade), since the colour is per batch.
             for (const CubeFace& f : CUBE_FACES) {
-                Batch& b = findBatch(cubeBatches, p.tint * f.shade);
-                for (const auto& c : f.v) pushVert(b, p.pos + glm::vec3(c[0], c[1], c[2]) * half, 0.5f, 0.5f, 0.0f, 1.0f);
-                ++b.quads;
+                for (const auto& c : f.v)
+                    pushVert(cubes, p.pos + glm::vec3(c[0], c[1], c[2]) * half, 0.5f, 0.5f, p.tint * f.shade, 0.0f,
+                             1.0f);
+                ++cubes.quads;
             }
             continue;
         }
@@ -193,44 +196,43 @@ void ParticleSystem::render(const Shader& billboardShader, glm::vec3 cameraPos, 
         glm::vec3 v2 = p.pos + right + up;
         glm::vec3 v3 = p.pos + right - up;
 
-        Batch& b = findBatch(batches, p.tint);
-        pushVert(b, v0, 0, 0, layer, bright);
-        pushVert(b, v1, 0, 1, layer, bright);
-        pushVert(b, v2, 1, 1, layer, bright);
-        pushVert(b, v3, 1, 0, layer, bright);
+        Batch& b = findBatch(p.tint);
+        const glm::vec3 n(0.0f, 0.0f, 1.0f);
+        pushVert(b, v0, 0, 0, n, layer, bright);
+        pushVert(b, v1, 0, 1, n, layer, bright);
+        pushVert(b, v2, 1, 1, n, layer, bright);
+        pushVert(b, v3, 1, 0, n, layer, bright);
         ++b.quads;
     }
 
-    if (batches.empty() && cubeBatches.empty()) return;
+    if (batches.empty() && cubes.quads == 0) return;
 
     billboardShader.setMat4("model", glm::mat4(1.0f));
     glBindVertexArray(vao);
-    auto drawBatches = [&](const std::vector<Batch>& list) {
-        for (const auto& b : list) {
-            if (b.quads == 0) continue;
-            billboardShader.setVec3("tintColor", b.tint);
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glBufferSubData(GL_ARRAY_BUFFER, 0, b.verts.size() * sizeof(float), b.verts.data());
-            glDrawElements(GL_TRIANGLES, b.quads * INDICES_PER_QUAD, GL_UNSIGNED_INT, nullptr);
-        }
+    auto drawBatch = [&](const Batch& b) {
+        if (b.quads == 0) return;
+        billboardShader.setVec3("tintColor", b.tint);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, b.verts.size() * sizeof(float), b.verts.data());
+        glDrawElements(GL_TRIANGLES, b.quads * INDICES_PER_QUAD, GL_UNSIGNED_INT, nullptr);
     };
 
-    if (!cubeBatches.empty()) {
+    if (cubes.quads > 0) {
         // Opaque and depth-writing, so cubes sort correctly against each other.
         GLboolean depthWrite = GL_TRUE;
         glGetBooleanv(GL_DEPTH_WRITEMASK, &depthWrite);
         GLboolean blend = glIsEnabled(GL_BLEND);
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
-        billboardShader.setFloat("glowMode", 2.0f); // flat tint colour
-        drawBatches(cubeBatches);
+        billboardShader.setFloat("glowMode", 2.0f); // flat per-vertex colour
+        drawBatch(cubes);
         glDepthMask(depthWrite);
         if (blend) glEnable(GL_BLEND);
     }
 
     // The hand's flame is a soft glow (radial falloff) rather than a smoke puff.
     billboardShader.setFloat("glowMode", viewSpace ? 1.0f : 0.0f);
-    drawBatches(batches);
+    for (const Batch& b : batches) drawBatch(b);
     glBindVertexArray(0);
 }
 
