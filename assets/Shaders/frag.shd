@@ -45,7 +45,9 @@ vec3 biomeTint(sampler2D map) {
     // Block N spans [N - 0.5, N + 0.5); nudge inward so a face on a column
     // edge reads its own column.
     ivec2 p = ivec2(floor(FragPos.xz + 0.5 - normalize(Normal).xz * 0.01));
-    p = ((p % TINT_MAP_SIZE) + TINT_MAP_SIZE) % TINT_MAP_SIZE;
+    // Float mod: GLSL's integer % is undefined for negative operands (some
+    // drivers return garbage there, leaving negative-x/z columns untinted).
+    p = ivec2(mod(vec2(p), float(TINT_MAP_SIZE)));
     return texelFetch(map, p, 0).rgb * (255.0 / 128.0);
 }
 

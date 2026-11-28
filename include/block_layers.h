@@ -54,8 +54,10 @@ constexpr int WOOD_SIDEWAYS_LAYER = CORNFLOWER_LAYER + 1;
 constexpr int PODZOL_TOP_LAYER = WOOD_SIDEWAYS_LAYER + 1;
 constexpr int PODZOL_SIDE_LAYER = PODZOL_TOP_LAYER + 1;
 constexpr int MOSSY_COBBLESTONE_LAYER = PODZOL_SIDE_LAYER + 1;
-constexpr int ICE_LAYER = MOSSY_COBBLESTONE_LAYER + 1;
-constexpr int NUM_LAYERS = ICE_LAYER + 1;
+constexpr int ACACIA_LOG_LAYER = MOSSY_COBBLESTONE_LAYER + 1;
+constexpr int ACACIA_LOG_TOP_LAYER = ACACIA_LOG_LAYER + 1;
+constexpr int ACACIA_LEAVES_LAYER = ACACIA_LOG_TOP_LAYER + 1; // colour baked in (no biome tint, no sway)
+constexpr int NUM_LAYERS = ACACIA_LEAVES_LAYER + 1;
 // The shaders hard-code these; keep frag.shd / vert.shd in step if they move.
 static_assert(SPRUCE_LEAVES_LAYER == 47 && BIRCH_LEAVES_LAYER == 50 && FERN_LAYER == 51);
 
@@ -123,7 +125,8 @@ inline int layerForFace(block_type t, int face) {
         return PODZOL_SIDE_LAYER;
     }
     if (t == MOSSY_COBBLESTONE) return MOSSY_COBBLESTONE_LAYER;
-    if (t == ICE) return ICE_LAYER;
+    if (t == ACACIA_LOG) return (face == 4 || face == 5) ? ACACIA_LOG_TOP_LAYER : ACACIA_LOG_LAYER;
+    if (t == ACACIA_LEAVES) return ACACIA_LEAVES_LAYER;
     return static_cast<int>(t);
 }
 
@@ -150,7 +153,8 @@ inline int layerForType(block_type t) {
     if (t == OAK_LOG_X || t == OAK_LOG_Z) return static_cast<int>(WOOD);
     if (t == PODZOL) return PODZOL_SIDE_LAYER;
     if (t == MOSSY_COBBLESTONE) return MOSSY_COBBLESTONE_LAYER;
-    if (t == ICE) return ICE_LAYER;
+    if (t == ACACIA_LOG) return ACACIA_LOG_LAYER;
+    if (t == ACACIA_LEAVES) return ACACIA_LEAVES_LAYER;
     return static_cast<int>(t);
 }
 
