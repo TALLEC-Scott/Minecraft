@@ -34,6 +34,8 @@ static const char* TEXTURE_PATHS[] = {
     "assets/Textures/podzol_top.png",         "assets/Textures/podzol_side.png",
     "assets/Textures/mossy_cobblestone.png",
     "assets/Textures/ice.png",
+    "assets/Textures/sandstone.png",          "assets/Textures/sandstone_top.png",
+    "assets/Textures/sandstone_bottom.png",   "assets/Textures/dead_bush.png",
 };
 static_assert(sizeof(TEXTURE_PATHS) / sizeof(TEXTURE_PATHS[0]) == block_layers::NUM_LAYERS, "one path per layer");
 static constexpr int NUM_LAYERS = TextureArray::NUM_LAYERS;

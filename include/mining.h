@@ -57,6 +57,8 @@ inline BlockMining blockMining(block_type t) {
         /* PODZOL         */ {0.5f,  ToolKind::Shovel,  false},
         /* MOSSY_COBBLESTONE */ {2.0f, ToolKind::Pickaxe, true},
         /* ICE            */ {0.5f,  ToolKind::Pickaxe, false},
+        /* SANDSTONE      */ {0.8f,  ToolKind::Pickaxe, true},
+        /* DEAD_BUSH      */ {0.0f,  ToolKind::None,    false},
     };
     // clang-format on
     static_assert(sizeof(table) / sizeof(table[0]) == BLOCK_TYPE_COUNT, "one row per block_type");
@@ -123,6 +125,9 @@ inline ItemDrop blockDrop(block_type t, ItemId held, float roll) {
     case FERN:
     case ICE: // Minecraft: ice drops nothing without Silk Touch
         return {};
+    // 0..2 sticks, as in Minecraft (no shears to keep the bush itself).
+    case DEAD_BUSH:
+        return roll < 1.0f / 3.0f ? ItemDrop{} : ItemDrop{ITEM_STICK, roll < 2.0f / 3.0f ? 1 : 2};
     default:
         return {blockItem(t), 1};
     }
