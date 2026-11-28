@@ -75,11 +75,12 @@ enum block_type : uint8_t {
     DEAD_BUSH,
     ACACIA_LOG,
     ACACIA_LEAVES,
-    JUNGLE_LOG
+    JUNGLE_LOG,
+    COARSE_DIRT
 };
-// Number of block_type values; keep JUNGLE_LOG (the last one) in sync.
+// Number of block_type values; keep COARSE_DIRT (the last one) in sync.
 // Values are saved in chunk files and level.dat: append only.
-inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(JUNGLE_LOG) + 1;
+inline constexpr int BLOCK_TYPE_COUNT = static_cast<int>(COARSE_DIRT) + 1;
 
 // Values index tables (BIOME_DEFS in biome.cpp, mob spawn masks). Not saved
 // (recomputed from the seed), so they may be reordered. One BiomeDef each.
@@ -190,6 +191,7 @@ inline uint32_t getBlockFlags(block_type t) {
         /* ACACIA_LOG    */ BF_SOLID | BF_OPAQUE,
         /* ACACIA_LEAVES */ BF_SOLID | BF_TRANSLUCENT,
         /* JUNGLE_LOG    */ BF_SOLID | BF_OPAQUE,
+        /* COARSE_DIRT   */ BF_SOLID | BF_OPAQUE,
     };
     // clang-format on
     int idx = static_cast<int>(t);
@@ -284,6 +286,7 @@ inline StepSound getStepSound(block_type t) {
         /* ACACIA_LOG    */ STEP_WOOD,
         /* ACACIA_LEAVES */ STEP_GRASS,
         /* JUNGLE_LOG    */ STEP_WOOD,
+        /* COARSE_DIRT   */ STEP_GRAVEL,
     };
     // clang-format on
     int idx = static_cast<int>(t);

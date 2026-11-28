@@ -62,6 +62,7 @@ inline BlockMining blockMining(block_type t) {
         /* ACACIA_LOG     */ {2.0f,  ToolKind::Axe,     false},
         /* ACACIA_LEAVES  */ {0.2f,  ToolKind::None,    false},
         /* JUNGLE_LOG     */ {2.0f,  ToolKind::Axe,     false},
+        /* COARSE_DIRT    */ {0.5f,  ToolKind::Shovel,  false},
     };
     // clang-format on
     static_assert(sizeof(table) / sizeof(table[0]) == BLOCK_TYPE_COUNT, "one row per block_type");

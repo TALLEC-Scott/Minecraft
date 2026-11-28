@@ -42,6 +42,7 @@ modified versions of them, stay under CC BY-SA 4.0; the rest of the project is u
 | `acacia_leaves.png` | `ITEMS/mcl_core/textures/default_acacia_leaves.png`, tinted ×`#B4D04C` |
 | `jungle_log.png` | `ITEMS/mcl_core/textures/default_jungletree.png` (unmodified) |
 | `jungle_log_top.png` | `ITEMS/mcl_core/textures/default_jungletree_top.png` (unmodified) |
+| `coarse_dirt.png` | `ITEMS/mcl_core/textures/mcl_core_coarse_dirt.png` (unmodified) |
 
 "Tinted" files are the grayscale originals multiplied by a fixed colour (the game has no runtime
 biome tint), made with `scripts/tint_textures.py`.
