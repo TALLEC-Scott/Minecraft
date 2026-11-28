@@ -64,6 +64,8 @@ enum block_type : uint8_t {
     FERN,
     IRON_ORE,
     DIAMOND_ORE,
+    OXEYE_DAISY,
+    CORNFLOWER,
     OAK_LOG_X, // oak log lying along X (fallen logs); drops WOOD
     OAK_LOG_Z  // oak log lying along Z
 };
@@ -167,6 +169,8 @@ inline uint32_t getBlockFlags(block_type t) {
         /* FERN          */ BF_TRANSPARENT | BF_CROSS,
         /* IRON_ORE      */ BF_SOLID | BF_OPAQUE,
         /* DIAMOND_ORE   */ BF_SOLID | BF_OPAQUE,
+        /* OXEYE_DAISY   */ BF_TRANSPARENT | BF_CROSS,
+        /* CORNFLOWER    */ BF_TRANSPARENT | BF_CROSS,
         /* OAK_LOG_X     */ BF_SOLID | BF_OPAQUE,
         /* OAK_LOG_Z     */ BF_SOLID | BF_OPAQUE,
     };
@@ -251,6 +255,8 @@ inline StepSound getStepSound(block_type t) {
         /* FERN          */ STEP_GRASS,
         /* IRON_ORE      */ STEP_STONE,
         /* DIAMOND_ORE   */ STEP_STONE,
+        /* OXEYE_DAISY   */ STEP_GRASS,
+        /* CORNFLOWER    */ STEP_GRASS,
         /* OAK_LOG_X     */ STEP_WOOD,
         /* OAK_LOG_Z     */ STEP_WOOD,
     };

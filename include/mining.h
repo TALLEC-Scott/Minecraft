@@ -50,6 +50,8 @@ inline BlockMining blockMining(block_type t) {
         /* FERN           */ {0.0f,  ToolKind::None,    false},
         /* IRON_ORE       */ {3.0f,  ToolKind::Pickaxe, true, 2}, // stone pickaxe
         /* DIAMOND_ORE    */ {3.0f,  ToolKind::Pickaxe, true, 3}, // iron pickaxe
+        /* OXEYE_DAISY    */ {0.0f,  ToolKind::None,    false},
+        /* CORNFLOWER     */ {0.0f,  ToolKind::None,    false},
         /* OAK_LOG_X      */ {2.0f,  ToolKind::Axe,     false},
         /* OAK_LOG_Z      */ {2.0f,  ToolKind::Axe,     false},
     };
