@@ -35,6 +35,7 @@
 #include <thread>
 #include <unordered_map>
 
+#include "audio_output.h"
 #include "profiler.h"
 #include "tracy_shim.h"
 
@@ -1920,6 +1921,7 @@ int main(int argc, char* argv[]) {
             UIRenderer& uiRenderer = *g_uiRenderer;
             Menu& menu = *g_menu;
             loadSoundsWhenReady();
+            audio_output::pollDebug();
 
             // Menu / loading / pause states call glfwWaitEventsTimeout below
             // instead of glfwPollEvents, so the event loop idles up to a

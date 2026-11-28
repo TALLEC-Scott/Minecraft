@@ -60,6 +60,7 @@ set(COMMON_SOURCES
     src/ui_renderer.cpp
     src/widgets.cpp
     src/menu.cpp
+    src/audio_output.cpp
     src/miniaudio.cpp
     src/WaterSimulator.cpp
     src/inventory.cpp
@@ -114,7 +115,11 @@ if(EMSCRIPTEN)
   # isolated page (COOP same-origin + COEP require-corp headers).
   # -O3 for Release, like the desktop builds (the link step already runs
   # wasm-opt at -O3 from CMAKE_CXX_FLAGS_RELEASE); -O2 otherwise.
-  target_compile_options(minecraft PRIVATE $<IF:$<CONFIG:Release>,-O3,-O2> -pthread ${WARNING_FLAGS})
+  # -sWASM_WORKERS + -sAUDIO_WORKLET (link): audio mixes on a Web Audio
+  # AudioWorklet thread (src/audio_output.cpp) instead of miniaudio's
+  # main-thread ScriptProcessorNode, which added ~100 ms to every sound.
+  # No -sASYNCIFY: the worklet is started asynchronously by our own code.
+  target_compile_options(minecraft PRIVATE $<IF:$<CONFIG:Release>,-O3,-O2> -pthread -sWASM_WORKERS=1 ${WARNING_FLAGS})
   # Prevent system library paths from leaking into the Emscripten link
   set(CMAKE_EXE_LINKER_FLAGS "")
   set_property(DIRECTORY PROPERTY LINK_DIRECTORIES "")
@@ -130,6 +135,7 @@ if(EMSCRIPTEN)
       -pthread \
       -sPTHREAD_POOL_SIZE=4 \
       -sDEFAULT_PTHREAD_STACK_SIZE=1MB \
+      -sAUDIO_WORKLET=1 -sWASM_WORKERS=1 \
       -lidbfs.js \
       --preload-file ${CMAKE_SOURCE_DIR}/assets@assets \
       --exclude-file ${CMAKE_SOURCE_DIR}/assets/Sounds \
