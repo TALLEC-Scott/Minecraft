@@ -13,13 +13,17 @@
 //  * upright sprites (flowers, the torch): stand in the fist, top leaning a
 //    little toward the crosshair;
 //  * blocks: a small cube turned and tipped toward the camera so the top
-//    and two sides show, fully in view in the lower right;
+//    and two sides show;
 //  * the empty hand: the player model's right arm reaching in from the
 //    lower-right edge (Minecraft's renderPlayerArm), with its own punch.
 // `swing` is 0..1 over the punch; 0 and 1 give the resting pose.
 // The hand pass uses its own fixed-FOV projection (handProjection), as
 // Minecraft does, so the FOV setting doesn't stretch or move the hand, and
 // X offsets follow the aspect ratio so the hand keeps its spot on screen.
+// The fist itself sits just past the lower-right corner, so every held item
+// is cut off by the right and bottom edges and only its top-left part shows,
+// as if an off-screen hand grips it (Minecraft's held block is cropped the
+// same way).
 
 #include <algorithm>
 #include <cmath>
@@ -42,19 +46,21 @@ inline float aspectScale(float aspect) {
     return aspect / REFERENCE_ASPECT;
 }
 
-// Where the fist rests (view space, at REFERENCE_ASPECT).
-inline constexpr glm::vec3 HAND_REST{0.62f, -0.45f, -0.75f};
+// Where the fist rests (view space, at REFERENCE_ASPECT): far enough into
+// the lower-right corner that the item's bottom-right part is off screen.
+inline constexpr glm::vec3 HAND_REST{0.85f, -0.62f, -0.75f};
 
 // Hand translation during the swing (view space). Like Minecraft's: a
-// quick lift and flick toward the center, then the hand drops down and back
-// out to the right, so mid-swing the item sinks partly past the lower-right
-// edge of the screen before rising back to rest.
+// quick lift and flick toward the center, then a shallow dip as the hand
+// comes back out to the right. The rest pose already hides the item's
+// bottom-right part, so the dip stays small and part of the item is always
+// in view.
 inline glm::vec3 swingOffset(float swing) {
     const float pi = glm::pi<float>();
     swing = std::clamp(swing, 0.0f, 1.0f);
     float sq = std::sqrt(swing);
     float arc = std::sin(swing * pi);
-    return {-0.2f * std::sin(sq * pi) + 0.15f * arc, 0.15f * std::sin(sq * 2.0f * pi) - 0.05f * arc, -0.1f * arc};
+    return {-0.2f * std::sin(sq * pi) + 0.15f * arc, 0.1f * std::sin(sq * 2.0f * pi) + 0.06f * arc, -0.1f * arc};
 }
 
 // Item rotation about the hand during the swing: it turns sideways and
@@ -88,8 +94,8 @@ inline constexpr glm::vec3 STEM_GRIP{8.0f, 1.0f, 0.0f};
 // Sprite items: maps sprite pixel space (16×16 sprite, x right, y up,
 // thickness centered on z = 0) into the hand frame.
 inline glm::mat4 spriteDisplay(bool upright) {
-    // Upright sprites sit lower so the stem runs down into the fist.
-    glm::mat4 m = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, upright ? -0.1f : 0.0f, 0.0f));
+    // Upright sprites sit a little lower so the stem runs down into the fist.
+    glm::mat4 m = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, upright ? -0.01f : 0.0f, 0.0f));
     m = glm::rotate(m, glm::radians(-40.0f), glm::vec3(0, 1, 0)); // face the camera
     m = glm::rotate(m, glm::radians(-10.0f), glm::vec3(1, 0, 0)); // top leans away
     // Tools: the sprite's handle-to-tip diagonal (45°) turned to 120°, so the
@@ -101,13 +107,13 @@ inline glm::mat4 spriteDisplay(bool upright) {
 }
 
 // Blocks: a unit cube centered on the origin, held a little behind and
-// above the fist point, BLOCK_SIZE across, turned 28° and tipped 18° toward the
+// above the fist point, BLOCK_SIZE across, turned 18° and tipped 18° toward the
 // camera so its top and both front sides show.
 inline constexpr float BLOCK_SIZE = 0.24f;
 inline glm::mat4 blockDisplay() {
-    glm::mat4 m = glm::translate(glm::mat4(1.0f), glm::vec3(-0.06f, 0.11f, -0.1f));
+    glm::mat4 m = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.11f, -0.1f));
     m = glm::rotate(m, glm::radians(18.0f), glm::vec3(1, 0, 0));
-    m = glm::rotate(m, glm::radians(28.0f), glm::vec3(0, 1, 0));
+    m = glm::rotate(m, glm::radians(18.0f), glm::vec3(0, 1, 0));
     return glm::scale(m, glm::vec3(BLOCK_SIZE));
 }
 
