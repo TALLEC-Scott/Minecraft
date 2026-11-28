@@ -788,23 +788,9 @@ float Player::getSwingProgress() const {
     return std::clamp((float)((glfwGetTime() - punchStartTime) / PUNCH_DURATION), 0.0f, 1.0f);
 }
 
-float Player::getPunchSwingAngle() const {
-    if (!isPunching) return 0.0f;
-    float t = (float)((glfwGetTime() - punchStartTime) / PUNCH_DURATION);
-    return std::sin(t * glm::radians(180.0f)) * -60.0f;
-}
-
 float Player::getPlaceAnimProgress() const {
     if (placeAnimStart < 0) return -1.0f;
     double t = (glfwGetTime() - placeAnimStart) / PLACE_ANIM_DURATION;
     if (t >= 1.0) return -1.0f; // done
     return (float)t;
-}
-
-glm::mat4 Player::getArmModelMatrix() const {
-    glm::mat4 m = glm::mat4(1.0f);
-    m = glm::translate(m, glm::vec3(0.4f, -0.4f, -0.6f));
-    m = glm::rotate(m, glm::radians(getPunchSwingAngle()), glm::vec3(1, 0, 0));
-    m = glm::rotate(m, glm::radians(-10.0f), glm::vec3(0, 0, 1));
-    return m;
 }
