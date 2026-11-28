@@ -1,14 +1,16 @@
 // Rainforest: the hot, wet corner of the climate table. A layered jungle:
 // emergent giants on 2×2 jungle-log trunks with broad flat crowns, branch
 // clusters and buttress roots; a middle storey of smaller jungle trees; low
-// leafy bushes on the floor; leaf "vines" hanging from every canopy; and a
-// floor of tall grass and ferns that still leaves bare grass to walk on.
+// lumpy jungle-leaf bushes on the floor; vines draped down crown rims,
+// branch balls and trunks; and a floor of tall grass and ferns that still
+// leaves bare grass to walk on.
 
 #include <cstdint>
 #include <cstdlib>
 
 #include "biome_defs.h"
 #include "tree_shapes.h"
+#include "vine.h"
 
 using biomegen::TreeSite;
 
@@ -25,33 +27,70 @@ uint32_t mix(uint64_t bits, int a, int b, int c) {
     return static_cast<uint32_t>(v ^ (v >> 31));
 }
 
-// A strand of leaves hanging from (dx, y, dz) downward.
-void vine(const TreeSite& s, int dx, int y, int dz, int len) {
-    for (int d = 0; d < len; d++) s.leaf(dx, y - d, dz, LEAVES);
+constexpr int R = biomegen::TREE_MAX_RADIUS;
+
+// Vine length: mostly short (1..6), one in five a long one reaching far
+// down (7..14).
+int vineLength(uint32_t h) {
+    return (h >> 24) % 5 == 0 ? 7 + static_cast<int>((h >> 12) % 8) : 1 + static_cast<int>((h >> 12) % 6);
 }
 
-// Disc of leaves at height y around a centre given in half blocks (cx2, cz2
-// = 2 × centre), radius r. Edge cells are dropped at random for a ragged
-// crown; `vines` hangs strands from the rim (1 in `vineOdds`).
-void crownLayer(const TreeSite& s, int y, int cx2, int cz2, float r, int vineOdds, int maxVine) {
-    const int reach = static_cast<int>(r) + 1;
-    const float r2 = r * r;
-    const float inner2 = (r - 1.0f) * (r - 1.0f);
-    const int cx = cx2 / 2, cz = cz2 / 2;
-    for (int dx = cx - reach; dx <= cx + reach + 1; dx++)
-        for (int dz = cz - reach; dz <= cz + reach + 1; dz++) {
-            const float fx = static_cast<float>(2 * dx - cx2) * 0.5f;
-            const float fz = static_cast<float>(2 * dz - cz2) * 0.5f;
-            const float d2 = fx * fx + fz * fz;
-            if (d2 > r2) continue;
-            if (std::abs(dx) > biomegen::TREE_MAX_RADIUS || std::abs(dz) > biomegen::TREE_MAX_RADIUS) continue;
-            const uint32_t h = mix(s.bits, dx, y, dz);
-            const bool rim = d2 > inner2;
-            if (rim && h % 4 == 0) continue; // ragged edge
-            s.leaf(dx, y, dz, LEAVES);
-            if (rim && vineOdds > 0 && (h >> 8) % static_cast<uint32_t>(vineOdds) == 0)
-                vine(s, dx, y - 1, dz, 1 + static_cast<int>((h >> 16) % static_cast<uint32_t>(maxVine)));
-        }
+// A disc of leaves at height y around a centre given in half blocks (cx2,
+// cz2 = 2 × centre), radius r, with rim cells dropped at random for a
+// ragged crown. Pure, so the vine pass can ask which cells are leaves
+// without reading blocks (which may lie in another chunk).
+struct Crown {
+    int y, cx2, cz2;
+    float r;
+
+    bool has(const TreeSite& s, int dx, int dz) const {
+        if (std::abs(dx) > R || std::abs(dz) > R) return false;
+        const float fx = static_cast<float>(2 * dx - cx2) * 0.5f;
+        const float fz = static_cast<float>(2 * dz - cz2) * 0.5f;
+        const float d2 = fx * fx + fz * fz;
+        if (d2 > r * r) return false;
+        const bool rim = d2 > (r - 1.0f) * (r - 1.0f);
+        return !(rim && mix(s.bits, dx, y, dz) % 4 == 0);
+    }
+    template <typename F> void forEach(F&& f) const {
+        const int reach = static_cast<int>(r) + 1;
+        const int cx = cx2 / 2, cz = cz2 / 2;
+        for (int dx = cx - reach; dx <= cx + reach + 1; dx++)
+            for (int dz = cz - reach; dz <= cz + reach + 1; dz++) f(dx, dz);
+    }
+    void draw(const TreeSite& s) const {
+        forEach([&](int dx, int dz) {
+            if (has(s, dx, dz)) s.leaf(dx, y, dz, JUNGLE_LEAVES);
+        });
+    }
+    // Vines down the outside of the rim: for each leaf with open air beside
+    // it (outside this layer), 1 in `odds` sides gets a chain lying against
+    // that leaf's face.
+    void drapeVines(const TreeSite& s, int odds) const {
+        forEach([&](int dx, int dz) {
+            if (!has(s, dx, dz)) return;
+            for (int b = 0; b < 4; b++) {
+                const int vx = dx + vine::SIDE[b][0], vz = dz + vine::SIDE[b][2];
+                if (std::abs(vx) > R || std::abs(vz) > R || has(s, vx, vz)) continue;
+                const uint32_t h = mix(s.bits ^ 0x56494E45ULL, vx, y, vz * 4 + b);
+                if (h % static_cast<uint32_t>(odds) != 0) continue;
+                // The vine cell's side facing back at the leaf: the opposite bit.
+                s.vine(vx, y, vz, static_cast<uint8_t>(1u << (b ^ 1)), vineLength(h));
+            }
+        });
+    }
+};
+
+// Vines climbing a trunk side: chains against the log at (lx, lz), hung
+// from just under the crown.
+void trunkVines(const TreeSite& s, int lx, int lz, int fromY, int odds, int salt) {
+    for (int b = 0; b < 4; b++) {
+        const int vx = lx + vine::SIDE[b][0], vz = lz + vine::SIDE[b][2];
+        const uint32_t h = mix(s.bits ^ 0x5452554EULL, vx, salt, vz * 4 + b);
+        if (h % static_cast<uint32_t>(odds) != 0) continue;
+        const int top = fromY - static_cast<int>((h >> 8) % 3);
+        s.vine(vx, top, vz, static_cast<uint8_t>(1u << (b ^ 1)), 4 + static_cast<int>((h >> 16) % 12));
+    }
 }
 
 // Emergent tree: 2×2 trunk 13..19 tall, buttress roots, one or two branch
@@ -76,9 +115,14 @@ bool giantTree(const TreeSite& s) {
         const int hgt = 1 + static_cast<int>((h >> 4) % 2);
         for (int y = s.surface - 1; y <= s.surface + hgt; y++) s.log(ROOTS[r][0], y, ROOTS[r][1], JUNGLE_LOG);
     }
+    // Crown, centred between the four trunk columns.
+    const float r = 3.8f + static_cast<float>((s.bits >> 30) % 3) * 0.35f; // 3.8..4.5
+    const Crown crown[4] = {
+        {top - 1, 1, 1, r - 1.2f}, {top, 1, 1, r}, {top + 1, 1, 1, r - 1.0f}, {top + 2, 1, 1, r - 2.4f}};
     // Branch clusters: a short diagonal limb with a leaf ball at its end.
     static const int DIRS[4][2] = {{-1, -1}, {2, -1}, {-1, 2}, {2, 2}};
     const int branches = 1 + static_cast<int>((s.bits >> 16) % 2);
+    Crown balls[2][2];
     for (int b = 0; b < branches; b++) {
         const int dir = static_cast<int>((s.bits >> (20 + 2 * b)) % 4);
         const int by = top - 4 - 3 * b - static_cast<int>((s.bits >> (26 + b)) % 2);
@@ -86,20 +130,23 @@ bool giantTree(const TreeSite& s) {
         const int ex = DIRS[dir][0] + sx, ez = DIRS[dir][1] + sz; // two logs out
         s.log(DIRS[dir][0], by, DIRS[dir][1], JUNGLE_LOG);
         s.log(ex, by + 1, ez, JUNGLE_LOG);
-        crownLayer(s, by + 1, 2 * ex, 2 * ez, 2.2f, 4, 3);
-        crownLayer(s, by + 2, 2 * ex, 2 * ez, 1.5f, 0, 1);
+        balls[b][0] = {by + 1, 2 * ex, 2 * ez, 2.2f};
+        balls[b][1] = {by + 2, 2 * ex, 2 * ez, 1.5f};
+        balls[b][0].draw(s);
+        balls[b][1].draw(s);
     }
-    // Crown, centred between the four trunk columns.
-    const float r = 3.8f + static_cast<float>((s.bits >> 30) % 3) * 0.35f; // 3.8..4.5
-    crownLayer(s, top - 1, 1, 1, r - 1.2f, 3, 5);
-    crownLayer(s, top, 1, 1, r, 3, 6);
-    crownLayer(s, top + 1, 1, 1, r - 1.0f, 0, 1);
-    crownLayer(s, top + 2, 1, 1, r - 2.4f, 0, 1);
+    for (const Crown& c : crown) c.draw(s);
+    // Vines once every leaf is in place, so none ends up inside the crown.
+    crown[1].drapeVines(s, 2);
+    crown[0].drapeVines(s, 3);
+    for (int b = 0; b < branches; b++) balls[b][0].drapeVines(s, 3);
+    for (int dx = 0; dx <= 1; dx++)
+        for (int dz = 0; dz <= 1; dz++) trunkVines(s, dx, dz, top - 2, 3, dx * 2 + dz);
     return true;
 }
 
 // Middle-storey tree: 1×1 jungle trunk 5..9 tall, rounded crown radius
-// 2..3 with a few vines.
+// 2..3 with vines on its rim and trunk.
 bool jungleTree(const TreeSite& s) {
     const int trunkH = 5 + static_cast<int>((s.bits >> 8) % 5);
     const float r = 2.3f + static_cast<float>((s.bits >> 12) % 3) * 0.4f; // 2.3..3.1
@@ -107,22 +154,43 @@ bool jungleTree(const TreeSite& s) {
     if (!s.fits(top + 2)) return false;
     s.claim(0);
     for (int y = s.surface + 1; y <= top; y++) s.log(0, y, 0, JUNGLE_LOG);
-    crownLayer(s, top - 1, 0, 0, r, 3, 4);
-    crownLayer(s, top, 0, 0, r, 4, 3);
-    crownLayer(s, top + 1, 0, 0, r - 1.0f, 0, 1);
-    s.leaf(0, top + 2, 0, LEAVES);
+    const Crown crown[3] = {{top - 1, 0, 0, r}, {top, 0, 0, r}, {top + 1, 0, 0, r - 1.0f}};
+    for (const Crown& c : crown) c.draw(s);
+    s.leaf(0, top + 2, 0, JUNGLE_LEAVES);
+    crown[0].drapeVines(s, 3);
+    trunkVines(s, 0, 0, top - 2, 4, 0);
     return true;
 }
 
-// Floor bush: one log under a squat leaf mound (Minecraft's jungle bush).
+// Floor bush (Minecraft's jungle bush): a jungle log hidden in a lumpy
+// mound of jungle leaves, about 3×3 and 1..2 high: a 3×3 layer with
+// random corners missing and a few lumps sticking out a block further,
+// under a smaller, uneven top.
 bool bush(const TreeSite& s) {
     const int y = s.surface + 1;
     if (!s.fits(y + 2)) return false;
     s.claim(0);
     s.log(0, y, 0, JUNGLE_LOG);
-    crownLayer(s, y, 0, 0, 2.2f, 0, 1);
-    crownLayer(s, y + 1, 0, 0, 1.5f, 0, 1);
-    if ((s.bits >> 12) % 2 == 0) s.leaf(0, y + 2, 0, LEAVES);
+    for (int dx = -2; dx <= 2; dx++)
+        for (int dz = -2; dz <= 2; dz++) {
+            const int ax = std::abs(dx), az = std::abs(dz);
+            const uint32_t h = mix(s.bits, dx, 1, dz);
+            bool lower = false;
+            if (ax <= 1 && az <= 1)
+                lower = ax + az < 2 || h % 5 < 3; // 3×3, corners 3 in 5
+            else if (ax + az == 2)
+                lower = h % 3 == 0; // lumps on the sides
+            if (lower) s.leaf(dx, y, dz, JUNGLE_LEAVES);
+            bool upper = false;
+            if (ax + az == 0)
+                upper = true; // over the log
+            else if (ax + az == 1)
+                upper = (h >> 8) % 4 != 0; // most of the plus
+            else if (ax == 1 && az == 1)
+                upper = (h >> 8) % 5 == 0; // a rare corner
+            if (upper) s.leaf(dx, y + 1, dz, JUNGLE_LEAVES);
+        }
+    if ((s.bits >> 12) % 4 == 0) s.leaf(0, y + 2, 0, JUNGLE_LEAVES); // a taller one now and then
     return true;
 }
 
@@ -148,11 +216,7 @@ block_type groundCover(const biomegen::GroundSite& g) {
 } // namespace
 
 const BiomeDef RAINFOREST_DEF = {
-    "Rainforest",
-    GRASS, DIRT, SAND,
-    0.75f, &growTree,
-    nullptr,
-    &groundCover,
+    "Rainforest",          GRASS, DIRT, SAND, 0.75f, &growTree, nullptr, &groundCover,
     {0.58f, 1.08f, 0.55f}, // grass tint
     {0.48f, 1.32f, 0.26f}, // foliage tint
 };

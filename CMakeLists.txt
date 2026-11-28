@@ -288,6 +288,7 @@ else()
         tests/test_recipes.cpp
         tests/test_lava.cpp
         tests/test_torch.cpp
+        tests/test_vine.cpp
         tests/test_inventory.cpp
         tests/test_tnt.cpp
         tests/test_block_light.cpp

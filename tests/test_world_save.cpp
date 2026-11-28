@@ -251,6 +251,28 @@ TEST_F(ChunkFileTest, RoundTripWater) {
     EXPECT_EQ(waterOut[idx2], 3);
 }
 
+TEST_F(ChunkFileTest, RoundTripVineState) {
+    // A vine's sides (vine.h) ride in the liquid-level byte, saved with the chunk.
+    ChunkSection sec2;
+    sec2.setBlock(3, 5, 7, VINE);
+    ChunkSection* sections[8] = {};
+    sections[2] = &sec2;
+    std::vector<uint8_t> state(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE, 0);
+    const size_t idx = 3 * CHUNK_HEIGHT * CHUNK_SIZE + (2 * 16 + 5) * CHUNK_SIZE + 7;
+    state[idx] = 0b1010; // -X and -Z sides
+    writeChunkFile(path, 1, 2, sections, true, state.data());
+
+    int cx, cz;
+    std::unique_ptr<ChunkSection> loaded[8];
+    bool hasState;
+    std::vector<uint8_t> stateOut;
+    ASSERT_TRUE(readChunkFile(path, cx, cz, loaded, hasState, stateOut));
+    ASSERT_NE(loaded[2], nullptr);
+    EXPECT_EQ(loaded[2]->getBlock(3, 5, 7), VINE);
+    ASSERT_TRUE(hasState);
+    EXPECT_EQ(stateOut[idx], 0b1010);
+}
+
 TEST_F(ChunkFileTest, InvalidMagicFails) {
     {
         std::ofstream f(path, std::ios::binary);

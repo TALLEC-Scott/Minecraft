@@ -1,6 +1,8 @@
 // Rainforest (src/biomes/rainforest.cpp): 2×2 jungle-log giants, middle
-// storey trees, floor bushes, hanging leaf vines, a fern / tall-grass floor
-// that still leaves open ground, and no jungle wood outside the jungle.
+// storey trees, jungle-leaf crowns and floor bushes, real vines (VINE cells
+// with their sides in the state byte) hanging off crowns and trunks, a fern /
+// tall-grass floor that still leaves open ground, and no jungle wood outside
+// the jungle.
 #include <gtest/gtest.h>
 
 #include <cstdlib>
@@ -11,6 +13,7 @@
 #include "biome.h"
 #include "mining.h"
 #include "terrain_fill.h"
+#include "vine.h"
 
 namespace {
 
@@ -20,11 +23,15 @@ constexpr int SEA = CHUNK_HEIGHT / 2;
 struct GenChunk {
     int cx, cz;
     std::unique_ptr<Cube[]> blocks{new Cube[VOLUME]};
+    std::unique_ptr<uint8_t[]> states{new uint8_t[VOLUME]()};
     int heights[CHUNK_SIZE][CHUNK_SIZE];
     Biome biomes[CHUNK_SIZE][CHUNK_SIZE];
 
     GenChunk(TerrainGenerator& tg, int x, int z) : cx(x), cz(z) {
-        fillChunkTerrain(tg, cx, cz, blocks.get(), heights, biomes);
+        fillChunkTerrain(tg, cx, cz, blocks.get(), heights, biomes, nullptr, states.get());
+    }
+    uint8_t state(int x, int y, int z) const {
+        return states[static_cast<size_t>(x) * CHUNK_HEIGHT * CHUNK_SIZE + static_cast<size_t>(y) * CHUNK_SIZE + z];
     }
     block_type at(int x, int y, int z) const {
         if (x < 0 || x >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT) return AIR;
@@ -100,8 +107,8 @@ TEST_F(RainforestTest, GiantTreesHaveTwoByTwoTrunks) {
 }
 
 TEST_F(RainforestTest, CanopiesStayWithinTreeRadius) {
-    // Every leaf in the middle of a chunk has a log within TREE_MAX_RADIUS
-    // columns (crowns, branch balls and vines all hang off a nearby trunk),
+    // Every leaf or vine in the middle of a chunk has a log within
+    // TREE_MAX_RADIUS columns (crowns, branch balls and vines all hang off a nearby trunk),
     // so a canopy never outgrows the margin chunks sample across borders.
     constexpr int R = biomegen::TREE_MAX_RADIUS;
     int checked = 0;
@@ -110,7 +117,7 @@ TEST_F(RainforestTest, CanopiesStayWithinTreeRadius) {
             for (int z = R; z < CHUNK_SIZE - R; z++) {
                 if (c->biomes[x][z] != BIOME_RAINFOREST) continue;
                 for (int y = SEA; y < CHUNK_HEIGHT; y++) {
-                    if (c->at(x, y, z) != LEAVES) continue;
+                    if (c->at(x, y, z) != JUNGLE_LEAVES && c->at(x, y, z) != VINE) continue;
                     checked++;
                     bool log = false;
                     for (int dx = -R; dx <= R && !log; dx++)
@@ -123,18 +130,100 @@ TEST_F(RainforestTest, CanopiesStayWithinTreeRadius) {
     EXPECT_GT(checked, 1000);
 }
 
-TEST_F(RainforestTest, VinesHangFromCanopies) {
-    // A vine: a leaf with air on all four sides and below, under another leaf.
-    int vines = 0;
+TEST_F(RainforestTest, VinesHangFromCanopiesAndTrunks) {
+    // Every vine has a valid state; each side it covers lies against a block
+    // that can hold it, or continues the chain of the vine above; it never
+    // rests on the ground. Some hang long, down toward the floor.
+    int vines = 0, onLeaves = 0, onLogs = 0, chained = 0, low = 0;
+    for (const auto& c : *chunks)
+        for (int x = 0; x < CHUNK_SIZE; x++)
+            for (int z = 0; z < CHUNK_SIZE; z++)
+                for (int y = 1; y + 1 < CHUNK_HEIGHT; y++) {
+                    if (c->at(x, y, z) != VINE) continue;
+                    vines++;
+                    const uint8_t s = c->state(x, y, z);
+                    ASSERT_TRUE(vine::validState(s)) << "vine without sides at " << x << "," << y << "," << z;
+                    const block_type below = c->at(x, y - 1, z);
+                    // (A later tree may grow a branch or crown under it.)
+                    EXPECT_TRUE(below == AIR || below == VINE || isLog(below) || isLeaves(below))
+                        << "vine resting on " << int(below);
+                    if (y - 1 - c->heights[x][z] <= 3) low++;
+                    for (int b = 0; b < 4; b++) {
+                        if ((s & (1u << b)) == 0) continue;
+                        const int nx = x + vine::SIDE[b][0], nz = z + vine::SIDE[b][2];
+                        if (nx < 0 || nx >= CHUNK_SIZE || nz < 0 || nz >= CHUNK_SIZE) continue; // other chunk
+                        const block_type wall = c->at(nx, y, nz);
+                        if (isLeaves(wall)) {
+                            onLeaves++;
+                        } else if (isLog(wall)) {
+                            onLogs++;
+                        } else {
+                            ASSERT_EQ(c->at(x, y + 1, z), VINE) << "floating vine at " << x << "," << y << "," << z;
+                            EXPECT_NE(c->state(x, y + 1, z) & (1u << b), 0) << "chain keeps its side";
+                            chained++;
+                        }
+                    }
+                }
+    EXPECT_GT(vines, 2000);
+    EXPECT_GT(onLeaves, 300);
+    EXPECT_GT(onLogs, 100);
+    EXPECT_GT(chained, 500);
+    EXPECT_GT(low, 50) << "some vines reach down near the floor";
+}
+
+TEST_F(RainforestTest, NoHangingLeafStrands) {
+    // The old fake vines: a leaf with air on all four sides and below. Only
+    // the odd crown tip may look like that, never in numbers.
+    int strands = 0, leaves = 0;
     for (const auto& c : *chunks)
         for (int x = 1; x + 1 < CHUNK_SIZE; x++)
             for (int z = 1; z + 1 < CHUNK_SIZE; z++)
-                for (int y = SEA; y + 1 < CHUNK_HEIGHT; y++)
-                    if (c->at(x, y, z) == LEAVES && c->at(x, y + 1, z) == LEAVES && c->at(x, y - 1, z) == AIR &&
-                        c->at(x + 1, y, z) == AIR && c->at(x - 1, y, z) == AIR && c->at(x, y, z + 1) == AIR &&
-                        c->at(x, y, z - 1) == AIR)
-                        vines++;
-    EXPECT_GT(vines, 50);
+                for (int y = SEA; y + 1 < CHUNK_HEIGHT; y++) {
+                    if (!isLeaves(c->at(x, y, z))) continue;
+                    leaves++;
+                    if (isLeaves(c->at(x, y + 1, z)) && c->at(x, y - 1, z) == AIR && c->at(x + 1, y, z) == AIR &&
+                        c->at(x - 1, y, z) == AIR && c->at(x, y, z + 1) == AIR && c->at(x, y, z - 1) == AIR)
+                        strands++;
+                }
+    ASSERT_GT(leaves, 5000);
+    EXPECT_LT(strands, leaves / 200);
+}
+
+TEST_F(RainforestTest, JungleLeavesFormTheCanopy) {
+    int jungle = 0, oak = 0;
+    for (const auto& c : *chunks)
+        for (int x = 0; x < CHUNK_SIZE; x++)
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                if (c->biomes[x][z] != BIOME_RAINFOREST) continue;
+                for (int y = SEA; y < CHUNK_HEIGHT; y++) {
+                    jungle += c->at(x, y, z) == JUNGLE_LEAVES;
+                    oak += c->at(x, y, z) == LEAVES;
+                }
+            }
+    EXPECT_GT(jungle, 5000);
+    EXPECT_LT(oak, jungle / 50) << "only neighbours' oaks reaching across the border";
+}
+
+TEST_F(RainforestTest, BushesAreMoundsNotCubes) {
+    // A bush: a jungle log on the ground with jungle leaves on top of it.
+    // Its mound spreads over at least five of the eight columns around it.
+    int bushes = 0, small = 0;
+    for (const auto& c : *chunks)
+        for (int x = 1; x + 1 < CHUNK_SIZE; x++)
+            for (int z = 1; z + 1 < CHUNK_SIZE; z++) {
+                const int y = c->heights[x][z] + 1;
+                if (c->biomes[x][z] != BIOME_RAINFOREST || c->at(x, y, z) != JUNGLE_LOG ||
+                    c->at(x, y + 1, z) != JUNGLE_LEAVES)
+                    continue;
+                bushes++;
+                int around = 0;
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dz = -1; dz <= 1; dz++)
+                        if ((dx || dz) && c->at(x + dx, y, z + dz) == JUNGLE_LEAVES) around++;
+                if (around < 5) small++;
+            }
+    EXPECT_GT(bushes, 30);
+    EXPECT_LT(small, bushes / 4) << "some squeezed by slopes or neighbours, not lone cubes";
 }
 
 TEST_F(RainforestTest, LushButWalkableFloor) {

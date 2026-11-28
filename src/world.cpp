@@ -8,6 +8,7 @@
 #include "particle_system.h"
 #include "profiler.h"
 #include "tnt_entity.h"
+#include "vine.h"
 #include "torch.h"
 #include "torch_model.h"
 #include "tracy_shim.h"
@@ -160,6 +161,22 @@ uint8_t World::torchStateAt(glm::ivec3 p) const {
     return torch::INVALID;
 }
 
+uint8_t World::vineStateAt(glm::ivec3 p) const {
+    // Every side with a block to lie on, else hang on in the plane of the
+    // vine above (how a network peer, which only gets the block type, places it).
+    uint8_t sides = 0;
+    for (int s = 0; s < 4; ++s) {
+        Cube* b = getBlock(p.x + vine::SIDE[s][0], p.y, p.z + vine::SIDE[s][2]);
+        if (b && vine::canSupport(b->getType())) sides |= static_cast<uint8_t>(1u << s);
+    }
+    if (sides != 0) return sides;
+    const int cx = worldToChunk(p.x), cz = worldToChunk(p.z);
+    const Chunk* c = chunkManager->getChunk(cx, cz);
+    if (c && p.y + 1 < CHUNK_HEIGHT && c->getBlockType(worldToLocal(p.x, cx), p.y + 1, worldToLocal(p.z, cz)) == VINE)
+        return c->getWaterLevel(worldToLocal(p.x, cx), p.y + 1, worldToLocal(p.z, cz));
+    return vine::INVALID;
+}
+
 bool World::placeBlock(glm::ivec3 position, block_type type, uint8_t state, uint8_t* placedState) const {
     int bx = position.x;
     int by = position.y;
@@ -181,10 +198,13 @@ bool World::placeBlock(glm::ivec3 position, block_type type, uint8_t state, uint
         state = oldType == TORCH ? chunk->getWaterLevel(lx, by, lz) : torchStateAt(position);
     }
     if (type == TORCH && !torch::validState(state)) return false; // nothing to hang on
-    if (type != TORCH) state = 0;
+    if (type == VINE && !vine::validState(state))
+        state = oldType == VINE ? chunk->getWaterLevel(lx, by, lz) : vineStateAt(position);
+    if (type == VINE && !vine::validState(state)) return false;
+    if (type != TORCH && type != VINE) state = 0;
     if (placedState) *placedState = state;
     chunk->placeBlock(lx, by, lz, type);
-    if (type == TORCH) chunk->setWaterLevel(lx, by, lz, state);
+    if (type == TORCH || type == VINE) chunk->setWaterLevel(lx, by, lz, state);
     markBorderNeighborsDirty(chunkManager, chunkX, chunkZ, lx, by, lz);
 
     // Block light in world space, crossing chunk boundaries
