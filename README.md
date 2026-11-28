@@ -226,7 +226,7 @@ A summary of the non-trivial perf work in this engine - written out since this r
 - **Shader uniform cache** - `Shader` class caches `glGetUniformLocation` results by name hash; uniform lookups are free after the first call. (`shader.h`)
 - **Split plant draw pass** - plant indices live in the same EBO as cube faces but after a boundary offset. Chunks are drawn in two `glDrawElements` calls: cube faces with `GL_CULL_FACE` on, then plants with culling disabled so each quad shows both sides from 6 indices instead of 12. Halves plant index memory at the cost of one state change per chunk. (`Chunk::render`, `emitPlane`)
 - **Branchless shading** - face brightness, AO multiplier, leaf cutout and water tint computed via `step()`/`mix()` chains instead of conditionals so the GPU doesn't serialize warps. (`frag.shd`)
-- **Lighting-aware greedy meshing** - adjacent faces merge into larger quads only when block type, light and (uniform) AO match, so merged quads shade exactly like per-block faces; on by default, toggleable in Settings.
+- **Lighting-aware greedy meshing** - adjacent faces merge into larger quads only when block type, sky + block light and AO match, and only faces whose four AO corners are uniform, so merged quads shade exactly like per-block faces. Merging every same-block face would erase interior lighting, because AO and light are only sampled at a merged quad's four corners. Cuts triangles at RD 16 from 636k to 443k (−24% GPU time on an RTX 2080 Ti), versus the ~67% a lighting-blind merge would remove. On by default, toggleable in Settings. (`chunk_mesh.cpp`, `Chunk::buildMeshData`)
 
 ### Memory / Data structures
 
@@ -266,18 +266,22 @@ A summary of the non-trivial perf work in this engine - written out since this r
 
 </details>
 
-## Potential Performance Optimizations
+## Next Performance Ideas
 
-### Greedy Meshing with Shader-Based Lighting
+Not implemented yet. Greedy meshing and the rest of the shipped work are listed under *Performance engineering techniques used* above.
 
-Greedy meshing is on by default (`Settings → Greedy Meshing`). Naively merging every same-block face erased interior lighting, because AO and light are only sampled at a merged quad's four corners. The mesher now merges faces only when block type, sky + block light **and** AO all match, and only faces whose four AO corners are uniform — so shading is identical to the non-greedy mesh. That keeps about a third fewer triangles at RD 16 (636k → 443k, −24% GPU time on an RTX 2080 Ti) instead of the ~67% a lighting-blind merge gets.
+### Merge More Faces with Shader-Based Lighting
 
-To merge further without losing shading, AO and sky light could move **per-pixel into the fragment shader** instead of per-vertex interpolation:
+Greedy meshing only merges faces whose light and AO already match, so lit and shaded areas still mesh per block. Moving AO and sky light **per-pixel into the fragment shader**, instead of interpolating them per vertex, would let every same-block face merge (up to ~67% fewer triangles instead of ~30%) without losing shading:
 
-1. **Fragment-based AO**: use `fract(FragPos)` to determine the pixel's position within the block and snap to the nearest corner's AO value, avoiding cross-block interpolation.
+1. **Fragment-based AO**: use `fract(FragPos)` to find the pixel's position within the block and snap to the nearest corner's AO value, avoiding cross-block interpolation.
 2. **3D light texture**: upload per-block sky light and AO as a 16×128×16 3D texture per chunk. The fragment shader samples it at `FragPos`, giving pixel-perfect lighting with zero interpolation artifacts.
 
-Either would let every same-block face merge again while keeping correct lighting. The tradeoff is shader complexity and texture bandwidth. Merging flat source water (not merged today) is a cheaper next step.
+The tradeoff is shader complexity and texture bandwidth.
+
+### Merge Flat Water
+
+Source-water surfaces aren't merged by the greedy mesher today. Large flat oceans and lakes are a cheaper win than the shader-lighting change.
 
 ### VBO Consolidation
 
