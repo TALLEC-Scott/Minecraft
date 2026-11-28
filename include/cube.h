@@ -66,6 +66,8 @@ enum block_type : uint8_t {
     DIAMOND_ORE,
     OXEYE_DAISY,
     CORNFLOWER,
+    OAK_LOG_X, // oak log lying along X (fallen logs); drops WOOD
+    OAK_LOG_Z, // oak log lying along Z
     PODZOL,
     MOSSY_COBBLESTONE
 };
@@ -93,7 +95,7 @@ enum Biome {
 
 // Tree trunks and canopies, for code that treats every wood type alike.
 inline bool isLog(block_type t) {
-    return t == WOOD || t == SPRUCE_LOG || t == BIRCH_LOG;
+    return t == WOOD || t == SPRUCE_LOG || t == BIRCH_LOG || t == OAK_LOG_X || t == OAK_LOG_Z;
 }
 inline bool isLeaves(block_type t) {
     return t == LEAVES || t == SPRUCE_LEAVES || t == BIRCH_LEAVES;
@@ -171,6 +173,8 @@ inline uint32_t getBlockFlags(block_type t) {
         /* DIAMOND_ORE   */ BF_SOLID | BF_OPAQUE,
         /* OXEYE_DAISY   */ BF_TRANSPARENT | BF_CROSS,
         /* CORNFLOWER    */ BF_TRANSPARENT | BF_CROSS,
+        /* OAK_LOG_X     */ BF_SOLID | BF_OPAQUE,
+        /* OAK_LOG_Z     */ BF_SOLID | BF_OPAQUE,
         /* PODZOL        */ BF_SOLID | BF_OPAQUE,
         /* MOSSY_COBBLESTONE */ BF_SOLID | BF_OPAQUE,
     };
@@ -257,6 +261,8 @@ inline StepSound getStepSound(block_type t) {
         /* DIAMOND_ORE   */ STEP_STONE,
         /* OXEYE_DAISY   */ STEP_GRASS,
         /* CORNFLOWER    */ STEP_GRASS,
+        /* OAK_LOG_X     */ STEP_WOOD,
+        /* OAK_LOG_Z     */ STEP_WOOD,
         /* PODZOL        */ STEP_GRASS,
         /* MOSSY_COBBLESTONE */ STEP_STONE,
     };

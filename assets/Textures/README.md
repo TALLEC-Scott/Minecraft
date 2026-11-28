@@ -40,4 +40,7 @@ Note: Mineclonia's `mcl_core/README.md` still says its textures come from the "F
 pack, which conflicts with the repository-wide `LEGAL.md`. `planks.png`, `cobblestone.png`,
 `lava.png`, `obsidian.png` and the `mcl_core` files above are used on the strength of `LEGAL.md`.
 
+`wood_sideways.png` is not from Pixel Perfection: it is the project's own `wood.png` (oak bark)
+rotated 90°, for the faces of sideways (fallen) oak logs.
+
 Item textures are credited in `items/README.md`.

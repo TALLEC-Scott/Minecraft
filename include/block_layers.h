@@ -49,7 +49,9 @@ constexpr int IRON_ORE_LAYER = FERN_LAYER + 1;
 constexpr int DIAMOND_ORE_LAYER = IRON_ORE_LAYER + 1;
 constexpr int OXEYE_DAISY_LAYER = DIAMOND_ORE_LAYER + 1;
 constexpr int CORNFLOWER_LAYER = OXEYE_DAISY_LAYER + 1;
-constexpr int PODZOL_TOP_LAYER = CORNFLOWER_LAYER + 1;
+// Oak bark turned 90°, for faces running along a sideways log (OAK_LOG_X/Z).
+constexpr int WOOD_SIDEWAYS_LAYER = CORNFLOWER_LAYER + 1;
+constexpr int PODZOL_TOP_LAYER = WOOD_SIDEWAYS_LAYER + 1;
 constexpr int PODZOL_SIDE_LAYER = PODZOL_TOP_LAYER + 1;
 constexpr int MOSSY_COBBLESTONE_LAYER = PODZOL_SIDE_LAYER + 1;
 constexpr int NUM_LAYERS = MOSSY_COBBLESTONE_LAYER + 1;
@@ -101,6 +103,19 @@ inline int layerForFace(block_type t, int face) {
     if (t == DIAMOND_ORE) return DIAMOND_ORE_LAYER;
     if (t == OXEYE_DAISY) return OXEYE_DAISY_LAYER;
     if (t == CORNFLOWER) return CORNFLOWER_LAYER;
+    // Sideways logs: rings on the two end faces, bark elsewhere. Faces 0/1
+    // (±Z) and 4/5 (±Y) map u to X, faces 2/3 (±X) map u to Z, and ±Y map v
+    // to Z; the bark's grain runs along v, so faces whose u runs along the
+    // log take the turned bark.
+    if (t == OAK_LOG_X) {
+        if (face == 2 || face == 3) return WOOD_TOP_LAYER;
+        return WOOD_SIDEWAYS_LAYER;
+    }
+    if (t == OAK_LOG_Z) {
+        if (face == 0 || face == 1) return WOOD_TOP_LAYER;
+        if (face == 2 || face == 3) return WOOD_SIDEWAYS_LAYER;
+        return static_cast<int>(WOOD);
+    }
     if (t == PODZOL) {
         if (face == 4) return PODZOL_TOP_LAYER;
         if (face == 5) return static_cast<int>(DIRT);
@@ -130,6 +145,7 @@ inline int layerForType(block_type t) {
     if (t == DIAMOND_ORE) return DIAMOND_ORE_LAYER;
     if (t == OXEYE_DAISY) return OXEYE_DAISY_LAYER;
     if (t == CORNFLOWER) return CORNFLOWER_LAYER;
+    if (t == OAK_LOG_X || t == OAK_LOG_Z) return static_cast<int>(WOOD);
     if (t == PODZOL) return PODZOL_SIDE_LAYER;
     if (t == MOSSY_COBBLESTONE) return MOSSY_COBBLESTONE_LAYER;
     return static_cast<int>(t);

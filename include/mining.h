@@ -52,6 +52,8 @@ inline BlockMining blockMining(block_type t) {
         /* DIAMOND_ORE    */ {3.0f,  ToolKind::Pickaxe, true, 3}, // iron pickaxe
         /* OXEYE_DAISY    */ {0.0f,  ToolKind::None,    false},
         /* CORNFLOWER     */ {0.0f,  ToolKind::None,    false},
+        /* OAK_LOG_X      */ {2.0f,  ToolKind::Axe,     false},
+        /* OAK_LOG_Z      */ {2.0f,  ToolKind::Axe,     false},
         /* PODZOL         */ {0.5f,  ToolKind::Shovel,  false},
         /* MOSSY_COBBLESTONE */ {2.0f, ToolKind::Pickaxe, true},
     };
@@ -108,6 +110,10 @@ inline ItemDrop blockDrop(block_type t, ItemId held, float roll) {
         return {ITEM_IRON_INGOT, 1};
     case DIAMOND_ORE:
         return {ITEM_DIAMOND, 1};
+    // Sideways (fallen) logs are ordinary oak logs once picked up.
+    case OAK_LOG_X:
+    case OAK_LOG_Z:
+        return {blockItem(WOOD), 1};
     case LEAVES:
         return roll < 0.005f ? ItemDrop{ITEM_APPLE, 1} : ItemDrop{};
     case SPRUCE_LEAVES:
