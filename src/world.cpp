@@ -9,6 +9,7 @@
 #include "profiler.h"
 #include "tnt_entity.h"
 #include "torch.h"
+#include "torch_model.h"
 #include "tracy_shim.h"
 #include <array>
 #include <algorithm>
@@ -226,7 +227,8 @@ bool World::sectionVisible(glm::ivec3 block) const {
     return c && (c->visibleSections & (1u << (block.y >> 4))) != 0;
 }
 
-int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const {
+int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos, TorchModel* torchModel,
+                  double time) const {
     ZoneScopedN("World::render");
     g_frame.meshBuildBudget = 4; // reset per frame
     auto planes = extractFrustumPlanes(viewProjection);
@@ -320,7 +322,6 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
                 g_frame.sectionsCulled++;
         }
     }
-
     // Pass 1: opaque geometry (front-to-back)
     shaderProgram.setInt("materialType", 0);
     int rendered = 0;
@@ -337,6 +338,22 @@ int World::render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::ve
         vc.chunk->render(shaderProgram, nc);
         rendered++;
         g_frame.chunksRendered++;
+    }
+
+    // Torches: 3D sticks, not in the chunk mesh. Drawn before the water so
+    // water in front of one blends over it.
+    if (torchModel) {
+        for (auto& vc : visible) {
+            Chunk& c = *vc.chunk;
+            for (const glm::ivec3& t : c.torchCells()) {
+                if (!(c.visibleSections & (1u << (t.y >> 4)))) continue;
+                glm::ivec3 cell(vc.pos.x * CHUNK_SIZE + t.x, t.y, vc.pos.y * CHUNK_SIZE + t.z);
+                auto light = static_cast<float>(c.getSkyLight(t.x, t.y, t.z) * 16 + c.getBlockLight(t.x, t.y, t.z));
+                torchModel->drawWorld(shaderProgram, torch::placedModel(cell, c.getWaterLevel(t.x, t.y, t.z)), light,
+                                      torch::tipColor(time, torch::tipPhase(cell)));
+            }
+        }
+        shaderProgram.setMat4("model", glm::mat4(1.0f));
     }
 
     // Pass 2: transparent geometry (water) back-to-front.

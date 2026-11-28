@@ -28,6 +28,23 @@ float rand01() {
 constexpr int VERT_FLOATS = 10;
 constexpr int VERTS_PER_QUAD = 4;
 constexpr int INDICES_PER_QUAD = 6;
+// A cube particle is 6 quads, so the buffers hold that many per particle.
+constexpr int MAX_QUADS = ParticleSystem::POOL_SIZE * 6;
+
+// Cube faces as ±1 corners (counter-clockwise from outside) with a fixed
+// shade per face, so the flat-coloured cubes still read as 3D.
+struct CubeFace {
+    float v[4][3];
+    float shade;
+};
+const CubeFace CUBE_FACES[6] = {
+    {{{-1, -1, 1}, {1, -1, 1}, {1, 1, 1}, {-1, 1, 1}}, 0.8f},     // +Z
+    {{{1, -1, -1}, {-1, -1, -1}, {-1, 1, -1}, {1, 1, -1}}, 0.8f}, // -Z
+    {{{-1, -1, -1}, {-1, -1, 1}, {-1, 1, 1}, {-1, 1, -1}}, 0.65f}, // -X
+    {{{1, -1, 1}, {1, -1, -1}, {1, 1, -1}, {1, 1, 1}}, 0.65f},    // +X
+    {{{-1, 1, 1}, {1, 1, 1}, {1, 1, -1}, {-1, 1, -1}}, 1.0f},     // +Y
+    {{{-1, -1, -1}, {1, -1, -1}, {1, -1, 1}, {-1, -1, 1}}, 0.5f}, // -Y
+};
 
 } // namespace
 
@@ -39,12 +56,12 @@ void ParticleSystem::init() {
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     // Pre-size VBO for max pool; we glBufferSubData each frame for live quads.
-    glBufferData(GL_ARRAY_BUFFER, POOL_SIZE * VERTS_PER_QUAD * VERT_FLOATS * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, MAX_QUADS * VERTS_PER_QUAD * VERT_FLOATS * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
 
     // Index buffer never changes — build it once.
     std::vector<unsigned int> indices;
-    indices.reserve(POOL_SIZE * INDICES_PER_QUAD);
-    for (int i = 0; i < POOL_SIZE; ++i) {
+    indices.reserve(MAX_QUADS * INDICES_PER_QUAD);
+    for (int i = 0; i < MAX_QUADS; ++i) {
         int b = i * VERTS_PER_QUAD;
         indices.push_back(b);
         indices.push_back(b + 1);
@@ -127,19 +144,36 @@ void ParticleSystem::render(const Shader& billboardShader, glm::vec3 cameraPos, 
         std::vector<float> verts;
         int quads = 0;
     };
-    std::vector<Batch> batches;
-    auto findBatch = [&](glm::vec3 t) -> Batch& {
-        for (auto& b : batches) {
+    std::vector<Batch> batches, cubeBatches;
+    auto findBatch = [&](std::vector<Batch>& list, glm::vec3 t) -> Batch& {
+        for (auto& b : list) {
             if (glm::all(glm::epsilonEqual(b.tint, t, 0.001f))) return b;
         }
-        batches.push_back({t, {}, 0});
-        batches.back().verts.reserve(64 * VERTS_PER_QUAD * VERT_FLOATS);
-        return batches.back();
+        list.push_back({t, {}, 0});
+        list.back().verts.reserve(64 * VERTS_PER_QUAD * VERT_FLOATS);
+        return list.back();
+    };
+    auto pushVert = [](Batch& b, glm::vec3 pos, float u, float v, float layer, float bright) {
+        const float vert[VERT_FLOATS] = {pos.x, pos.y, pos.z, u, v, 0.0f, 0.0f, 1.0f, layer, bright};
+        b.verts.insert(b.verts.end(), vert, vert + VERT_FLOATS);
     };
 
     glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
     for (auto& p : pool) {
         if (!p.alive || p.viewSpace != viewSpace) continue;
+        if (p.cube) {
+            // Shrink away over the second half of life (opaque cubes can't fade).
+            float t = p.life / p.maxLife;
+            float half = p.size * (t < 0.5f ? 1.0f : 2.0f * (1.0f - t));
+            if (half <= 0.0f) continue;
+            // One batch per face shade (tint × shade), since the colour is per batch.
+            for (const CubeFace& f : CUBE_FACES) {
+                Batch& b = findBatch(cubeBatches, p.tint * f.shade);
+                for (const auto& c : f.v) pushVert(b, p.pos + glm::vec3(c[0], c[1], c[2]) * half, 0.5f, 0.5f, 0.0f, 1.0f);
+                ++b.quads;
+            }
+            continue;
+        }
         glm::vec3 toCam = glm::normalize(cameraPos - p.pos);
         glm::vec3 right = glm::cross(worldUp, toCam);
         if (glm::dot(right, right) < 1e-5f) right = glm::vec3(1, 0, 0);
@@ -159,40 +193,44 @@ void ParticleSystem::render(const Shader& billboardShader, glm::vec3 cameraPos, 
         glm::vec3 v2 = p.pos + right + up;
         glm::vec3 v3 = p.pos + right - up;
 
-        Batch& b = findBatch(p.tint);
-        auto emit = [&](glm::vec3 pos, float u, float v) {
-            b.verts.push_back(pos.x);
-            b.verts.push_back(pos.y);
-            b.verts.push_back(pos.z);
-            b.verts.push_back(u);
-            b.verts.push_back(v);
-            b.verts.push_back(0.0f);
-            b.verts.push_back(0.0f);
-            b.verts.push_back(1.0f);
-            b.verts.push_back(layer);
-            b.verts.push_back(bright);
-        };
-        emit(v0, 0, 0);
-        emit(v1, 0, 1);
-        emit(v2, 1, 1);
-        emit(v3, 1, 0);
+        Batch& b = findBatch(batches, p.tint);
+        pushVert(b, v0, 0, 0, layer, bright);
+        pushVert(b, v1, 0, 1, layer, bright);
+        pushVert(b, v2, 1, 1, layer, bright);
+        pushVert(b, v3, 1, 0, layer, bright);
         ++b.quads;
     }
 
-    if (batches.empty()) return;
+    if (batches.empty() && cubeBatches.empty()) return;
 
     billboardShader.setMat4("model", glm::mat4(1.0f));
+    glBindVertexArray(vao);
+    auto drawBatches = [&](const std::vector<Batch>& list) {
+        for (const auto& b : list) {
+            if (b.quads == 0) continue;
+            billboardShader.setVec3("tintColor", b.tint);
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, b.verts.size() * sizeof(float), b.verts.data());
+            glDrawElements(GL_TRIANGLES, b.quads * INDICES_PER_QUAD, GL_UNSIGNED_INT, nullptr);
+        }
+    };
+
+    if (!cubeBatches.empty()) {
+        // Opaque and depth-writing, so cubes sort correctly against each other.
+        GLboolean depthWrite = GL_TRUE;
+        glGetBooleanv(GL_DEPTH_WRITEMASK, &depthWrite);
+        GLboolean blend = glIsEnabled(GL_BLEND);
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+        billboardShader.setFloat("glowMode", 2.0f); // flat tint colour
+        drawBatches(cubeBatches);
+        glDepthMask(depthWrite);
+        if (blend) glEnable(GL_BLEND);
+    }
+
     // The hand's flame is a soft glow (radial falloff) rather than a smoke puff.
     billboardShader.setFloat("glowMode", viewSpace ? 1.0f : 0.0f);
-
-    glBindVertexArray(vao);
-    for (auto& b : batches) {
-        if (b.quads == 0) continue;
-        billboardShader.setVec3("tintColor", b.tint);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, b.verts.size() * sizeof(float), b.verts.data());
-        glDrawElements(GL_TRIANGLES, b.quads * INDICES_PER_QUAD, GL_UNSIGNED_INT, nullptr);
-    }
+    drawBatches(batches);
     glBindVertexArray(0);
 }
 
@@ -313,9 +351,10 @@ void ParticleSystem::spawnTorchFlame(glm::vec3 tip) {
     f.velocity = glm::vec3((rand01() - 0.5f) * 0.02f, 0.05f + rand01() * 0.05f, (rand01() - 0.5f) * 0.02f);
     f.tint = glm::vec3(1.0f, 0.75f + rand01() * 0.2f, 0.3f);
     f.maxLife = 0.6f + rand01() * 1.6f; // Minecraft FlameParticle: 12..44 ticks
-    f.size = 0.04f + rand01() * 0.02f;
-    f.growth = -0.05f; // shrinks as it burns out
+    f.size = 0.03f + rand01() * 0.015f;
+    f.growth = -0.02f; // shrinks as it burns out
     f.buoyant = false;
+    f.cube = true;
     f.alive = true;
 
     Particle& s = allocParticle();
@@ -323,8 +362,9 @@ void ParticleSystem::spawnTorchFlame(glm::vec3 tip) {
     s.velocity = glm::vec3((rand01() - 0.5f) * 0.05f, 0.25f + rand01() * 0.15f, (rand01() - 0.5f) * 0.05f);
     s.tint = glm::vec3(0.25f);
     s.maxLife = 0.8f + rand01() * 0.6f;
-    s.size = 0.05f;
-    s.growth = 0.1f;
+    s.size = 0.035f;
+    s.growth = 0.02f;
+    s.cube = true;
     s.alive = true;
 }
 
@@ -335,10 +375,11 @@ void ParticleSystem::spawnHeldTorchFlame(glm::vec3 tipView, bool withSmoke) {
     f.velocity = glm::vec3((rand01() - 0.5f) * 0.01f, 0.05f + rand01() * 0.04f, 0.0f);
     f.tint = glm::vec3(1.0f, 0.7f + rand01() * 0.25f, 0.25f);
     f.maxLife = 0.15f + rand01() * 0.15f;
-    f.size = 0.02f + rand01() * 0.012f;
-    f.growth = -0.03f;
+    f.size = 0.008f + rand01() * 0.005f;
+    f.growth = -0.01f;
     f.buoyant = false;
     f.viewSpace = true;
+    f.cube = true;
     f.alive = true;
     if (!withSmoke) return;
     Particle& s = allocParticle();
@@ -346,10 +387,11 @@ void ParticleSystem::spawnHeldTorchFlame(glm::vec3 tipView, bool withSmoke) {
     s.velocity = glm::vec3((rand01() - 0.5f) * 0.02f, 0.12f + rand01() * 0.06f, 0.0f);
     s.tint = glm::vec3(0.3f);
     s.maxLife = 0.5f + rand01() * 0.3f;
-    s.size = 0.015f;
-    s.growth = 0.04f;
+    s.size = 0.008f;
+    s.growth = 0.005f;
     s.buoyant = false;
     s.viewSpace = true;
+    s.cube = true;
     s.alive = true;
 }
 

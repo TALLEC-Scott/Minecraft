@@ -23,6 +23,9 @@ struct Particle {
     bool buoyant = true; // smoke/bubbles rise; underwater motes should not
     float gravity = 0.0f; // world units / s² pulled down (lava embers)
     bool viewSpace = false; // drawn in the first-person hand pass (held torch flame)
+    // Drawn as a small opaque shaded cube (half-extent `size`) that shrinks
+    // away over the second half of its life, instead of a fading billboard.
+    bool cube = false;
 };
 
 class ParticleSystem {
@@ -38,9 +41,10 @@ class ParticleSystem {
     // entries. Safe to call when no particles are live.
     void update(float dt);
 
-    // Renders all live particles as camera-facing quads through the
-    // billboard shader. Caller is responsible for setting projection/view
-    // on the shader beforehand.
+    // Renders all live particles through the billboard shader: cube
+    // particles first (opaque, writing depth), then the camera-facing
+    // quads (blended, with whatever depth/blend state the caller set).
+    // Caller is responsible for setting projection/view on the shader.
     // `viewSpace` picks which particles to draw: the world's (false) or the
     // first-person hand's (true; positions in view space, camera at the origin).
     void render(const Shader& billboardShader, glm::vec3 cameraPos, glm::vec3 cameraFront, bool viewSpace = false);

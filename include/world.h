@@ -15,6 +15,7 @@ class EntityManager;
 class BlockEffects;
 class MobManager;
 class ParticleSystem;
+class TorchModel;
 
 class World {
   public:
@@ -73,7 +74,11 @@ class World {
 
     unsigned int seed = 0;
 
-    int render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos) const;
+    // Draws the chunks, and (if `torchModel` is given) the torches in the
+    // sections it drew, between the opaque and the water pass. `time`
+    // drives the torch tips' pulse.
+    int render(const Shader& shaderProgram, glm::mat4 viewProjection, glm::vec3 cameraPos,
+               TorchModel* torchModel = nullptr, double time = 0.0) const;
     // Did last render()'s cave-culling BFS reach the section holding this
     // block? Always true when cave culling didn't run that frame (disabled,
     // or the camera chunk wasn't loaded). Used to skip mobs in sealed caves.

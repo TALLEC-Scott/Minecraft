@@ -81,12 +81,9 @@ void BlockEffects::update(const World& world, glm::vec3 listener, float dt) {
         if (!loc.chunk) continue;
         block_type t = loc.chunk->getBlockType(loc.lx, y, loc.lz);
         if (t == TORCH) {
-            // Flame at the stick's tip; a wall torch's tip leans toward its wall.
+            // Flame just above the stick's tip (a wall torch's leans away from its wall).
             uint8_t s = loc.chunk->getWaterLevel(loc.lx, y, loc.lz);
-            glm::vec3 tip(x, y - 0.5f + torch::TOP + 0.05f, z);
-            if (s != torch::STANDING && torch::validState(s))
-                tip += glm::vec3(torch::SUPPORT[s][0], 0, torch::SUPPORT[s][2]) * torch::WALL_TOP_SHIFT;
-            world.particles->spawnTorchFlame(tip);
+            world.particles->spawnTorchFlame(torch::tip({x, y, z}, s) + glm::vec3(0.0f, 0.03f, 0.0f));
             continue;
         }
         if (t != LAVA) continue;

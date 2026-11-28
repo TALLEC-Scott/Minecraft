@@ -492,11 +492,8 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
             crossIdx.push_back(b);
             opaqueBase += 4;
         };
-        uint8_t state = (bt == TORCH && waterLevels)
-                            ? waterLevels[lx * CHUNK_HEIGHT * CHUNK_SIZE + ly * CHUNK_SIZE + lz]
-                            : 0;
         float planeA[4][3], planeB[4][3];
-        crossQuadCorners(bt, state, wx, wy, wz, planeA, planeB);
+        crossQuadCorners(wx, wy, wz, planeA, planeB);
         emitPlane(planeA);
         emitPlane(planeB);
     };
@@ -505,7 +502,8 @@ MeshData buildMeshFromData(Cube* blocks, uint8_t* light, uint8_t* waterLevels, i
         for (int y = yMin; y < std::min(yMax, opaqueH); ++y) {
             for (int z = 0; z < CHUNK_SIZE; ++z) {
                 block_type t = blocks[x * CHUNK_HEIGHT * CHUNK_SIZE + y * CHUNK_SIZE + z].getType();
-                if (hasFlag(t, BF_CROSS)) emitCross(x, y, z, t);
+                // Torches are 3D sticks drawn by TorchModel, not meshed.
+                if (hasFlag(t, BF_CROSS) && t != TORCH) emitCross(x, y, z, t);
             }
         }
     }

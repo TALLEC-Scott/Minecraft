@@ -55,6 +55,7 @@ set(COMMON_SOURCES
     src/tnt_entity.cpp
     src/entity_manager.cpp
     src/entity_cube_renderer.cpp
+    src/torch_model.cpp
     src/particle_system.cpp
     src/block_effects.cpp
     src/player_renderer.cpp
