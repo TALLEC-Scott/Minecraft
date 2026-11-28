@@ -47,9 +47,9 @@ constexpr int BIRCH_LEAVES_LAYER = BIRCH_LOG_TOP_LAYER + 1; // 50 (shaders: leaf
 constexpr int FERN_LAYER = BIRCH_LEAVES_LAYER + 1;          // 51 (shaders: plant cutout + sway)
 constexpr int IRON_ORE_LAYER = FERN_LAYER + 1;
 constexpr int DIAMOND_ORE_LAYER = IRON_ORE_LAYER + 1;
-constexpr int OXEYE_DAISY_LAYER = DIAMOND_ORE_LAYER + 1;
-constexpr int CORNFLOWER_LAYER = OXEYE_DAISY_LAYER + 1;
-constexpr int NUM_LAYERS = CORNFLOWER_LAYER + 1;
+// Oak bark turned 90°, for faces running along a sideways log (OAK_LOG_X/Z).
+constexpr int WOOD_SIDEWAYS_LAYER = DIAMOND_ORE_LAYER + 1;
+constexpr int NUM_LAYERS = WOOD_SIDEWAYS_LAYER + 1;
 // The shaders hard-code these; keep frag.shd / vert.shd in step if they move.
 static_assert(SPRUCE_LEAVES_LAYER == 47 && BIRCH_LEAVES_LAYER == 50 && FERN_LAYER == 51);
 
@@ -96,8 +96,19 @@ inline int layerForFace(block_type t, int face) {
     if (t == FERN) return FERN_LAYER;
     if (t == IRON_ORE) return IRON_ORE_LAYER;
     if (t == DIAMOND_ORE) return DIAMOND_ORE_LAYER;
-    if (t == OXEYE_DAISY) return OXEYE_DAISY_LAYER;
-    if (t == CORNFLOWER) return CORNFLOWER_LAYER;
+    // Sideways logs: rings on the two end faces, bark elsewhere. Faces 0/1
+    // (±Z) and 4/5 (±Y) map u to X, faces 2/3 (±X) map u to Z, and ±Y map v
+    // to Z; the bark's grain runs along v, so faces whose u runs along the
+    // log take the turned bark.
+    if (t == OAK_LOG_X) {
+        if (face == 2 || face == 3) return WOOD_TOP_LAYER;
+        return WOOD_SIDEWAYS_LAYER;
+    }
+    if (t == OAK_LOG_Z) {
+        if (face == 0 || face == 1) return WOOD_TOP_LAYER;
+        if (face == 2 || face == 3) return WOOD_SIDEWAYS_LAYER;
+        return static_cast<int>(WOOD);
+    }
     return static_cast<int>(t);
 }
 
@@ -119,8 +130,7 @@ inline int layerForType(block_type t) {
     if (t == FERN) return FERN_LAYER;
     if (t == IRON_ORE) return IRON_ORE_LAYER;
     if (t == DIAMOND_ORE) return DIAMOND_ORE_LAYER;
-    if (t == OXEYE_DAISY) return OXEYE_DAISY_LAYER;
-    if (t == CORNFLOWER) return CORNFLOWER_LAYER;
+    if (t == OAK_LOG_X || t == OAK_LOG_Z) return static_cast<int>(WOOD);
     return static_cast<int>(t);
 }
 

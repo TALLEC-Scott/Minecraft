@@ -27,8 +27,6 @@ modified versions of them, stay under CC BY-SA 4.0; the rest of the project is u
 | `fern.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_fern.png`, tinted ×`#6ADE3C` |
 | `iron_ore.png` | `ITEMS/mcl_core/textures/mcl_core_iron_ore.png` (unmodified) |
 | `diamond_ore.png` | `ITEMS/mcl_core/textures/mcl_core_diamond_ore.png` (unmodified) |
-| `oxeye_daisy.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_oxeye_daisy.png` (unmodified) |
-| `cornflower.png` | `ITEMS/mcl_flowers/textures/mcl_flowers_cornflower.png` (unmodified) |
 
 "Tinted" files are the grayscale originals multiplied by a fixed colour (the game has no runtime
 biome tint), made with `scripts/tint_textures.py`.
@@ -36,5 +34,8 @@ biome tint), made with `scripts/tint_textures.py`.
 Note: Mineclonia's `mcl_core/README.md` still says its textures come from the "Faithful 1.11"
 pack, which conflicts with the repository-wide `LEGAL.md`. `planks.png`, `cobblestone.png`,
 `lava.png`, `obsidian.png` and the `mcl_core` files above are used on the strength of `LEGAL.md`.
+
+`wood_sideways.png` is not from Pixel Perfection: it is the project's own `wood.png` (oak bark)
+rotated 90°, for the faces of sideways (fallen) oak logs.
 
 Item textures are credited in `items/README.md`.

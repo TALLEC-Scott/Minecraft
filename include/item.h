@@ -208,10 +208,9 @@ inline const char* itemName(ItemId id) {
         return "Iron Ore";
     case DIAMOND_ORE:
         return "Diamond Ore";
-    case OXEYE_DAISY:
-        return "Oxeye Daisy";
-    case CORNFLOWER:
-        return "Cornflower";
+    case OAK_LOG_X:
+    case OAK_LOG_Z:
+        return "Oak Log";
     default:
         return "?";
     }
