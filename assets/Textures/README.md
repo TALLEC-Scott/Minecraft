@@ -32,6 +32,7 @@ modified versions of them, stay under CC BY-SA 4.0; the rest of the project is u
 | `podzol_top.png` | `ITEMS/mcl_core/textures/mcl_core_dirt_podzol_top.png` (unmodified) |
 | `podzol_side.png` | `ITEMS/mcl_core/textures/mcl_core_dirt_podzol_side.png` (unmodified) |
 | `mossy_cobblestone.png` | `ITEMS/mcl_core/textures/default_mossycobble.png` (unmodified) |
+| `ice.png` | `ITEMS/mcl_core/textures/default_ice.png`, alpha made fully opaque (drawn as a solid block) |
 | `sandstone.png` | `ITEMS/mcl_core/textures/mcl_core_sandstone_normal.png`, recoloured ×(1.05, 1.29, 1.25) per channel to match `sand.png` |
 | `sandstone_top.png` | `ITEMS/mcl_core/textures/mcl_core_sandstone_top.png`, recoloured ×(1.05, 1.29, 1.25) per channel to match `sand.png` |
 | `sandstone_bottom.png` | `ITEMS/mcl_core/textures/mcl_core_sandstone_bottom.png`, recoloured ×(1.05, 1.29, 1.25) per channel to match `sand.png` |

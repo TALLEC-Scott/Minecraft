@@ -53,8 +53,9 @@ more than three times longer.
 | <img src="../../assets/Textures/wood.png" width="16"> | Oak Log | 34 | 2 | axe | 3 s | 1.5 s | 0.75 s | Wood | solid |
 | <img src="../../assets/Textures/podzol_top.png" width="16"> | Podzol | 35 | 0.5 | shovel | 0.75 s | 0.4 s | 0.2 s | Dirt | solid |
 | <img src="../../assets/Textures/mossy_cobblestone.png" width="16"> | Mossy Cobblestone | 36 | 2 | pickaxe (needs tool) | 10 s | 1.5 s | 0.75 s | Mossy Cobblestone | solid |
-| <img src="../../assets/Textures/sandstone_top.png" width="16"> | Sandstone | 37 | 0.8 | pickaxe (needs tool) | 4 s | 0.6 s | 0.3 s | Sandstone | solid |
-| <img src="../../assets/Textures/dead_bush.png" width="16"> | Dead Bush | 38 | 0 | any | instant | instant | instant | Stick | plant |
+| <img src="../../assets/Textures/ice.png" width="16"> | Ice | 37 | 0.5 | pickaxe | 0.75 s | 0.4 s | 0.2 s | nothing | solid |
+| <img src="../../assets/Textures/sandstone_top.png" width="16"> | Sandstone | 38 | 0.8 | pickaxe (needs tool) | 4 s | 0.6 s | 0.3 s | Sandstone | solid |
+| <img src="../../assets/Textures/dead_bush.png" width="16"> | Dead Bush | 39 | 0 | any | instant | instant | instant | Stick | plant |
 
 ## Tools and weapons
 

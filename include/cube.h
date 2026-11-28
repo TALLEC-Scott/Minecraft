@@ -70,6 +70,7 @@ enum block_type : uint8_t {
     OAK_LOG_Z, // oak log lying along Z
     PODZOL,
     MOSSY_COBBLESTONE,
+    ICE,
     SANDSTONE,
     DEAD_BUSH
 };
@@ -179,6 +180,7 @@ inline uint32_t getBlockFlags(block_type t) {
         /* OAK_LOG_Z     */ BF_SOLID | BF_OPAQUE,
         /* PODZOL        */ BF_SOLID | BF_OPAQUE,
         /* MOSSY_COBBLESTONE */ BF_SOLID | BF_OPAQUE,
+        /* ICE           */ BF_SOLID | BF_OPAQUE,
         /* SANDSTONE     */ BF_SOLID | BF_OPAQUE,
         /* DEAD_BUSH     */ BF_TRANSPARENT | BF_CROSS,
     };
@@ -269,6 +271,7 @@ inline StepSound getStepSound(block_type t) {
         /* OAK_LOG_Z     */ STEP_WOOD,
         /* PODZOL        */ STEP_GRASS,
         /* MOSSY_COBBLESTONE */ STEP_STONE,
+        /* ICE           */ STEP_STONE,
         /* SANDSTONE     */ STEP_STONE,
         /* DEAD_BUSH     */ STEP_GRASS,
     };

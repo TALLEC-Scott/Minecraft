@@ -219,6 +219,8 @@ inline const char* itemName(ItemId id) {
         return "Podzol";
     case MOSSY_COBBLESTONE:
         return "Mossy Cobblestone";
+    case ICE:
+        return "Ice";
     case SANDSTONE:
         return "Sandstone";
     case DEAD_BUSH:
